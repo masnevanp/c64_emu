@@ -1,0 +1,5 @@
+bin
+obj
+_local
+data/c64_roms/*.rom
+data/prg/*.prg

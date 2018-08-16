@@ -1,0 +1,533 @@
+# depslib dependency file v1.0
+1527404807 source:d:\src\cpp\c64_emu\dbg.cpp
+	"dbg.h"
+	<sstream>
+	<iostream>
+	<iomanip>
+
+1528715328 d:\src\cpp\c64_emu\dbg.h
+	<string>
+	"common.h"
+	"nmos6502/nmos6502.h"
+	"nmos6502/nmos6502_core.h"
+
+1530385956 d:\src\cpp\c64_emu\common.h
+	"nmos6502/nmos6502.h"
+
+1530525762 d:\src\cpp\c64_emu\nmos6502\nmos6502.h
+	<string>
+	<functional>
+
+1531226013 d:\src\cpp\c64_emu\nmos6502\nmos6502_core.h
+	"nmos6502.h"
+	"nmos6502_mc.h"
+
+1530525364 d:\src\cpp\c64_emu\nmos6502\nmos6502_mc.h
+	"nmos6502.h"
+
+1529135218 source:d:\src\cpp\c64_emu\host.cpp
+	"host.h"
+
+1529138857 d:\src\cpp\c64_emu\host.h
+	<SDL.h>
+	"common.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl.h
+	"SDL_main.h"
+	"SDL_stdinc.h"
+	"SDL_assert.h"
+	"SDL_atomic.h"
+	"SDL_audio.h"
+	"SDL_clipboard.h"
+	"SDL_cpuinfo.h"
+	"SDL_endian.h"
+	"SDL_error.h"
+	"SDL_events.h"
+	"SDL_filesystem.h"
+	"SDL_gamecontroller.h"
+	"SDL_haptic.h"
+	"SDL_hints.h"
+	"SDL_joystick.h"
+	"SDL_loadso.h"
+	"SDL_log.h"
+	"SDL_messagebox.h"
+	"SDL_mutex.h"
+	"SDL_power.h"
+	"SDL_render.h"
+	"SDL_rwops.h"
+	"SDL_shape.h"
+	"SDL_system.h"
+	"SDL_thread.h"
+	"SDL_timer.h"
+	"SDL_version.h"
+	"SDL_video.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_main.h
+	"SDL_stdinc.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_stdinc.h
+	"SDL_config.h"
+	<sys/types.h>
+	<stdio.h>
+	<stdlib.h>
+	<stddef.h>
+	<stdarg.h>
+	<stdlib.h>
+	<malloc.h>
+	<stddef.h>
+	<stdarg.h>
+	<memory.h>
+	<string.h>
+	<strings.h>
+	<wchar.h>
+	<inttypes.h>
+	<stdint.h>
+	<ctype.h>
+	<math.h>
+	<float.h>
+	<sal.h>
+	"begin_code.h"
+	<alloca.h>
+	<malloc.h>
+	<malloc.h>
+	<malloc.h>
+	<stdlib.h>
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_config.h
+	"SDL_platform.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_platform.h
+	"AvailabilityMacros.h"
+	"TargetConditionals.h"
+	<winapifamily.h>
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\begin_code.h
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\close_code.h
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_assert.h
+	"SDL_config.h"
+	"begin_code.h"
+	<signal.h>
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_atomic.h
+	"SDL_stdinc.h"
+	"SDL_platform.h"
+	"begin_code.h"
+	<mbarrier.h>
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_audio.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"SDL_endian.h"
+	"SDL_mutex.h"
+	"SDL_thread.h"
+	"SDL_rwops.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_error.h
+	"SDL_stdinc.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_endian.h
+	"SDL_stdinc.h"
+	<endian.h>
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_mutex.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_thread.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"SDL_atomic.h"
+	"SDL_mutex.h"
+	"begin_code.h"
+	<process.h>
+	<process.h>
+	<stdlib.h>
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_rwops.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_clipboard.h
+	"SDL_stdinc.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_cpuinfo.h
+	"SDL_stdinc.h"
+	<intrin.h>
+	<intrin.h>
+	<altivec.h>
+	<mm3dnow.h>
+	<immintrin.h>
+	<mmintrin.h>
+	<xmmintrin.h>
+	<emmintrin.h>
+	<pmmintrin.h>
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_events.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"SDL_video.h"
+	"SDL_keyboard.h"
+	"SDL_mouse.h"
+	"SDL_joystick.h"
+	"SDL_gamecontroller.h"
+	"SDL_quit.h"
+	"SDL_gesture.h"
+	"SDL_touch.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_video.h
+	"SDL_stdinc.h"
+	"SDL_pixels.h"
+	"SDL_rect.h"
+	"SDL_surface.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_pixels.h
+	"SDL_stdinc.h"
+	"SDL_endian.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_rect.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"SDL_pixels.h"
+	"SDL_rwops.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_surface.h
+	"SDL_stdinc.h"
+	"SDL_pixels.h"
+	"SDL_rect.h"
+	"SDL_blendmode.h"
+	"SDL_rwops.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_blendmode.h
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_keyboard.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"SDL_keycode.h"
+	"SDL_video.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_keycode.h
+	"SDL_stdinc.h"
+	"SDL_scancode.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_scancode.h
+	"SDL_stdinc.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_mouse.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"SDL_video.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_joystick.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_gamecontroller.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"SDL_rwops.h"
+	"SDL_joystick.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_quit.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_gesture.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"SDL_video.h"
+	"SDL_touch.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_touch.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"SDL_video.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_filesystem.h
+	"SDL_stdinc.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_haptic.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"SDL_joystick.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_hints.h
+	"SDL_stdinc.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_loadso.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_log.h
+	"SDL_stdinc.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_messagebox.h
+	"SDL_stdinc.h"
+	"SDL_video.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_power.h
+	"SDL_stdinc.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_render.h
+	"SDL_stdinc.h"
+	"SDL_rect.h"
+	"SDL_video.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_shape.h
+	"SDL_stdinc.h"
+	"SDL_pixels.h"
+	"SDL_rect.h"
+	"SDL_surface.h"
+	"SDL_video.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_system.h
+	"SDL_stdinc.h"
+	"SDL_keyboard.h"
+	"SDL_render.h"
+	"SDL_video.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_timer.h
+	"SDL_stdinc.h"
+	"SDL_error.h"
+	"begin_code.h"
+	"close_code.h"
+
+1519922210 d:\src\cpp\lib\sdl2\include\sdl2\sdl_version.h
+	"SDL_stdinc.h"
+	"begin_code.h"
+	"close_code.h"
+
+1534424968 source:d:\src\cpp\c64_emu\main.cpp
+	<iostream>
+	<string>
+	<iostream>
+	"nmos6502/nmos6502.h"
+	"nmos6502/nmos6502_core.h"
+	"utils.h"
+	"dbg.h"
+	"system.h"
+	"test.h"
+
+1534341034 d:\src\cpp\c64_emu\utils.h
+	<vector>
+	<string>
+	<chrono>
+	<thread>
+	<iostream>
+
+1534407760 d:\src\cpp\c64_emu\system.h
+	<cmath>
+	"common.h"
+	"utils.h"
+	"dbg.h"
+	"nmos6502/nmos6502_core.h"
+	"vic_ii.h"
+	"sid.h"
+	"cia.h"
+	"io.h"
+	"host.h"
+	<iostream>
+	<cmath>
+
+1532337783 d:\src\cpp\c64_emu\vic_ii.h
+	<iostream>
+	"common.h"
+	"io.h"
+	"host.h"
+
+1530456521 d:\src\cpp\c64_emu\io.h
+	"nmos6502/nmos6502_core.h"
+
+1530525518 d:\src\cpp\c64_emu\sid.h
+	"resid/sid.h"
+
+1505584686 d:\src\cpp\c64_emu\resid\sid.h
+	"resid-config.h"
+	"voice.h"
+	"filter.h"
+	"extfilt.h"
+	"pot.h"
+
+1505584684 d:\src\cpp\c64_emu\resid\resid-config.h
+	"siddefs.h"
+
+1528703506 d:\src\cpp\c64_emu\resid\siddefs.h
+
+1505584686 d:\src\cpp\c64_emu\resid\voice.h
+	"resid-config.h"
+	"wave.h"
+	"envelope.h"
+
+1505584688 d:\src\cpp\c64_emu\resid\wave.h
+	"resid-config.h"
+
+1525819610 d:\src\cpp\c64_emu\resid\envelope.h
+	"resid-config.h"
+
+1526750534 d:\src\cpp\c64_emu\resid\filter.h
+	"resid-config.h"
+
+1526750532 d:\src\cpp\c64_emu\resid\extfilt.h
+	"resid-config.h"
+
+1505584688 d:\src\cpp\c64_emu\resid\pot.h
+	"resid-config.h"
+
+1530523447 d:\src\cpp\c64_emu\cia.h
+	"common.h"
+	"io.h"
+
+1534341690 d:\src\cpp\c64_emu\test.h
+
+1530525786 source:d:\src\cpp\c64_emu\nmos6502\nmos6502.cpp
+	"nmos6502.h"
+
+1530441487 source:d:\src\cpp\c64_emu\nmos6502\nmos6502_core.cpp
+	"nmos6502_core.h"
+
+1530436261 source:d:\src\cpp\c64_emu\nmos6502\nmos6502_mc.cpp
+	"nmos6502_mc.h"
+
+1505584686 source:d:\src\cpp\c64_emu\resid\dac.cc
+	"dac.h"
+	<math.h>
+	<float.h>
+
+1505584686 d:\src\cpp\c64_emu\resid\dac.h
+
+1505584686 source:d:\src\cpp\c64_emu\resid\envelope.cc
+	"envelope.h"
+	"dac.h"
+
+1505584686 source:d:\src\cpp\c64_emu\resid\extfilt.cc
+	"extfilt.h"
+
+1505584686 source:d:\src\cpp\c64_emu\resid\filter.cc
+	"filter.h"
+	"dac.h"
+	"spline.h"
+	<math.h>
+
+1505584686 d:\src\cpp\c64_emu\resid\spline.h
+
+1505584686 source:d:\src\cpp\c64_emu\resid\pot.cc
+	"pot.h"
+
+1526750532 source:d:\src\cpp\c64_emu\resid\sid.cc
+	"sid.h"
+	<math.h>
+
+1505584686 source:d:\src\cpp\c64_emu\resid\version.cc
+	"resid-config.h"
+
+1505584688 source:d:\src\cpp\c64_emu\resid\voice.cc
+	"voice.h"
+
+1505584686 source:d:\src\cpp\c64_emu\resid\wave.cc
+	"wave.h"
+	"dac.h"
+	"wave6581__ST.h"
+	"wave6581_P_T.h"
+	"wave6581_PS_.h"
+	"wave6581_PST.h"
+	"wave8580__ST.h"
+	"wave8580_P_T.h"
+	"wave8580_PS_.h"
+	"wave8580_PST.h"
+
+1525819730 d:\src\cpp\c64_emu\resid\wave6581__st.h
+
+1525819730 d:\src\cpp\c64_emu\resid\wave6581_p_t.h
+
+1525819730 d:\src\cpp\c64_emu\resid\wave6581_ps_.h
+
+1525819730 d:\src\cpp\c64_emu\resid\wave6581_pst.h
+
+1525819730 d:\src\cpp\c64_emu\resid\wave8580__st.h
+
+1525819730 d:\src\cpp\c64_emu\resid\wave8580_p_t.h
+
+1525819730 d:\src\cpp\c64_emu\resid\wave8580_ps_.h
+
+1525819730 d:\src\cpp\c64_emu\resid\wave8580_pst.h
+
+1530524537 source:d:\src\cpp\c64_emu\system.cpp
+	"system.h"
+
+1525076251 source:d:\src\cpp\c64_emu\utils.cpp
+	"utils.h"
+	<fstream>
+	<algorithm>
+
+1528734353 source:d:\src\cpp\c64_emu\vic_ii.cpp
+	"vic_ii.h"
+
