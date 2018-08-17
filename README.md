@@ -2,9 +2,7 @@
 
 A hobby project I work on randomly, and just for fun. Not very usable yet, and it might stay that way... but that's OK. :)
 
-Why do this? Well, the C64 (AKA as 'Tasavallan Tietokone' and 'Kuuslankku') was my first ever computer.
-
-Not really in a distributable format (e.g. no build scripts or makefiles). For development I have been using Code::Blocks on Windows
+Source code is not really in a distributable format (e.g. no build scripts or makefiles). For development I have been using Code::Blocks on Windows
 (project files included in the repo, mostly for my own convenience...).
 
 Tape/disk/cartridge support is not yet implemented, but there is a hack that allows programs to be loaded directly to RAM:
