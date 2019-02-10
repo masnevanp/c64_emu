@@ -20,6 +20,7 @@ SDL_CFLAGS := `sdl2-config --cflags`
 
 SRC := $(wildcard src/**.cpp src/*/*.cpp)
 OBJ := $(SRC:src/%.cpp=obj/$(BUILD)/%.o)
+DEP := $(OBJ:%.o=%.d)
 
 
 .PHONY: all debug release run run_release clean
@@ -38,7 +39,7 @@ bin/$(BUILD)/$(TARGET): $(OBJ)
 
 obj/$(BUILD)/%.o: src/%.cpp
 	@mkdir -p $(dir $@)
-	@$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) $< -c -o $@
+	@$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) -MMD -MP $< -c -o $@
 	@echo "$< --> $@"
 
 run:
@@ -52,3 +53,5 @@ run_release:
 clean:
 	@rm -fr obj
 	@rm -fr bin
+
+-include $(DEP)
