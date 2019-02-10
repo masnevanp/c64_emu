@@ -18,36 +18,37 @@ SDL_LIBS := `sdl2-config --libs`
 SDL_CFLAGS := `sdl2-config --cflags`
 
 
-SRC := $(wildcard *.cpp nmos6502/*.cpp resid/*.cpp)
-OBJ := $(SRC:%.cpp=obj/$(BUILD)/%.o)
+SRC := $(wildcard src/**.cpp src/*/*.cpp)
+OBJ := $(SRC:src/%.cpp=obj/$(BUILD)/%.o)
 
 
-.PHONY: all debug release run clean
+.PHONY: all debug release run run_release clean
 
 all: bin/$(BUILD)/$(TARGET)
 
 debug: all
 
 release:
-	@$(MAKE) all BUILD=release
+	@$(MAKE) --silent all BUILD=release
 
 bin/$(BUILD)/$(TARGET): $(OBJ)
 	@mkdir -p $(dir $@)
 	@$(CXX) -o $@ $(LDFLAGS) $(SDL_LIBS) $^
-	@echo "  ==> $@"
+	@echo ;echo "  ==> $@"; echo
 
-obj/$(BUILD)/%.o: %.cpp
+obj/$(BUILD)/%.o: src/%.cpp
 	@mkdir -p $(dir $@)
 	@$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) $< -c -o $@
 	@echo "$< --> $@"
 
 run:
+	@$(MAKE) --silent all
+	@echo "Running: bin/$(BUILD)/$(TARGET)"
 	@./bin/$(BUILD)/$(TARGET)
 
 run_release:
-	@$(MAKE) run BUILD=release
+	@$(MAKE) --silent run BUILD=release
 
 clean:
 	@rm -fr obj
 	@rm -fr bin
-
