@@ -33,7 +33,7 @@ release:
 
 bin/$(BUILD)/$(TARGET): $(OBJ)
 	@mkdir -p $(dir $@)
-	@$(CXX) -o $@ $(LDFLAGS) $(SDL_LIBS) $^
+	@$(CXX) -o $@ $(LDFLAGS) $^ $(SDL_LIBS)
 	@echo ;echo "  ==> $@"; echo
 
 obj/$(BUILD)/%.o: src/%.cpp
