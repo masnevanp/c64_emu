@@ -2,9 +2,6 @@
 
 A hobby project I work on randomly, and just for fun. Not very usable yet, and it might stay that way... but that's OK. :)
 
-Source code is not really in a distributable format (e.g. no build scripts or makefiles). For development I have been using Code::Blocks on Windows
-(project files included in the repo, mostly for my own convenience...).
-
 Tape/disk/cartridge support is not yet implemented, but there is a hack that allows programs to be loaded directly to RAM:
 place a 'raw' C64 binary (with first 2 bytes holding the target address) to 'data/prg/' and name it 'bin.prg'. Then in runtime press F11 to load the binary.
 Not very convenient, but so far it has been good enough for development/testing (most games I have tried seem to work just fine).
@@ -32,7 +29,7 @@ Requirements (to build & run):
 ### CPU (6502/6510)
 * a cycle accurate (memory access and timing) 6502 core
 * for 6510 compatibility the IO port functionality (not 100% there yet) is implemented externally (in System::Banker) 
-* implementation totally based on information from the KIM-I Hardware Manual with some verification done using excellent visual6502 tool
+* implementation totally based on information from the KIM-I Hardware Manual with some verification done using the excellent 'visual6502' tool
 
 ### Graphics (VIC-II)
 * emulation of the VIC-II chip with cycle level resolution (that is, with '8 pixels/CPU cycle' output)
@@ -79,7 +76,7 @@ Requirements (to build & run):
 * Thomas Giesel: [The C64 PLA Dissected, revision 1.1](http://skoe.de/docs/c64-dissected/pla/c64_pla_dissected_a4ds.pdf)
 * [C64 Wiki](https://www.c64-wiki.com)
 * [Retro Computing](http://retro.hansotten.nl/): [KIM-1 manuals](http://retro.hansotten.nl/6502-sbc/kim-1-manuals-and-software/)
-* John West & Marko Mäkelä: [64doc.txt, v1.8](https://github.com/bobsummerwill/VICE/blob/master/doc/html/plain/64doc.txt)
+* John West & Marko Mï¿½kelï¿½: [64doc.txt, v1.8](https://github.com/bobsummerwill/VICE/blob/master/doc/html/plain/64doc.txt)
 * pepto: [Colodore](http://www.pepto.de/projects/colorvic)
 * [The 8-Bit Guy](https://www.youtube.com/user/adric22/featured)
 * Jorge Cwik: Flags on Decimal mode in the NMOS 6502

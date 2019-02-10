@@ -20,3 +20,9 @@ size_t read_bin_file(const std::string& filename, char* buf) {
     return bin.size();
 }
 
+
+std::string as_lower(const std::string& src) {
+    std::string dst(src);
+    std::transform(src.begin(), src.end(), dst.begin(), ::tolower);
+    return dst;
+}

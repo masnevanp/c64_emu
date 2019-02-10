@@ -86,8 +86,8 @@ void run_test_suite()
         sys.cpu.pc = 0x0801;
     };
 
-    auto load = [&](const std::string filename) -> bool {
-        const std::string fn = "data/testsuite-2.15/bin/" + filename;
+    auto load = [&](const std::string& filename) -> bool {
+        const std::string fn = "data/testsuite-2.15/bin/" + as_lower(filename);
         auto bin = read_bin_file(fn);
         auto sz = bin.size();
         //std::cout << "\nLoading: " << fn;
@@ -95,13 +95,12 @@ void run_test_suite()
             // std::cout << "\nLoaded " << sz << " bytes\n";
         } else {
             std::cout << "\nFailed to load: " << fn << "\n";
-            return false;
+            exit(1);
         }
         auto addr = bin[1] * 0x100 + bin[0];
         for (unsigned int b = 2; b < sz; ++b)
             mem[addr++] = bin[b];
         init();
-        return true;
     };
 
     auto to_ascii_chr = [&](u8 petscii_chr) -> char { // partial 'support'...

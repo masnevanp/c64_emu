@@ -4,3 +4,7 @@ _local
 data/c64_roms/*.rom
 data/prg/*.prg
 *.bak
+.vscode
+c64_emu.cbp
+c64_emu.depend
+c64_emu.layout

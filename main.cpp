@@ -17,9 +17,9 @@ void run_c64() {
 
     auto load_roms = [&]() {
         const std::string fp = "data/c64_roms/";
-        read_bin_file(fp + "Basic.rom", (char*)basic);
-        read_bin_file(fp + "Kernal.rom", (char*)kernal);
-        read_bin_file(fp + "Char.rom", (char*)charr);
+        read_bin_file(fp + "basic.rom", (char*)basic);
+        read_bin_file(fp + "kernal.rom", (char*)kernal);
+        read_bin_file(fp + "char.rom", (char*)charr);
     };
 
     auto load = [&](const std::string filename, u8* ram) -> bool {
@@ -77,7 +77,7 @@ void run_c64() {
     //load_test("oneshot", c64.ram);
     //load_test("flipos", c64.ram);
     //load_test("cnto2", c64.ram);
-    load_test("cputiming", c64.ram);
+    //load_test("cputiming", c64.ram);
     //load_test("irq", c64.ram);
     //load_test("nmi", c64.ram);
     //load_test("branchwrap", c64.ram);

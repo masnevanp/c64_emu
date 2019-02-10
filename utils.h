@@ -37,5 +37,6 @@ std::vector<char> read_bin_file(const std::string& filename);
 
 size_t read_bin_file(const std::string& filename, char* buf);
 
+std::string as_lower(const std::string& src);
 
 #endif // UTILS_H_INCLUDED
