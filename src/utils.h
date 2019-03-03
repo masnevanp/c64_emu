@@ -7,6 +7,9 @@
 #include <thread>
 #include <iostream>
 
+#define UNUSED(x) (void)(x)
+
+
 class Clock {
 public:
     using clock = std::chrono::high_resolution_clock;

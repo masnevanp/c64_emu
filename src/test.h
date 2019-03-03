@@ -86,7 +86,7 @@ void run_test_suite()
         sys.cpu.pc = 0x0801;
     };
 
-    auto load = [&](const std::string& filename) -> bool {
+    auto load = [&](const std::string& filename) {
         const std::string fn = "data/testsuite-2.15/bin/" + as_lower(filename);
         auto bin = read_bin_file(fn);
         auto sz = bin.size();

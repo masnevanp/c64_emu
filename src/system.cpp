@@ -17,7 +17,7 @@ bool System::load_prg(const std::string filename, u8* ram) {
         ram[addr++] = bin[b];
 
     return true;
-};
+}
 
 
 /*

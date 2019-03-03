@@ -22,7 +22,7 @@ void run_c64() {
         read_bin_file(fp + "char.rom", (char*)charr);
     };
 
-    auto load = [&](const std::string filename, u8* ram) -> bool {
+    /*auto load = [&](const std::string filename, u8* ram) -> bool {
         auto bin = read_bin_file(filename);
         auto sz = bin.size();
 
@@ -43,7 +43,7 @@ void run_c64() {
     auto load_test = [&](const std::string test_name, u8* ram) -> bool {
         const std::string fn = "data/testsuite-2.15/bin/" + test_name;
         return load(fn, ram);
-    };
+    };*/
 
     load_roms();
     System::ROM rom{basic, kernal, charr};
@@ -104,7 +104,9 @@ void test()
 
 
 int main(int argv, char** args) {
-    //Test::run_6502_func_test(); Test::run_6502_func_test(); Test::run_6502_func_test();
+    UNUSED(argv);
+    UNUSED(args);
+    //Test::run_6502_func_test();
     //Test::run_test_suite();
     run_c64();
     //test();

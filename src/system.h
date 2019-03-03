@@ -385,7 +385,7 @@ private:
         }
     };
     IO::Port::PD_out cia2_port_b_out {
-        [this](u8 bits, u8 bit_vals) { }
+        [this](u8 bits, u8 bit_vals) { UNUSED(bits); UNUSED(bit_vals); }
     };
 
 
