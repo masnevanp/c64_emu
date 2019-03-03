@@ -55,6 +55,7 @@ void NMOS6502::Core::exec_cycle() {
                 nmi_bit = 0x00;
                 if (nmi_req) nmi_req = NMI_taken;
             }
+            // fall through
         case dispatch_brk: // hw-ints not taken on the instuction following a brk (sw or hw)
             brk_src |= (ir == OPC_brk); // bit 0
 

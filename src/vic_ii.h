@@ -262,6 +262,11 @@ public:
         }
     }
 
+#if defined(__GNUC__) && (__GNUC__ >= 7)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+#endif
+
     void tick() {
         static const u16 LAST_RASTER_Y = RASTER_LINE_COUNT; // (312 done for 1 cycle)
 
@@ -441,6 +446,10 @@ public:
                 }
         }
     }
+
+#if defined(__GNUC__) && (__GNUC__ >= 7)
+#pragma GCC diagnostic pop
+#endif
 
 private:
     class IRQ_unit {
@@ -957,7 +966,7 @@ private:
         bool gfx_fg = false;
         u8 g_col = gfx_unit.pixel_out(pixel_time, gfx_fg); // must call always (to keep in sync)
 
-        u8 src_mob; // if not transparet then src bit will be set here
+        u8 src_mob = 0; // if not transparet then src bit will be set here
         u8 m_col = mob_unit.pixel_out(x, gfx_fg, src_mob); // must call always (to keep in sync)
 
         // priorites: border < mob|gfx_fg (based on reg[mndp]) < gfx_bg
