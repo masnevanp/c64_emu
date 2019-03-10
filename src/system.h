@@ -16,10 +16,11 @@
 
 namespace System {
 
+class VIC_II_out;
 
 using CIA = CIA::Core;
 using SID = SID::Wrapper;
-using VIC = VIC_II::Core;
+using VIC = VIC_II::Core<VIC_II_out>;
 
 
 static const u8 IO_PORT_INIT_DD = 0xef; // Source: Mapping the Commodore C64, by Sheldon Leemon
@@ -273,21 +274,81 @@ private:
 };
 
 
+class VIC_II_out {
+public:
+    VIC_II_out(Host::Input& host_input_) :
+        vid_out(VIC_II::VIEW_WIDTH * 2, VIC_II::VIEW_HEIGHT * 2),
+        host_input(host_input_) {}
+
+    void reset() {
+        //vlb_idx = frame_moment = 0;
+        frame_moment = 0;
+        clock.reset();
+    }
+
+    void put_pixel(u8 color) {
+        vid_out.put(VIC_II::Palette[color]);
+        vid_out.put(VIC_II::Palette[color]);
+    }
+
+    void line_done(u16 line) {
+        //if (line % (VIC_II::RASTER_LINE_COUNT / 6) == 0) host_input.poll(); // freq: 6 per frame ==> ~3.3ms
+        if (line % (VIC_II::RASTER_LINE_COUNT / 8) == 0) host_input.poll(); // freq: 8 per frame ==> ~2.5ms
+
+        //for (int i = 0; i < VIC_II::VIEW_WIDTH * 2; ++i)
+            //vid_out.put(0xff000000);
+    }
+
+    void frame_done() {
+        frame_moment += VIC_II::FRAME_MS;
+        auto wait_target = std::round(frame_moment);
+        auto wait_ms = clock.wait_until(wait_target);
+
+        if (wait_ms >= 0) {
+            if (skip_frames > 0) {
+                skip_frames = 0;
+                //sid.flush();
+            }
+            vid_out.frame_done();
+        } else {
+            ++skip_frames;
+            if ((skip_frames % 3) == 0) vid_out.frame_done();
+            else vid_out.frame_skip();
+        }
+
+        if (wait_target >= 6318000) {
+            clock.reset();
+            frame_moment = 0;
+        }
+    }
+
+private:
+    Host::Video_out vid_out;
+    Host::Input& host_input;
+
+    //u8 v_line_buf[VIC_II::VIEW_WIDTH];
+    //u16 vlb_idx = 0;
+    Clock clock;
+    double frame_moment = 0;
+    int skip_frames = 0;
+};
+
+
 class C64 {
 public:
     C64(const ROM& rom) :
         cpu(on_cpu_halt_sig),
         cia1(1, sync_master, cia1_port_a_out, cia1_port_b_out, int_hub.irq),
         cia2(2, sync_master, cia2_port_a_out, cia2_port_b_out, int_hub.nmi),
-        vic(sync_master, ram, col_ram, rom.charr, int_hub.irq, ba_low, vic_pixel_out, vic_sync_out),
+        vic_out(host_input),
+        vic(sync_master, ram, col_ram, rom.charr, int_hub.irq, ba_low, vic_out),
         int_hub(cpu),
         kb_matrix(cia1.get_port_a_in(), cia1.get_port_b_in()),
         joy1(cia1.get_port_b_in()),
         joy2(cia1.get_port_a_in()),
         io_space(cia1, cia2, sid, vic, col_ram),
         sys_banker(ram, rom, io_space),
-        host_input(host_input_handlers),
-        vid_out(VIC_II::VIEW_WIDTH * 2, VIC_II::VIEW_HEIGHT * 2)
+        host_input(host_input_handlers)
     {
         init_ram();
     }
@@ -306,6 +367,7 @@ public:
         cia2.reset_cold();
         sid.reset();
         vic.reset_cold();
+        vic_out.reset();
         kb_matrix.reset();
         init_ram();
         col_ram.reset();
@@ -314,14 +376,10 @@ public:
         int_hub.reset();
 
         nmi_set = false;
-
-        vlb_idx = frame_moment = 0;
-        clock.reset();
     }
 
     void run() {
-        clock.reset();
-        frame_moment = 0;
+        vic_out.reset();
         for (;;) {
             sync_master.tick();
             if (!ba_low || cpu.mrw() == NMOS6502::RW::w) {
@@ -345,8 +403,10 @@ public:
     SID sid;
 
     VIC_II::Color_RAM col_ram;
+private:
+    VIC_II_out vic_out;
+public:
     VIC vic;
-
 private:
     IO::Sync::Master sync_master;
 
@@ -362,9 +422,6 @@ private:
     bool ba_low = false;
 
     Host::Input host_input;
-    Host::Video_out vid_out;
-
-    int skip_frames = 0;
 
 
     /* -------------------- CIA port outputs -------------------- */
@@ -390,12 +447,9 @@ private:
 
 
     /* -------------------- VIC-II output ----------------------- */
-    u8 v_line_buf[VIC_II::VIEW_WIDTH];
-    u16 vlb_idx = 0;
-    Clock clock;
-    double frame_moment;
 
-    Sig1<u8> vic_pixel_out = [this](u8 color) { v_line_buf[vlb_idx++] = color; };
+
+    /*Sig1<u8> vic_pixel_out = [this](u8 color) { v_line_buf[vlb_idx++] = color; };
 
     VIC_II::Core::Sync_out vic_sync_out {
         // line_done
@@ -442,7 +496,7 @@ private:
                 frame_moment = 0;
             }
         }
-    };
+    };*/
 
     /* -------------------- Host input -------------------- */
     bool nmi_set;

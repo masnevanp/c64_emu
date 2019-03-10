@@ -123,6 +123,7 @@ private:
 
 
 // TODO: lightpen (3.11)
+template <typename VIC_II_out>
 class Core { // 6569 (PAL-B)
 private:
     IO::Sync::Slave sync;
@@ -163,22 +164,18 @@ public:
         v_blank_290_009, disp_010_047, disp_048_247, disp_248_254, disp_255_289,
     };
 
-    struct Sync_out {
-        Sig2<u16, bool> line_done;  // (raster_line_number, is_non_v_blank)
-        Sig             frame_done;
-    };
 
     Core(
           const IO::Sync::Master& sync_master,
           const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
-          Int_sig& irq, bool& ba_low, Sig1<u8>& pixel_out_, Sync_out& sync_out_)
+          Int_sig& irq, bool& ba_low, VIC_II_out& vic_out_)
         : sync(sync_master),
           banker(ram_, charr),
           irq_unit(reg, irq),
           ba_unit(ba_low),
           mob_unit(banker, col_ram_, reg, raster_y, ba_unit, irq_unit),
           gfx_unit(banker, col_ram_, reg, raster_y, vert_border_on, ba_unit),
-          pixel_out(pixel_out_), sync_out(sync_out_)
+          vic_out(vic_out_)
     { reset_cold(); }
 
     Banker banker;
@@ -278,7 +275,7 @@ public:
                 //if (raster_y == 249) set_rsel(0); else if (raster_y == 255) set_rsel(1);
                 mob_unit.do_dma(2);
 
-                sync_out.line_done(raster_y, beam_area != v_blank_290_009);
+                vic_out.line_done(raster_y);
 
                 ++raster_y;
 
@@ -309,7 +306,7 @@ public:
                 if (raster_y == LAST_RASTER_Y) {
                     raster_y = 0;
                     if (cmp_raster == 0) irq_unit.req(IRQ_unit::rst);
-                    sync_out.frame_done();
+                    vic_out.frame_done();
                 }
                 return;
             case 2:  mob_unit.do_dma(3);  return;
@@ -978,7 +975,7 @@ private:
         }
         else o_col = g_col;
 
-        pixel_out(o_col);
+        vic_out.put_pixel(o_col);
     }
 
 
@@ -1003,8 +1000,7 @@ private:
     bool main_border_on;
     bool vert_border_on;
 
-    Sig1<u8>& pixel_out;
-    Sync_out& sync_out;
+    VIC_II_out& vic_out;
 };
 
 
