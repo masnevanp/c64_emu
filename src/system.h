@@ -75,57 +75,6 @@ public:
         }
     }
 
-    /*void w(const u16& addr, const u8& data) {
-        static const u32 W_DELAY[] = {
-            1, 1, 1, 1, // vic
-            0, 0, 0, 0, // sid
-            0, 0, 0, 0, // col_ram
-            0, 0,       // cia1, cia2
-            0, 0,       // io areas 1&2
-        };
-
-        u32 wd = W_DELAY[addr >> 8];
-        W_data& d = wd_buf[(wd_buf_idx + wd) % WD_BUF_SZ];
-        d.addr = addr;
-        d.data = data;
-        d.w = true;
-    }
-
-    void tick() {
-        W_data& d = wd_buf[wd_buf_idx];
-        if (d.w) {
-            do_w(d);
-            d.w = false;
-        }
-        if (++wd_buf_idx == WD_BUF_SZ) wd_buf_idx = 0;
-    }
-
-private:
-    static const int WD_BUF_SZ = 5;
-
-    struct W_data {
-        bool w = false;
-        u16 addr;
-        u8 data;
-    };
-
-    W_data wd_buf[WD_BUF_SZ];
-    u32 wd_buf_idx = 0;
-
-
-    void do_w(const W_data& d) {
-        switch (d.addr >> 8) {
-            case 0x0: case 0x1: case 0x2: case 0x3: vic.w(d.addr & 0x003f, d.data);     return;
-            case 0x4: case 0x5: case 0x6: case 0x7: sid.w(d.addr & 0x001f, d.data);     return;
-            case 0x8: case 0x9: case 0xa: case 0xb: col_ram.w(d.addr & 0x03ff, d.data); return;
-            case 0xc:                               cia1.w(d.addr & 0x000f, d.data);    return;
-            case 0xd:                               cia2.w(d.addr & 0x000f, d.data);    return;
-            case 0xe: case 0xf: // TODO: IO areas 1&2
-                return;
-        }
-    }
-*/
-
 private:
     CIA& cia1;
     CIA& cia2;
@@ -276,27 +225,36 @@ private:
 
 class VIC_II_out {
 public:
-    VIC_II_out(Host::Input& host_input_) :
+    VIC_II_out(Host::Input& host_input_, SID& sid_) :
         vid_out(VIC_II::VIEW_WIDTH * 2, VIC_II::VIEW_HEIGHT * 2),
-        host_input(host_input_) {}
+        host_input(host_input_), sid(sid_) {}
 
     void reset() {
-        //vlb_idx = frame_moment = 0;
-        frame_moment = 0;
+        vlb_idx = frame_moment = 0;
         clock.reset();
     }
 
-    void put_pixel(u8 color) {
-        vid_out.put(VIC_II::Palette[color]);
-        vid_out.put(VIC_II::Palette[color]);
-    }
+    void put_pixel(u8 color) { v_line_buf[vlb_idx++] = color; }
 
     void line_done(u16 line) {
         //if (line % (VIC_II::RASTER_LINE_COUNT / 6) == 0) host_input.poll(); // freq: 6 per frame ==> ~3.3ms
         if (line % (VIC_II::RASTER_LINE_COUNT / 8) == 0) host_input.poll(); // freq: 8 per frame ==> ~2.5ms
 
-        //for (int i = 0; i < VIC_II::VIEW_WIDTH * 2; ++i)
-            //vid_out.put(0xff000000);
+        if (vlb_idx > 0) {
+            u32 out_col = 0;
+            for (auto& col_idx : v_line_buf) {
+                out_col = VIC_II::Palette[col_idx] | ((out_col << 2) & 0x00070707);
+                vid_out.put(out_col);
+                vid_out.put(out_col & 0xffcccccc);
+            }
+            for (auto& col_idx : v_line_buf) {
+                u32 out_col = VIC_II::Palette[col_idx];
+                vid_out.put(out_col & 0xff999999);
+                vid_out.put(out_col | 0xff222222);
+            }
+
+            vlb_idx = 0;
+        }
     }
 
     void frame_done() {
@@ -307,7 +265,7 @@ public:
         if (wait_ms >= 0) {
             if (skip_frames > 0) {
                 skip_frames = 0;
-                //sid.flush();
+                sid.flush();
             }
             vid_out.frame_done();
         } else {
@@ -316,21 +274,22 @@ public:
             else vid_out.frame_skip();
         }
 
-        if (wait_target >= 6318000) {
-            clock.reset();
-            frame_moment = 0;
-        }
+        if (wait_target >= 6318000) reset();
     }
 
 private:
     Host::Video_out vid_out;
     Host::Input& host_input;
 
-    //u8 v_line_buf[VIC_II::VIEW_WIDTH];
-    //u16 vlb_idx = 0;
+    SID& sid;
+
     Clock clock;
     double frame_moment = 0;
     int skip_frames = 0;
+
+    u8 v_line_buf[VIC_II::VIEW_WIDTH];
+    u16 vlb_idx = 0;
+
 };
 
 
@@ -340,8 +299,8 @@ public:
         cpu(on_cpu_halt_sig),
         cia1(1, sync_master, cia1_port_a_out, cia1_port_b_out, int_hub.irq),
         cia2(2, sync_master, cia2_port_a_out, cia2_port_b_out, int_hub.nmi),
-        vic_out(host_input),
         vic(sync_master, ram, col_ram, rom.charr, int_hub.irq, ba_low, vic_out),
+        vic_out(host_input, sid),
         int_hub(cpu),
         kb_matrix(cia1.get_port_a_in(), cia1.get_port_b_in()),
         joy1(cia1.get_port_b_in()),
@@ -403,11 +362,11 @@ public:
     SID sid;
 
     VIC_II::Color_RAM col_ram;
+    VIC vic;
+
 private:
     VIC_II_out vic_out;
-public:
-    VIC vic;
-private:
+
     IO::Sync::Master sync_master;
 
     IO::Int_hub int_hub;
@@ -445,58 +404,6 @@ private:
         [this](u8 bits, u8 bit_vals) { UNUSED(bits); UNUSED(bit_vals); }
     };
 
-
-    /* -------------------- VIC-II output ----------------------- */
-
-
-    /*Sig1<u8> vic_pixel_out = [this](u8 color) { v_line_buf[vlb_idx++] = color; };
-
-    VIC_II::Core::Sync_out vic_sync_out {
-        // line_done
-        [this](u16 line, bool non_v_blank) {
-            //if (line % (VIC_II::RASTER_LINE_COUNT / 6) == 0) host_input.poll(); // freq: 6 per frame ==> ~3.3ms
-            if (line % (VIC_II::RASTER_LINE_COUNT / 8) == 0) host_input.poll(); // freq: 8 per frame ==> ~2.5ms
-
-            if (non_v_blank) {
-                u32 out_col = 0;
-                for (auto& col_idx : v_line_buf) {
-                    out_col = VIC_II::Palette[col_idx] | ((out_col << 2) & 0x00070707);
-                    vid_out.put(out_col);
-                    vid_out.put(out_col & 0xffcccccc); // just add a little texture...
-                }
-                for (auto& col_idx : v_line_buf) {
-                    u32 out_col = VIC_II::Palette[col_idx];
-                    vid_out.put(out_col & 0xff999999); // 55...
-                    vid_out.put(out_col | 0xff222222);
-                }
-            }
-
-            vlb_idx = 0;
-        },
-        // frame_done
-        [this]() {
-            frame_moment += VIC_II::FRAME_MS;
-            auto wait_target = std::round(frame_moment);
-            auto wait_ms = clock.wait_until(wait_target);
-
-            if (wait_ms >= 0) {
-                if (skip_frames > 0) {
-                    skip_frames = 0;
-                    sid.flush();
-                }
-                vid_out.frame_done();
-            } else {
-                ++skip_frames;
-                if ((skip_frames % 3) == 0) vid_out.frame_done();
-                else vid_out.frame_skip();
-            }
-
-            if (wait_target >= 6318000) {
-                clock.reset();
-                frame_moment = 0;
-            }
-        }
-    };*/
 
     /* -------------------- Host input -------------------- */
     bool nmi_set;
