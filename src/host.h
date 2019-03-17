@@ -32,6 +32,12 @@ public:
                 case SDL_JOYAXISMOTION: handle_joy_axis();     break;
                 case SDL_JOYBUTTONDOWN: handle_joy_btn(true);  break;
                 case SDL_JOYBUTTONUP:   handle_joy_btn(false); break;
+                case SDL_WINDOWEVENT:
+                    if (sdl_ev.window.event == SDL_WINDOWEVENT_CLOSE) {
+                        Key_event quit{Key_event::KC::quit, true};
+                        handlers.host_key(quit);
+                    }
+                    break;
             }
         }
     }
