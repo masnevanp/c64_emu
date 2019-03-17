@@ -3,6 +3,8 @@
 
 #include <SDL.h>
 #include "common.h"
+#include "utils.h"
+
 
 namespace Host {
 
@@ -146,56 +148,75 @@ private:
 
 class Video_out {
 public:
-    void reset() {
-        int pitch;
-        SDL_LockTexture(texture, nullptr, &beam_pos, &pitch);
-        frame_done();
-    }
-
-    void put(u32 pixel) {
-        uint32_t* bp = (uint32_t*)beam_pos;
-        *bp = pixel;
-        ++bp;
-        beam_pos = (void*)bp;
+    void put(u8* line) {
+        for (int p = 0; p < frame_width; ++p) {
+            auto col_idx = line[p];
+            *beam_1_pos++ = palette_1[col_idx];
+            *beam_2_pos++ = palette_2[col_idx];
+        }
+        beam_1_pos = beam_2_pos;
+        beam_2_pos = beam_1_pos + frame_width;
     }
 
     void frame_done() {
-        int pitch;
         SDL_UnlockTexture(texture);
-        SDL_RenderClear(renderer);
+        //SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
-        SDL_LockTexture(texture, nullptr, &beam_pos, &pitch);
+        void* pixels;
+        int pitch;
+        SDL_LockTexture(texture, nullptr, &pixels, &pitch);
+        beam_1_pos = (u32*)pixels;
+        beam_2_pos = beam_1_pos + frame_width;
     }
 
     void frame_skip() {
-        int pitch;
         SDL_UnlockTexture(texture);
-        SDL_LockTexture(texture, nullptr, &beam_pos, &pitch);
+        void* pixels;
+        int pitch;
+        SDL_LockTexture(texture, nullptr, &pixels, &pitch);
+        beam_1_pos = (u32*)pixels;
+        beam_2_pos = beam_1_pos + frame_width;
     }
 
-    Video_out(u16 width, u16 height) { // TODO: error handling..?
+    Video_out(u16 frame_width_, u16 frame_height) : frame_width(frame_width_) { // TODO: error handling
+        // TODO: bind these to host key(s)
+        static const double aspect_ratio = 0.936;
+        static const int scale = 3;
+
+        u16 view_width = aspect_ratio * scale * frame_width;
+        u16 view_height = scale * frame_height;
+
         window = SDL_CreateWindow("The display...",
-            SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, 0);
+            SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, view_width, view_height, SDL_WINDOW_RESIZABLE);
         if (!window) {
-            SDL_Log("Unable to SDL_CreateWindow: %s", SDL_GetError());
+            SDL_Log("Failed to SDL_CreateWindow: %s", SDL_GetError());
             exit(1);
         }
 
         renderer = SDL_CreateRenderer(window, -1,
                         SDL_RENDERER_ACCELERATED /*| SDL_RENDERER_PRESENTVSYNC*/);
         if (!renderer) {
-            SDL_Log("Unable to SDL_CreateRenderer: %s", SDL_GetError());
+            SDL_Log("Failed to SDL_CreateRenderer: %s", SDL_GetError());
             exit(1);
         }
 
+        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
         texture = SDL_CreateTexture(renderer,
                         SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
-                        width, height);
+                        frame_width, 2 * frame_height);
         if (!texture) {
-            SDL_Log("Unable to SDL_CreateTexture: %s", SDL_GetError());
+            SDL_Log("Failed to SDL_CreateTexture: %s", SDL_GetError());
             exit(1);
         }
+
+        if (SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE) != 0) {
+            SDL_Log("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
+            // exit(1);
+        }
+
+        get_Colodore(palette_1, 60, 100, 75);
+        get_Colodore(palette_2, 40, 80, 50);
 
         reset();
     }
@@ -207,11 +228,24 @@ public:
     };
 
 private:
+    void reset() {
+        void* pixels;
+        int pitch;
+        SDL_LockTexture(texture, nullptr, &pixels, &pitch);
+        frame_done();
+    }
+
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
     SDL_Texture* texture = nullptr;
 
-    void* beam_pos;
+    u32* beam_1_pos;
+    u32* beam_2_pos;
+
+    u32 palette_1[16];
+    u32 palette_2[16];
+
+    u16 frame_width;
 };
 
 

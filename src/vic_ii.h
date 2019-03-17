@@ -31,32 +31,6 @@ static const u16 VIEW_HEIGHT       = 280; // top/bottom borders: 40 px
 static const u16 RASTER_LINE_COUNT = 312;
 
 
-enum Color : u32 {
-    // Colodore by pepto - http://www.pepto.de/projects/colorvic/
-    black       = 0xff000000,
-    white       = 0xffffffff,
-    red         = 0xff813338,
-    cyan        = 0xff75cec8,
-    purple      = 0xff8e3c97,
-    green       = 0xff56ac4d,
-    blue        = 0xff2e2c9b,
-    yellow      = 0xffedf171,
-    orange      = 0xff8e5029,
-    brown       = 0xff553800,
-    light_red   = 0xffc46c71,
-    dark_grey   = 0xff4a4a4a,
-    grey        = 0xff7b7b7b,
-    light_green = 0xffa9ff9f,
-    light_blue  = 0xff706deb,
-    light_gray  = 0xffb2b2b2,
-};
-
-static const u32 Palette[16] = {
-    black,  white, red,       cyan,      purple, green,       blue,       yellow,
-    orange, brown, light_red, dark_grey, grey,   light_green, light_blue, light_gray,
-};
-
-
 class Color_RAM {
 public:
     static const u16 SIZE = 0x0400;
@@ -106,7 +80,7 @@ public:
         if (new_mode != mode) {
             mode = new_mode;
             pla = (u8*)PLA[mode];
-            std::cout << "\n[VIC_II::Banker]: mode " << (int)mode;
+            // std::cout << "\n[VIC_II::Banker]: mode " << (int)mode;
         }
     }
 
@@ -269,10 +243,8 @@ public:
 
         if (sync.tick()) return;
 
-        //if (cycle == 53) set_csel(1); else if (cycle == 54) set_csel(0); else if (cycle == 56) set_csel(1);
         switch (cycle++) {
             case 0: // h-blank (continues)
-                //if (raster_y == 249) set_rsel(0); else if (raster_y == 255) set_rsel(1);
                 mob_unit.do_dma(2);
 
                 vic_out.line_done(raster_y);
@@ -280,11 +252,24 @@ public:
                 ++raster_y;
 
                 switch (beam_area) {
-                    case v_blank_290_009: if (raster_y == 10) beam_area = disp_010_047; break;
-                    case disp_010_047:    if (raster_y == 48) { gfx_unit.init(den); beam_area = disp_048_247; } break;
-                    case disp_048_247:    if (raster_y == 248) beam_area = disp_248_254; break;
-                    case disp_248_254:    if (raster_y == 255) beam_area = disp_255_289; break;
-                    case disp_255_289:    if (raster_y == 290) beam_area = v_blank_290_009; break;
+                    case v_blank_290_009:
+                        if (raster_y == 10) beam_area = disp_010_047;
+                        break;
+                    case disp_010_047:
+                        if (raster_y == 48) {
+                            gfx_unit.init(den);
+                            beam_area = disp_048_247;
+                        }
+                        break;
+                    case disp_048_247:
+                        if (raster_y == 248) beam_area = disp_248_254;
+                        break;
+                    case disp_248_254:
+                        if (raster_y == 255) beam_area = disp_255_289;
+                        break;
+                    case disp_255_289:
+                        if (raster_y == 290) beam_area = v_blank_290_009;
+                        break;
                 }
 
                 if (raster_y == cmp_raster && raster_y != LAST_RASTER_Y) irq_unit.req(IRQ_unit::rst);
@@ -324,6 +309,7 @@ public:
                     case disp_048_247:
                         gfx_unit.gfx_activation();
                     case disp_010_047: case disp_248_254: case disp_255_289:
+                        ol_pos = output_line;
                         output(496);
                         return;
                 }
@@ -424,7 +410,10 @@ public:
                 }
             case 58:  // x: 368
                 mob_unit.pre_dma(2);
-                if (beam_area != v_blank_290_009) output(368);
+                if (beam_area != v_blank_290_009) {
+                    output(368);
+                    vic_out.put(output_line);
+                }
                 return;
             case 59: mob_unit.do_dma(0);  return; // h-blank (first)
             case 60: mob_unit.pre_dma(3); return;
@@ -975,7 +964,7 @@ private:
         }
         else o_col = g_col;
 
-        vic_out.put_pixel(o_col);
+        *ol_pos++ = o_col;
     }
 
 
@@ -999,6 +988,9 @@ private:
 
     bool main_border_on;
     bool vert_border_on;
+
+    u8 output_line[VIEW_WIDTH];
+    u8* ol_pos;
 
     VIC_II_out& vic_out;
 };

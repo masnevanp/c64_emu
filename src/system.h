@@ -181,7 +181,7 @@ private:
         u8 new_mode = ((mode & ~bits) | (bit_vals & bits));
         if (new_mode != mode) {
             mode = new_mode;
-            std::cout << "\n[System::Banker]: mode " << (int)mode;
+            // std::cout << "\n[System::Banker]: mode " << (int)mode;
             pla = &PLA[Mode_to_PLA_idx[mode]];
         }
     }
@@ -226,35 +226,18 @@ private:
 class VIC_II_out {
 public:
     VIC_II_out(Host::Input& host_input_, SID& sid_) :
-        vid_out(VIC_II::VIEW_WIDTH * 2, VIC_II::VIEW_HEIGHT * 2),
+        vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT),
         host_input(host_input_), sid(sid_) {}
 
     void reset() {
-        vlb_idx = frame_moment = 0;
+        frame_moment = 0;
         clock.reset();
     }
 
-    void put_pixel(u8 color) { v_line_buf[vlb_idx++] = color; }
+    void put(u8* line) { vid_out.put(line); }
 
     void line_done(u16 line) {
-        //if (line % (VIC_II::RASTER_LINE_COUNT / 6) == 0) host_input.poll(); // freq: 6 per frame ==> ~3.3ms
         if (line % (VIC_II::RASTER_LINE_COUNT / 8) == 0) host_input.poll(); // freq: 8 per frame ==> ~2.5ms
-
-        if (vlb_idx > 0) {
-            u32 out_col = 0;
-            for (auto& col_idx : v_line_buf) {
-                out_col = VIC_II::Palette[col_idx] | ((out_col << 2) & 0x00070707);
-                vid_out.put(out_col);
-                vid_out.put(out_col & 0xffcccccc);
-            }
-            for (auto& col_idx : v_line_buf) {
-                u32 out_col = VIC_II::Palette[col_idx];
-                vid_out.put(out_col & 0xff999999);
-                vid_out.put(out_col | 0xff222222);
-            }
-
-            vlb_idx = 0;
-        }
     }
 
     void frame_done() {
@@ -286,9 +269,6 @@ private:
     Clock clock;
     double frame_moment = 0;
     int skip_frames = 0;
-
-    u8 v_line_buf[VIC_II::VIEW_WIDTH];
-    u16 vlb_idx = 0;
 
 };
 

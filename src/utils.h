@@ -6,6 +6,7 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#include "common.h"
 
 #define UNUSED(x) (void)(x)
 
@@ -35,6 +36,9 @@ private:
 
 };
 
+
+// Colodore by pepto - http://www.pepto.de/projects/colorvic/
+void get_Colodore(u32* target_palette, double brightness = 50, double contrast = 100, double saturation = 50);
 
 std::vector<char> read_bin_file(const std::string& filename);
 
