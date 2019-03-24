@@ -33,11 +33,7 @@ public:
                 case SDL_JOYAXISMOTION: handle_joy_axis();     break;
                 case SDL_JOYBUTTONDOWN: handle_joy_btn(true);  break;
                 case SDL_JOYBUTTONUP:   handle_joy_btn(false); break;
-                case SDL_WINDOWEVENT:
-                    if (sdl_ev.window.event == SDL_WINDOWEVENT_CLOSE) {
-                        handlers.sys(Key_code::System::quit, true);
-                    }
-                    break;
+                case SDL_WINDOWEVENT:   handle_win_ev();       break;
             }
         }
     }
@@ -51,7 +47,8 @@ public:
     Input(Handlers& handlers_)
       : handlers(handlers_), joy_handler{ &handlers_.joy1, &handlers_.joy2 }
     {
-        // find index of 'right shift'
+        // find index of left/right shift
+        while (KC_LU_TBL[sh_l_idx] != Key_code::Keyboard::sh_l) ++sh_l_idx;
         while (KC_LU_TBL[sh_r_idx] != Key_code::Keyboard::sh_r) ++sh_r_idx;
 
         // TODO: allow selection (for now just the first two found are attached)
@@ -83,8 +80,9 @@ private:
     SDL_Joystick* sdl_joystick[2] = { nullptr, nullptr }; // TODO: struct these togeteher
     SDL_JoystickID sdl_joystick_id[2];
 
+    u16 sh_l_idx = 0;
     u16 sh_r_idx = 0;
-    u16 sh_r_down = 0;
+    u16 sh_r_down = 0x00; // bit map - keeps track of 'auto shifted' keys
 
     void handle_key(u8 down) {
         u8 code = translate_sdl_key();
@@ -123,20 +121,36 @@ private:
                 break;
             case Key_code::Group::keyboard_ext: {
                 // NOTE: Currently 'ext' contains only 'auto shifted' type of keys.
-                //       This code will break if different type of keys get added.
-                // TODO: 'shift lock' (which will break this)
-                static const u8 KC_OFFSET
-                    = Key_code::Keyboard_ext::crs_l - Key_code::Keyboard::crs_r;
+                //       This code might break if different type of keys get added.
+                if (code == Key_code::Keyboard_ext::s_lck) {
+                    set_shift_lock();
+                } else {
+                    static const u8 KC_OFFSET
+                        = Key_code::Keyboard_ext::crs_l - Key_code::Keyboard::crs_r;
+                    // 6 of these are actually used (and probably there will not be more)
+                    static const u8 BIT[] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
 
-                if (down && sh_r_down++ == 0) {
-                    disable_sh_r();
-                    handlers.keyboard(Key_code::Keyboard::sh_r, true);
-                } else if (--sh_r_down == 0) {
-                    enable_sh_r();
-                    handlers.keyboard(Key_code::Keyboard::sh_r, false);
+                    if (down) {
+                        if (sh_r_down == 0x00) {
+                            // first 'auto shifted' key held down
+                            //   --> set 'left shift' key down & disable the 'real' one
+                            handlers.keyboard(Key_code::Keyboard::sh_r, true);
+                            disable_sh_r();
+                        }
+                        sh_r_down |= BIT[code & 0x7]; // keep track of key presses
+                    } else {
+                        sh_r_down &= (~BIT[code & 0x7]);
+                        if (sh_r_down == 0x00) {
+                            // last 'auto shifted' key released
+                            //   --> set 'left shift' key up & enable the 'real' one
+                            handlers.keyboard(Key_code::Keyboard::sh_r, false);
+                            enable_sh_r();
+                        }
+                    }
+
+                    handlers.keyboard(code - KC_OFFSET, down); // send the corresponding 'real' code
                 }
 
-                handlers.keyboard(code - KC_OFFSET, down);
                 break;
             }
             case Key_code::Group::joystick: {
@@ -190,6 +204,27 @@ private:
     Sig_key& get_joy_output(SDL_JoystickID which) {
         int joy_idx = (which == sdl_joystick_id[0]) ? 0 : 1;
         return *(joy_handler[joy_idx]);
+    }
+
+    void handle_win_ev() {
+        switch (sdl_ev.window.event) {
+            case SDL_WINDOWEVENT_CLOSE:
+                handlers.sys(Key_code::System::quit, true);
+                break;
+            case SDL_WINDOWEVENT_FOCUS_GAINED:
+                set_shift_lock();
+                break;
+        }
+    }
+
+    void set_shift_lock() {
+        bool down = SDL_GetModState() & KMOD_CAPS;
+        // disable/enable left shift
+        KC_LU_TBL[sh_l_idx] = down
+            ? (Key_code::Keyboard)Key_code::System::nop
+            : Key_code::Keyboard::sh_l;
+
+        handlers.keyboard(Key_code::Keyboard::sh_l, down);
     }
 
     void disable_sh_r() { KC_LU_TBL[sh_r_idx] = Key_code::System::nop; }

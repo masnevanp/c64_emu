@@ -43,7 +43,7 @@ u8 Host::KC_LU_TBL[] = {
 
     /* 80..   : SDL_Keycode 40000039.. --> Key_code (80 = kc 40000039, 81 = kc 4000003a, ...) */
     // 80..8f
-    sy::nop,   kb::f1,    ke::f2,    kb::f3,    ke::f4,    kb::f5,    ke::f6,    kb::f7,
+    ke::s_lck, kb::f1,    ke::f2,    kb::f3,    ke::f4,    kb::f5,    ke::f6,    kb::f7,
     ke::f8,    sy::rst_w, sy::rst_c, sy::load,  sy::quit,  sy::nop,   sy::nop,   sy::rstre,
     // 90..9f
     sy::nop,   kb::home,  sy::nop,   sy::nop,   sy::rstre, sy::swp_j, kb::crs_r, ke::crs_l,

@@ -63,7 +63,8 @@ namespace Key_code {
     };
 
     enum Keyboard_ext : u8 {
-        crs_l = GE, f8, f2, f4, f6, crs_u,
+        crs_l = GE, f8, f2, f4, f6, crs_u, // these translate to left shift + a 'real' key
+        s_lck,
     };
 
     enum Joystick : u8 {
