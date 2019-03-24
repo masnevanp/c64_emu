@@ -30,7 +30,14 @@ struct Int_sig {
 };
 
 
-struct Key_event {
+namespace Key_code {
+    enum Group { keyboard, keyboard_ext, joystick, system };
+
+    static const u8 GK = Group::keyboard << 6;
+    static const u8 GE = Group::keyboard_ext << 6;
+    static const u8 GJ = Group::joystick << 6;
+    static const u8 GS = Group::system << 6;
+
     /*       PB7   PB6   PB5   PB4   PB3   PB2   PB1   PB0
         PA7  STOP  Q     C=    SPACE 2     CTRL  <-    1
         PA6  /     ^     =     RSHFT HOME  ;     *     £
@@ -43,43 +50,34 @@ struct Key_event {
 
         Source: https://www.c64-wiki.com/wiki/Keyboard#Keyboard_Map
     */
-    enum KC : u8 {
-        // 'guest' keys
-        del,   ret,   crs_r, f7,    f1,    f3,    f5,    crs_d,
-        num_3, w,     a,     num_4, z,     s,     e,     sh_l,
-        num_5, r,     d,     num_6, c,     f,     t,     x,
-        num_7, y,     g,     num_8, b,     h,     u,     v,
-        num_9, i,     j,     num_0, m,     k,     o,     n,
-        plus,  p,     l,     minus, dot,   colon, at,    comma,
-        pound, mul,   s_col, home,  sh_r,  eq,    ar_up, div,
-        num_1, ar_l,  ctrl,  num_2, space, cmdre, q,     r_stp,
-        rstre, none,
-        // host keys
-        rst_w, rst_c, load,  s_joy, quit,
-        // joystick
-        j1_u,  j1_d,  j1_l,  j1_r,  j1_b,
-        j2_u,  j2_d,  j2_l,  j2_r,  j2_b,
+
+    enum Keyboard : u8 { // fall into 'keyboard' group
+        del = GK, ret,  crs_r, f7,    f1,    f3,    f5,    crs_d,
+        num_3,    w,    a,     num_4, z,     s,     e,     sh_l,
+        num_5,    r,    d,     num_6, c,     f,     t,     x,
+        num_7,    y,    g,     num_8, b,     h,     u,     v,
+        num_9,    i,    j,     num_0, m,     k,     o,     n,
+        plus,     p,    l,     minus, dot,   colon, at,    comma,
+        pound,    mul,  s_col, home,  sh_r,  eq,    ar_up, div,
+        num_1,    ar_l, ctrl,  num_2, space, cmdre, q,     r_stp,
     };
 
-    static const u8 FIRST_HOST_KC = KC::none + 1;
-    static const u8 FIRST_JOY_KC  = KC::j2_b - 9;
+    enum Keyboard_ext : u8 {
+        crs_l = GE, f8, f2, f4, f6, crs_u,
+    };
 
-    u8 code : 7;
-    u8 down : 1;
-};
+    enum Joystick : u8 {
+        ju = GJ, jd, jl, jr, jb
+    };
+
+    enum System : u8 {
+        rst_w = GS, rst_c, rstre, load, swp_j, quit, nop,
+    };
+
+} // namespace Key_code
 
 
-struct Joystick_event {
-    enum { up, down, left, right, btn };
-
-    u8 code   : 3;
-    u8 active : 1;
-};
-
-
-using Sig_key = Sig1<const Key_event&>;
-
-using Sig_joy = Sig1<const Joystick_event&>;
+using Sig_key = Sig2<u8, u8>;
 
 
 #endif // COMMON_H_INCLUDED

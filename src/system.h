@@ -389,42 +389,45 @@ private:
     bool nmi_set;
 
     Host::Input::Handlers host_input_handlers {
-        // client_key_handler
+        // keyboard
         kb_matrix.handler,
 
-        // restore-key handler
-        [this](const Key_event& k_ev) {
-            if (k_ev.down != nmi_set) {
-                nmi_set = k_ev.down;
-                if (nmi_set) int_hub.nmi.set();
-                else int_hub.nmi.clr();
-            }
-        },
+        // system
+        [this](u8 code, u8 down) {
+            using kc = Key_code::System;
 
-        // host_key_handler
-        [this](const Key_event& k_ev) {
-            if (!k_ev.down) return;
-            switch (k_ev.code) {
-                case Key_event::KC::s_joy:
+            if (code == kc::rstre) {
+                if (down != nmi_set) {
+                    nmi_set = down;
+                    if (nmi_set) int_hub.nmi.set();
+                    else int_hub.nmi.clr();
+                }
+                return;
+            }
+
+            if (!down) return;
+
+            switch (code) {
+                case kc::swp_j:
                     host_input.swap_joysticks();
                     break;
-                case Key_event::KC::rst_w:
+                case kc::rst_w:
                     reset_warm();
                     break;
-                case Key_event::KC::rst_c:
+                case kc::rst_c:
                     reset_cold();
                     break;
-                case Key_event::KC::load:
+                case kc::load:
                     load_prg("data/prg/bin.prg", ram);
                     break;
-                case Key_event::KC::quit:
+                case kc::quit:
                     exit(0);
                     break;
             }
         },
 
-        // joy_handlers
-        joy1.handler, joy2.handler,
+        joy1.handler,
+        joy2.handler,
     };
 
 

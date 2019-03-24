@@ -9,7 +9,7 @@
 namespace Host {
 
 
-extern const u8 KC_LU_TBL[];
+extern u8 KC_LU_TBL[];
 extern const u8 SC_LU_TBL[];
 
 
@@ -17,12 +17,13 @@ extern const u8 SC_LU_TBL[];
 class Input {
 public:
     struct Handlers {
-        Sig_key client_key;
-        Sig_key restore_key;
-        Sig_key host_key;
-        Sig_joy joy1;
-        Sig_joy joy2;
+        Sig_key keyboard;
+        Sig_key sys;
+        Sig_key joy1;
+        Sig_key joy2;
     };
+
+    static const u8 JOY_ID_BIT = 0x10; // included in the joy. key code
 
     void poll() { // TODO: filtering?
         while (SDL_PollEvent(&sdl_ev)) {
@@ -34,8 +35,7 @@ public:
                 case SDL_JOYBUTTONUP:   handle_joy_btn(false); break;
                 case SDL_WINDOWEVENT:
                     if (sdl_ev.window.event == SDL_WINDOWEVENT_CLOSE) {
-                        Key_event quit{Key_event::KC::quit, true};
-                        handlers.host_key(quit);
+                        handlers.sys(Key_code::System::quit, true);
                     }
                     break;
             }
@@ -43,7 +43,7 @@ public:
     }
 
     void swap_joysticks() {
-        Sig_joy* t = joy_handler[0];
+        Sig_key* t = joy_handler[0];
         joy_handler[0] = joy_handler[1];
         joy_handler[1] = t;
     }
@@ -51,6 +51,9 @@ public:
     Input(Handlers& handlers_)
       : handlers(handlers_), joy_handler{ &handlers_.joy1, &handlers_.joy2 }
     {
+        // find index of 'right shift'
+        while (KC_LU_TBL[sh_r_idx] != Key_code::Keyboard::sh_r) ++sh_r_idx;
+
         // TODO: allow selection (for now just the first two found are attached)
         // TODO: joystick calibration/configuration...
         int open_joys = 0;
@@ -71,84 +74,127 @@ public:
     }
 
 private:
+    SDL_Event sdl_ev;
+
     Handlers& handlers;
 
-    Sig_joy* joy_handler[2];
+    Sig_key* joy_handler[2];
 
     SDL_Joystick* sdl_joystick[2] = { nullptr, nullptr }; // TODO: struct these togeteher
     SDL_JoystickID sdl_joystick_id[2];
 
-    SDL_Event sdl_ev;
+    u16 sh_r_idx = 0;
+    u16 sh_r_down = 0;
 
-    void handle_key(bool key_down) {
-        static const i32 MAX_KC             = 0x4000011a;
-        static const i32 LAST_CHAR_KC       = 0x7f;
-        static const i32 FIRST_NON_CHAR_KC  = 0x40000039;
-        static const i32 OFFSET_NON_CHAR_KC = 0x3fffffb9;
+    void handle_key(u8 down) {
+        u8 code = translate_sdl_key();
+        output_key(code, down);
+    }
 
-        Key_event key_ev{Key_event::KC::none, key_down};
+    u8 translate_sdl_key() {
+        static const i32 MAX_KC             = SDLK_SLEEP;
+        static const i32 LAST_CHAR_KC       = SDLK_DELETE;
+        static const i32 FIRST_NON_CHAR_KC  = SDLK_CAPSLOCK;
+        static const i32 OFFSET_NON_CHAR_KC = FIRST_NON_CHAR_KC - (LAST_CHAR_KC + 1);
+        /*
+        std::cout << "\nkc: " << sdl_ev.key.keysym.sym << " ";
+        std::cout << "sc: " << sdl_ev.key.keysym.scancode << " ";
+        */
         SDL_Keysym key_sym = sdl_ev.key.keysym;
-
-        /*if (key_down) {
-            std::cout << "\nkc: " << sdl_ev.key.keysym.sym << " ";
-            std::cout << "sc: " << sdl_ev.key.keysym.scancode << " ";
-        }*/
 
         if (key_sym.sym <= MAX_KC) {
             // most mapped on keycode, some on scancode
             if (key_sym.sym <= LAST_CHAR_KC)
-                key_ev.code = KC_LU_TBL[key_sym.sym];
+                return KC_LU_TBL[key_sym.sym];
             else if (key_sym.sym >= FIRST_NON_CHAR_KC)
-                key_ev.code = KC_LU_TBL[key_sym.sym - OFFSET_NON_CHAR_KC];
+                return KC_LU_TBL[key_sym.sym - OFFSET_NON_CHAR_KC];
             else if (key_sym.scancode >= 0x2e && key_sym.scancode <= 0x35)
-                key_ev.code = SC_LU_TBL[key_sym.scancode - 0x2e];
+                return SC_LU_TBL[key_sym.scancode - 0x2e];
+        }
 
-            if (key_ev.code != Key_event::KC::none) {
-                if (key_ev.code >= Key_event::FIRST_JOY_KC) {
-                    Joystick_event joy_ev {
-                        (u8)((key_ev.code - Key_event::FIRST_JOY_KC) % 5), // code (direction/btn)
-                        key_ev.down // active
-                    };
-                    if (key_ev.code <= Key_event::j1_b) (*joy_handler[0])(joy_ev);
-                    else (*joy_handler[1])(joy_ev);
+        return Key_code::System::nop;
+    }
+
+    void output_key(u8 code, u8 down) {
+        auto group = code >> 6;
+        switch (group) {
+            case Key_code::Group::keyboard:
+                handlers.keyboard(code, down);
+                break;
+            case Key_code::Group::keyboard_ext: {
+                // NOTE: Currently 'ext' contains only 'auto shifted' type of keys.
+                //       This code will break if different type of keys get added.
+                // TODO: 'shift lock' (which will break this)
+                static const u8 KC_OFFSET
+                    = Key_code::Keyboard_ext::crs_l - Key_code::Keyboard::crs_r;
+
+                if (down && sh_r_down++ == 0) {
+                    disable_sh_r();
+                    handlers.keyboard(Key_code::Keyboard::sh_r, true);
+                } else if (--sh_r_down == 0) {
+                    enable_sh_r();
+                    handlers.keyboard(Key_code::Keyboard::sh_r, false);
                 }
-                else if (key_ev.code >= Key_event::FIRST_HOST_KC) handlers.host_key(key_ev);
-                else if (key_ev.code == Key_event::KC::rstre) handlers.restore_key(key_ev);
-                else handlers.client_key(key_ev);
+
+                handlers.keyboard(code - KC_OFFSET, down);
+                break;
             }
+            case Key_code::Group::joystick: {
+                auto id = code & JOY_ID_BIT ? 1 : 0;
+                (*joy_handler[id])(code & 0x7, down);
+                break;
+            }
+            case Key_code::Group::system:
+                handlers.sys(code, down);
+                break;
         }
     }
 
     void handle_joy_axis() {
+        /*  SDL Wiki: "On most modern joysticks the X axis is usually represented by axis 0
+        and the Y axis by axis 1. The value returned by SDL_JoystickGetAxis()
+        is a signed integer (-32768 to 32767) representing the current position
+        of the axis. It may be necessary to impose certain tolerances on these
+        values to account for jitter. */ // ==> TODO (config/calib)
+
         static const int X_AXIS = 0;
 
         SDL_JoyAxisEvent& joy_ev = sdl_ev.jaxis;
-        int joy_idx = (joy_ev.which == sdl_joystick_id[0]) ? 0 : 1;
-        Sig_joy& handler = *(joy_handler[joy_idx]);
+        Sig_key& output = get_joy_output(joy_ev.which);
+
+        using Key_code::Joystick;
 
         if (joy_ev.axis == X_AXIS) {
-            if (joy_ev.value < 0) handler({Joystick_event::left, true});
-            else if (joy_ev.value > 0) handler({Joystick_event::right, true});
+            if (joy_ev.value < 0) output(Joystick::jl, true);
+            else if (joy_ev.value > 0) output(Joystick::jr, true);
             else {
-                handler({Joystick_event::left, false});
-                handler({Joystick_event::right, false});
+                output(Joystick::jl, false);
+                output(Joystick::jr, false);
             }
         } else {
-            if (joy_ev.value < 0) handler({Joystick_event::up, true});
-            else if (joy_ev.value > 0) handler({Joystick_event::down, true});
+            if (joy_ev.value < 0) output(Joystick::ju, true);
+            else if (joy_ev.value > 0) output(Joystick::jd, true);
             else {
-                handler({Joystick_event::up, false});
-                handler({Joystick_event::down, false});
+                output(Joystick::ju, false);
+                output(Joystick::jd, false);
             }
         }
     }
 
-    void handle_joy_btn(bool btn_down) {
+    void handle_joy_btn(u8 down) {
         SDL_JoyButtonEvent& joy_ev = sdl_ev.jbutton;
-        int joy_idx = (joy_ev.which == sdl_joystick_id[0]) ? 0 : 1;
-        Sig_joy& handler = *(joy_handler[joy_idx]);
-        handler({Joystick_event::btn, btn_down});
+        Sig_key& output = get_joy_output(joy_ev.which);
+        output(Key_code::Joystick::jb, down);
     }
+
+    Sig_key& get_joy_output(SDL_JoystickID which) {
+        int joy_idx = (which == sdl_joystick_id[0]) ? 0 : 1;
+        return *(joy_handler[joy_idx]);
+    }
+
+    void disable_sh_r() { KC_LU_TBL[sh_r_idx] = Key_code::System::nop; }
+    void enable_sh_r() { KC_LU_TBL[sh_r_idx] = Key_code::Keyboard::sh_r; }
+
 };
 
 

@@ -154,10 +154,10 @@ public:
     }
 
     Sig_key handler {
-        [this](const Key_event& ev) {
-            u8 row = ev.code / 8;
-            u8 col_bit = 0x01 << (ev.code & 0x7);
-            k_down[row] = ev.down ? k_down[row] | col_bit : k_down[row] & (~col_bit);
+        [this](u8 code, u8 down) {
+            u8 row = code / 8;
+            u8 col_bit = 0x01 << (code & 0x7);
+            k_down[row] = down ? k_down[row] | col_bit : k_down[row] & (~col_bit);
             signal_state();
         }
     };
@@ -209,24 +209,17 @@ class Joystick {
 public:
     Joystick(Port::PD_in& port_in_) : port_in(port_in_) { }
 
-    Sig_joy handler {
-        [this](const Joystick_event& ev) {
-            if (has_state_changed(ev)) {
-                const u8 port_bit = 0x1 << ev.code;
-                const u8 bit_val = ev.active ? 0x0 : port_bit;
-                port_in(port_bit, bit_val);
-                state = ev;
-            }
+    Sig_key handler {
+        [this](u8 code, u8 down) {
+            const u8 bit_pos = 0x1 << code;
+            const u8 bit_val = down ? 0x0 : bit_pos;
+            port_in(bit_pos, bit_val);
         }
     };
 
 private:
-    bool has_state_changed(const Joystick_event& cmp) {
-        return (cmp.active != state.active) || (cmp.code != state.code);
-    }
-
     Port::PD_in& port_in;
-    Joystick_event state;
+
 };
 
 } // namespace IO
