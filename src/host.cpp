@@ -15,7 +15,7 @@ static const u8 j2 = Host::Input::JOY_ID_BIT;
 
 // TODO: analyze... use more scancodes?
 u8 Host::KC_LU_TBL[] = {
-    /* 00..7f : SDL_Keycode 00..7f  --> Key_event::KC */
+    /* 00..7f : SDL_Keycode 00..7f  --> Key_code */
     // 00..0f
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
     kb::del,   kb::ar_l,  sy::nop,   sy::nop,   sy::nop,   kb::ret,   sy::nop,   sy::nop,
@@ -41,7 +41,7 @@ u8 Host::KC_LU_TBL[] = {
     kb::p,     kb::q,     kb::r,     kb::s,     kb::t,     kb::u,     kb::v,     kb::w,
     kb::x,     kb::y,     kb::z,     sy::nop,   sy::nop,   sy::nop,   sy::nop,   kb::del,
 
-    /* 80..   : SDL_Keycode 40000039.. --> Key_event::KC (80 = kc 40000039, 81 = kc 4000003a, ...) */
+    /* 80..   : SDL_Keycode 40000039.. --> Key_code (80 = kc 40000039, 81 = kc 4000003a, ...) */
     // 80..8f
     sy::nop,   kb::f1,    ke::f2,    kb::f3,    ke::f4,    kb::f5,    ke::f6,    kb::f7,
     ke::f8,    sy::rst_w, sy::rst_c, sy::load,  sy::quit,  sy::nop,   sy::nop,   sy::rstre,
@@ -82,7 +82,7 @@ u8 Host::KC_LU_TBL[] = {
 
 
 const u8 Host::SC_LU_TBL[] = {
-    /* SDL_Scancode 2e..35 --> Key_event::KC */
+    /* SDL_Scancode 2e..35 --> Key_code */
     kb::minus, kb::at,    kb::ar_up, sy::nop,   sy::nop,   kb::colon, kb::s_col, kb::pound,
 };
 
