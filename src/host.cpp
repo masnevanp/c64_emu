@@ -46,7 +46,7 @@ u8 Host::KC_LU_TBL[] = {
     ke::s_lck, kb::f1,    ke::f2,    kb::f3,    ke::f4,    kb::f5,    ke::f6,    kb::f7,
     ke::f8,    sy::rst_w, sy::rst_c, sy::load,  sy::quit,  sy::nop,   sy::nop,   sy::rstre,
     // 90..9f
-    sy::nop,   kb::home,  sy::nop,   sy::nop,   sy::rstre, sy::swp_j, kb::crs_r, ke::crs_l,
+    sy::nop,   kb::home,  sy::scl_u, sy::nop,   sy::rstre, sy::scl_d, kb::crs_r, ke::crs_l,
     kb::crs_d, ke::crs_u, sy::nop,   j1|js::ju, kb::mul,   kb::minus, kb::plus,  kb::ret,
     // a0..af
     j2|js::jl, j2|js::jd, j2|js::jr, j1|js::jb, j2|js::ju, sy::nop,   j1|js::jl, j1|js::jd,

@@ -225,9 +225,8 @@ private:
 
 class VIC_II_out {
 public:
-    VIC_II_out(Host::Input& host_input_, SID& sid_) :
-        vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT),
-        host_input(host_input_), sid(sid_) {}
+    VIC_II_out(Host::Video_out& vid_out_, Host::Input& host_input_, SID& sid_) :
+        vid_out(vid_out_), host_input(host_input_), sid(sid_) {}
 
     void reset() {
         frame_moment = 0;
@@ -261,7 +260,7 @@ public:
     }
 
 private:
-    Host::Video_out vid_out;
+    Host::Video_out& vid_out;
     Host::Input& host_input;
 
     SID& sid;
@@ -280,7 +279,8 @@ public:
         cia1(1, sync_master, cia1_port_a_out, cia1_port_b_out, int_hub.irq),
         cia2(2, sync_master, cia2_port_a_out, cia2_port_b_out, int_hub.nmi),
         vic(sync_master, ram, col_ram, rom.charr, int_hub.irq, ba_low, vic_out),
-        vic_out(host_input, sid),
+        vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT),
+        vic_out(vid_out, host_input, sid),
         int_hub(cpu),
         kb_matrix(cia1.get_port_a_in(), cia1.get_port_b_in()),
         joy1(cia1.get_port_b_in()),
@@ -345,6 +345,7 @@ public:
     VIC vic;
 
 private:
+    Host::Video_out vid_out;
     VIC_II_out vic_out;
 
     IO::Sync::Master sync_master;
@@ -408,21 +409,13 @@ private:
             if (!down) return;
 
             switch (code) {
-                case kc::swp_j:
-                    host_input.swap_joysticks();
-                    break;
-                case kc::rst_w:
-                    reset_warm();
-                    break;
-                case kc::rst_c:
-                    reset_cold();
-                    break;
-                case kc::load:
-                    load_prg("data/prg/bin.prg", ram);
-                    break;
-                case kc::quit:
-                    exit(0);
-                    break;
+                case kc::rst_w: reset_warm();                       break;
+                case kc::rst_c: reset_cold();                       break;
+                case kc::load:  load_prg("data/prg/bin.prg", ram);  break;
+                case kc::scl_u: vid_out.adjust_scale(+5);           break;
+                case kc::scl_d: vid_out.adjust_scale(-5);           break;
+                case kc::swp_j: host_input.swap_joysticks();        break;
+                case kc::quit:  exit(0);                            break;
             }
         },
 

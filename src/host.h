@@ -266,20 +266,28 @@ public:
         beam_2_pos = beam_1_pos + frame_width;
     }
 
-    Video_out(u16 frame_width_, u16 frame_height) : frame_width(frame_width_) { // TODO: error handling
-        // TODO: bind these to host key(s)
-        static const double aspect_ratio = 0.936;
-        static const int scale = 3;
+    void adjust_scale(i8 amount) { set_scale(scale + amount); }
+    void set_scale(i8 new_scale) {
+        if (new_scale >= min_scale && new_scale <= max_scale) {
+            scale = new_scale;
+            int w = aspect_ratio * (scale / 10.0) * frame_width;
+            int h = (scale / 10.0) * frame_height;
+            SDL_SetWindowSize(window, w, h);
+        }
+    }
 
-        u16 view_width = aspect_ratio * scale * frame_width;
-        u16 view_height = scale * frame_height;
-
+    Video_out(u16 frame_width_, u16 frame_height_) // TODO: error handling
+            : frame_width(frame_width_), frame_height(frame_height_)
+    {
         window = SDL_CreateWindow("The display...",
-            SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, view_width, view_height, SDL_WINDOW_RESIZABLE);
+            SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+            aspect_ratio * frame_width, frame_height, 0
+        );
         if (!window) {
             SDL_Log("Failed to SDL_CreateWindow: %s", SDL_GetError());
             exit(1);
         }
+        set_scale(20);
 
         renderer = SDL_CreateRenderer(window, -1,
                         SDL_RENDERER_ACCELERATED /*| SDL_RENDERER_PRESENTVSYNC*/);
@@ -333,6 +341,13 @@ private:
     u32 palette_2[16];
 
     u16 frame_width;
+    u16 frame_height;
+
+    // TODO: tweakable?
+    const double aspect_ratio = 0.936;
+    i8 scale;
+    const i8 min_scale = 5;
+    const i8 max_scale = 80;
 };
 
 
