@@ -16,11 +16,13 @@
 
 namespace System {
 
-class VIC_II_out;
+class VIC_out;
 
+using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is handled externally (in banking)
 using CIA = CIA::Core;
 using SID = SID::Wrapper;
-using VIC = VIC_II::Core<VIC_II_out>;
+using VIC = VIC_II::Core<VIC_out>;
+using Color_RAM = VIC_II::Color_RAM;
 
 
 static const u8 IO_PORT_INIT_DD = 0xef; // Source: Mapping the Commodore C64, by Sheldon Leemon
@@ -42,7 +44,7 @@ public:
         CIA& cia1_, CIA& cia2_,
         SID& sid_,
         VIC& vic_,
-        VIC_II::Color_RAM& col_ram_)
+        Color_RAM& col_ram_)
       :
         cia1(cia1_), cia2(cia2_),
         sid(sid_),
@@ -80,7 +82,8 @@ private:
     CIA& cia2;
     SID& sid;
     VIC& vic;
-    VIC_II::Color_RAM& col_ram;
+    Color_RAM& col_ram;
+
 };
 
 
@@ -220,43 +223,45 @@ private:
     const u8* romh1;
 
     IO_space& io;
+
 };
 
 
-class VIC_II_out {
+class VIC_out {
 public:
-    VIC_II_out(Host::Video_out& vid_out_, Host::Input& host_input_, SID& sid_) :
-        vid_out(vid_out_), host_input(host_input_), sid(sid_) {}
+    VIC_out(Host::Video_out& vid_out_, Host::Input& host_input_, SID& sid_) :
+        vid_out(vid_out_), host_input(host_input_), sid(sid_) { reset(); }
 
     void reset() {
+        px_pos = frame;
         frame_moment = 0;
         clock.reset();
     }
 
-    void put(u8* line) { vid_out.put(line); }
+    void put_pixel(const u8& vic_col) { *px_pos++ = vic_col; }
 
     void line_done(u16 line) {
         if (line % (VIC_II::RASTER_LINE_COUNT / 8) == 0) host_input.poll(); // freq: 8 per frame ==> ~2.5ms
     }
 
     void frame_done() {
+        px_pos = frame;
+
         frame_moment += VIC_II::FRAME_MS;
         auto wait_target = std::round(frame_moment);
         auto wait_ms = clock.wait_until(wait_target);
+        if (wait_target == 6318000) reset(); // since '316687 * FRAME_MS = 6318000'
 
         if (wait_ms >= 0) {
             if (skip_frames > 0) {
                 skip_frames = 0;
                 sid.flush();
             }
-            vid_out.frame_done();
+            vid_out.put_frame(frame);
         } else {
             ++skip_frames;
-            if ((skip_frames % 3) == 0) vid_out.frame_done();
-            else vid_out.frame_skip();
+            if ((skip_frames % 3) == 0) vid_out.put_frame(frame);
         }
-
-        if (wait_target >= 6318000) reset();
     }
 
 private:
@@ -268,6 +273,9 @@ private:
     Clock clock;
     double frame_moment = 0;
     int skip_frames = 0;
+
+    u8 frame[VIC_II::VIEW_WIDTH * VIC_II::VIEW_HEIGHT];
+    u8* px_pos;
 
 };
 
@@ -290,6 +298,7 @@ public:
         host_input(host_input_handlers)
     {
         init_ram();
+        vid_out.set_scale(30);
     }
 
     void reset_warm() {
@@ -318,7 +327,6 @@ public:
     }
 
     void run() {
-        vic_out.reset();
         for (;;) {
             sync_master.tick();
             if (!ba_low || cpu.mrw() == NMOS6502::RW::w) {
@@ -334,19 +342,19 @@ public:
     }
 
     u8 ram[0x10000];
-    NMOS6502::Core cpu; // 6510 IO port (addr 0&1) is handled externally (in banking)
+    CPU cpu;
 
     CIA cia1;
     CIA cia2;
 
     SID sid;
 
-    VIC_II::Color_RAM col_ram;
+    Color_RAM col_ram;
     VIC vic;
 
 private:
     Host::Video_out vid_out;
-    VIC_II_out vic_out;
+    VIC_out vic_out;
 
     IO::Sync::Master sync_master;
 
@@ -367,22 +375,16 @@ private:
     /* -------------------- CIA port outputs -------------------- */
     // NOTE: there may be coming many updates per cycle (receiver may need to keep track)
     IO::Port::PD_out cia1_port_a_out {
-        [this](u8 bits, u8 bit_vals) {
-            kb_matrix.port_a_out(bits, bit_vals);
-        }
+        [this](u8 bits, u8 bit_vals) { kb_matrix.port_a_out(bits, bit_vals); }
     };
     IO::Port::PD_out cia1_port_b_out {
-        [this](u8 bits, u8 bit_vals) {
-            kb_matrix.port_b_out(bits, bit_vals);
-        }
+        [this](u8 bits, u8 bit_vals) { kb_matrix.port_b_out(bits, bit_vals); }
     };
     IO::Port::PD_out cia2_port_a_out {
-        [this](u8 bits, u8 bit_vals) {
-            vic.banker.set_bank(bits, bit_vals);
-        }
+        [this](u8 bits, u8 bit_vals) { vic.banker.set_bank(bits, bit_vals);  }
     };
     IO::Port::PD_out cia2_port_b_out {
-        [this](u8 bits, u8 bit_vals) { UNUSED(bits); UNUSED(bit_vals); }
+        [this](u8 bits, u8 bit_vals) { UNUSED(bits); UNUSED(bit_vals);       }
     };
 
 
@@ -423,19 +425,15 @@ private:
         joy2.handler,
     };
 
-
-    void init_ram() { // TODO: parameterize pattern (+ add 'randomness'?)
-        for (int addr = 0; addr < 0x10000; ++addr)
-            ram[addr] = (addr & 0x80) ? 0xff : 0x00;
-    }
-
-
     Sig on_cpu_halt_sig {
         [this]() {
             std::cout << "\n****** CPU halted! ******\n";
             Dbg::print_status(cpu, ram);
         }
     };
+
+    void init_ram();
+
 };
 
 
@@ -458,8 +456,8 @@ int main()
     for (int i = 0; i < 1000000; ++i) {
         double d = i * fd;
         double diff = std::abs(d - std::round(d));
-        if (diff < 0.00001) {
-            std::cout << (int)i << ": " << (double)diff << "\n";
+        if (diff < 0.000001) {
+            std::cout << (int)i << ": (" << (int)d << ")\n";
         }
     }
 

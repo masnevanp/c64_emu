@@ -137,18 +137,15 @@ public:
 
     void reset() {
         for (auto& kd : k_down) kd = 0x00;
-        //pa_in_bits = pb_in_bits = 0xff;
         pa_out_vals = pb_out_vals = 0xff;
     }
 
     // Ports on CIA1 shall output to these
     void port_a_out(u8 bits, u8 bit_vals) {
-        //pa_in_bits = ~bits;
         pa_out_vals = (bits & bit_vals) | (~bits); // in-bits will be set
         if (any_key_down) signal_state();
     }
     void port_b_out(u8 bits, u8 bit_vals) {
-        //pb_in_bits = ~bits;
         pb_out_vals = (bits & bit_vals) | (~bits); // in-bits will be set
         if (any_key_down) signal_state();
     }
@@ -184,17 +181,13 @@ private:
                 }
             }
         }
-        // std::cout << "Result: " << (int)result_val << "\n";
-        //port_a_in(pa_in_bits, state);
-        //port_b_in(pb_in_bits, state);
+
         port_a_in(0xff, state);
         port_b_in(0xff, state);
     }
 
     // current output value of the ports (any input bits will be set to 1)
-    //u8 pa_in_bits;
     u8 pa_out_vals;
-    //u8 pb_in_bits;
     u8 pb_out_vals;
 
     u8 k_down[8]; // 8x8 bits (for 64 keys)

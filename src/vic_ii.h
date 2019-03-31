@@ -97,7 +97,7 @@ private:
 
 
 // TODO: lightpen (3.11)
-template <typename VIC_II_out>
+template <typename Out>
 class Core { // 6569 (PAL-B)
 private:
     IO::Sync::Slave sync;
@@ -142,14 +142,14 @@ public:
     Core(
           const IO::Sync::Master& sync_master,
           const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
-          Int_sig& irq, bool& ba_low, VIC_II_out& vic_out_)
+          Int_sig& irq, bool& ba_low, Out& out_)
         : sync(sync_master),
           banker(ram_, charr),
           irq_unit(reg, irq),
           ba_unit(ba_low),
           mob_unit(banker, col_ram_, reg, raster_y, ba_unit, irq_unit),
           gfx_unit(banker, col_ram_, reg, raster_y, vert_border_on, ba_unit),
-          vic_out(vic_out_)
+          out(out_)
     { reset_cold(); }
 
     Banker banker;
@@ -157,8 +157,10 @@ public:
     void reset_warm() { irq_unit.reset(); }
 
     void reset_cold() {
-        irq_unit.reset();
+        reset_warm();
         for (int r = 0; r < REG_COUNT; ++r) w(r, 0);
+        cycle = 1;
+        raster_y = 0;
     }
 
     void r(const u8& ri, u8& data) {
@@ -203,7 +205,6 @@ public:
                 break;
             case rast:
                 cmp_raster = (cmp_raster & 0x100) | d;
-                //if (cmp_raster == 52) std::cout << " r" << (int)cmp_raster << " " << (int)cycle;
                 break;
             case cr2:
                 gfx_unit.set_mcm(d & mcm_bit);
@@ -247,7 +248,7 @@ public:
             case 0: // h-blank (continues)
                 mob_unit.do_dma(2);
 
-                vic_out.line_done(raster_y);
+                out.line_done(raster_y);
 
                 ++raster_y;
 
@@ -291,7 +292,7 @@ public:
                 if (raster_y == LAST_RASTER_Y) {
                     raster_y = 0;
                     if (cmp_raster == 0) irq_unit.req(IRQ_unit::rst);
-                    vic_out.frame_done();
+                    out.frame_done();
                 }
                 return;
             case 2:  mob_unit.do_dma(3);  return;
@@ -309,7 +310,6 @@ public:
                     case disp_048_247:
                         gfx_unit.gfx_activation();
                     case disp_010_047: case disp_248_254: case disp_255_289:
-                        ol_pos = output_line;
                         output(496);
                         return;
                 }
@@ -408,12 +408,9 @@ public:
                         output(360);
                         return;
                 }
-            case 58:  // x: 368
+            case 58: // x: 368
                 mob_unit.pre_dma(2);
-                if (beam_area != v_blank_290_009) {
-                    output(368);
-                    vic_out.put(output_line);
-                }
+                if (beam_area != v_blank_290_009) output(368);
                 return;
             case 59: mob_unit.do_dma(0);  return; // h-blank (first)
             case 60: mob_unit.pre_dma(3); return;
@@ -964,7 +961,7 @@ private:
         }
         else o_col = g_col;
 
-        *ol_pos++ = o_col;
+        out.put_pixel(o_col);
     }
 
 
@@ -975,8 +972,8 @@ private:
 
     u8 reg[REG_COUNT];
 
-    u8 cycle = 1;
-    u16 raster_y = 0;
+    u8 cycle;
+    u16 raster_y;
     Beam_area beam_area = v_blank_290_009;
 
     bool den;
@@ -989,10 +986,7 @@ private:
     bool main_border_on;
     bool vert_border_on;
 
-    u8 output_line[VIEW_WIDTH];
-    u8* ol_pos;
-
-    VIC_II_out& vic_out;
+    Out& out;
 };
 
 

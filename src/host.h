@@ -235,35 +235,23 @@ private:
 
 class Video_out {
 public:
-    void put(u8* line) {
-        for (int p = 0; p < frame_width; ++p) {
-            auto col_idx = line[p];
-            *beam_1_pos++ = palette_1[col_idx];
-            *beam_2_pos++ = palette_2[col_idx];
-        }
-        beam_1_pos = beam_2_pos;
-        beam_2_pos = beam_1_pos + frame_width;
-    }
+    void put_frame(u8* vic_frame) {
+        u32* scan_1 = frame;
+        u32* scan_2;
 
-    void frame_done() {
-        SDL_UnlockTexture(texture);
-        //SDL_RenderClear(renderer);
+        for (int y = 0; y < frame_height; ++y) {
+            scan_2 = scan_1 + frame_width;
+            for (int x = 0; x < frame_width; ++x) {
+                u8 vic_col = *vic_frame++;
+                *scan_1++ = palette_1[vic_col];
+                *scan_2++ = palette_2[vic_col];
+            }
+            scan_1 = scan_2;
+        }
+
+        SDL_UpdateTexture(texture, 0, (void*)frame, 4 * frame_width);
         SDL_RenderCopy(renderer, texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
-        void* pixels;
-        int pitch;
-        SDL_LockTexture(texture, nullptr, &pixels, &pitch);
-        beam_1_pos = (u32*)pixels;
-        beam_2_pos = beam_1_pos + frame_width;
-    }
-
-    void frame_skip() {
-        SDL_UnlockTexture(texture);
-        void* pixels;
-        int pitch;
-        SDL_LockTexture(texture, nullptr, &pixels, &pitch);
-        beam_1_pos = (u32*)pixels;
-        beam_2_pos = beam_1_pos + frame_width;
     }
 
     void adjust_scale(i8 amount) { set_scale(scale + amount); }
@@ -280,14 +268,13 @@ public:
             : frame_width(frame_width_), frame_height(frame_height_)
     {
         window = SDL_CreateWindow("The display...",
-            SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+            400, 100,
             aspect_ratio * frame_width, frame_height, 0
         );
         if (!window) {
             SDL_Log("Failed to SDL_CreateWindow: %s", SDL_GetError());
             exit(1);
         }
-        set_scale(20);
 
         renderer = SDL_CreateRenderer(window, -1,
                         SDL_RENDERER_ACCELERATED /*| SDL_RENDERER_PRESENTVSYNC*/);
@@ -305,6 +292,8 @@ public:
             exit(1);
         }
 
+        frame = new u32[frame_width * (2 * frame_height)];
+
         if (SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE) != 0) {
             SDL_Log("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
             // exit(1);
@@ -312,42 +301,35 @@ public:
 
         get_Colodore(palette_1, 60, 100, 75);
         get_Colodore(palette_2, 40, 80, 50);
-
-        reset();
     }
 
     ~Video_out() {
         SDL_DestroyTexture(texture);
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
+
+        delete[] frame;
     };
 
 private:
-    void reset() {
-        void* pixels;
-        int pitch;
-        SDL_LockTexture(texture, nullptr, &pixels, &pitch);
-        frame_done();
-    }
-
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
     SDL_Texture* texture = nullptr;
 
-    u32* beam_1_pos;
-    u32* beam_2_pos;
+    const u16 frame_width;
+    const u16 frame_height;
+
+    u32* frame;
 
     u32 palette_1[16];
     u32 palette_2[16];
-
-    u16 frame_width;
-    u16 frame_height;
 
     // TODO: tweakable?
     const double aspect_ratio = 0.936;
     i8 scale;
     const i8 min_scale = 5;
     const i8 max_scale = 80;
+
 };
 
 

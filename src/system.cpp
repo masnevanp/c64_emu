@@ -1,6 +1,7 @@
 
 #include "system.h"
 
+
 bool System::load_prg(const std::string filename, u8* ram) {
     char bin[0x10000];
     auto sz = read_bin_file(filename, bin);
@@ -148,3 +149,9 @@ const u8 System::Banker::Mode_to_PLA_idx[32] = {
     0,  0,  1,  2,  0, 11,  3,  4, 0,  8,  9,  5,  0, 11, 12,  6,
     7,  7,  7,  7,  7,  7,  7,  7, 0,  8,  9, 10,  0, 11, 12, 13,
 };
+
+
+void System::C64::init_ram() { // TODO: parameterize pattern (+ add 'randomness'?)
+    for (int addr = 0; addr < 0x10000; ++addr)
+        ram[addr] = (addr & 0x80) ? 0xff : 0x00;
+}
