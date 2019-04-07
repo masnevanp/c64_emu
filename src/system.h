@@ -247,25 +247,23 @@ public:
     }
 
     void frame_done() {
-        sid.output();
-        cycle = 0;
+        if (skip_frames ^ 0x1) { // if skipping, output still every other frame
+            vid_out.put_frame(frame);
+            sid.output();
+        }
 
         px_pos = frame;
+        cycle = 0;
 
         frame_moment += VIC_II::FRAME_MS;
         auto wait_target = std::round(frame_moment);
-        auto wait_ms = clock.wait_until(wait_target);
-        if (wait_target == 6318000) reset(); // since '316687 * FRAME_MS = 6318000'
+        bool reset = wait_target == 6318000; // since '316687 * FRAME_MS = 6318000'
+        auto waited_ms = clock.wait_until(wait_target, reset);
 
-        if (wait_ms >= 0) {
-            if (skip_frames > 0) {
-                skip_frames = 0;
-                sid.flush();
-            }
-            vid_out.put_frame(frame);
-        } else {
-            ++skip_frames;
-            if ((skip_frames % 3) == 0) vid_out.put_frame(frame);
+        if (waited_ms < 0) ++skip_frames;
+        else if (skip_frames) {
+            skip_frames = 0;
+            sid.flush();
         }
     }
 

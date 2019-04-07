@@ -21,14 +21,20 @@ public:
     void reset() { t1 = clock::now(); }
 
     int elapsed() const {
-        auto diff = clock::now() - t1;
-        return std::chrono::duration_cast<ms>(diff).count();
+        return std::chrono::duration_cast<ms>(clock::now() - t1).count();
     }
 
-    int wait_until(int elapsed_ms) const { // since last reset()
-        auto wait_ms = elapsed_ms - elapsed();
-        if (wait_ms > 0) std::this_thread::sleep_for(ms(wait_ms));
-        return wait_ms;
+    int wait_until(int target_elapsed_ms, bool reset = false) { // since last reset()
+        auto t2 = clock::now();
+        auto elapsed_ms = std::chrono::duration_cast<ms>(t2 - t1).count();
+        auto wait_period_ms = target_elapsed_ms - elapsed_ms;
+        if (wait_period_ms > 0) {
+            std::this_thread::sleep_for(ms(wait_period_ms));
+        }
+        if (reset) {
+            t1 = t2;
+        }
+        return wait_period_ms;
     }
 
 private:

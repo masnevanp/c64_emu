@@ -21,12 +21,12 @@ public:
     void reset() {
         re_sid.reset();
         flush();
-        ticked = 0;
     }
 
     void flush() {
-        buf_ptr = buf;
         audio_out.flush();
+        buf_ptr = buf;
+        ticked = 0;
 
         // queue something (whatever happens to be there) for some breathing room
         audio_out.put(buf, BUF_SZ);
