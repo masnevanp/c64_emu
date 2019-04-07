@@ -29,6 +29,7 @@ static const u16 VIEW_WIDTH        = 384; // lef/right borders: 32 px
 static const u16 VIEW_HEIGHT       = 280; // top/bottom borders: 40 px
 
 static const u16 RASTER_LINE_COUNT = 312;
+static const u8  LINE_CYCLES       =  63;
 
 
 class Color_RAM {
@@ -142,13 +143,14 @@ public:
     Core(
           const IO::Sync::Master& sync_master,
           const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
-          Int_sig& irq, bool& ba_low, Out& out_)
+          Int_sig& irq, bool& ba_low, const u16& cycle_, Out& out_)
         : sync(sync_master),
           banker(ram_, charr),
           irq_unit(reg, irq),
           ba_unit(ba_low),
           mob_unit(banker, col_ram_, reg, raster_y, ba_unit, irq_unit),
           gfx_unit(banker, col_ram_, reg, raster_y, vert_border_on, ba_unit),
+          cycle(cycle_),
           out(out_)
     { reset_cold(); }
 
@@ -159,8 +161,7 @@ public:
     void reset_cold() {
         reset_warm();
         for (int r = 0; r < REG_COUNT; ++r) w(r, 0);
-        cycle = 1;
-        raster_y = 0;
+        raster_y = RASTER_LINE_COUNT - 1;
     }
 
     void r(const u8& ri, u8& data) {
@@ -244,7 +245,9 @@ public:
 
         if (sync.tick()) return;
 
-        switch (cycle++) {
+        auto line_cycle = cycle % LINE_CYCLES;
+
+        switch (line_cycle) {
             case 0: // h-blank (continues)
                 mob_unit.do_dma(2);
 
@@ -254,7 +257,11 @@ public:
 
                 switch (beam_area) {
                     case v_blank_290_009:
-                        if (raster_y == 10) beam_area = disp_010_047;
+                        if (raster_y == LAST_RASTER_Y) {
+                            out.frame_done();
+                            return;
+                        }
+                        if (raster_y == 10)  beam_area = disp_010_047;
                         break;
                     case disp_010_047:
                         if (raster_y == 48) {
@@ -273,7 +280,7 @@ public:
                         break;
                 }
 
-                if (raster_y == cmp_raster && raster_y != LAST_RASTER_Y) irq_unit.req(IRQ_unit::rst);
+                if (raster_y == cmp_raster) irq_unit.req(IRQ_unit::rst);
 
                 /* NOTE: mob_unit.pre_dma/do_dma pair is done, so that it takes the specified
                          5 cycles in total. do_dma is done at the last moment possible, and
@@ -292,7 +299,6 @@ public:
                 if (raster_y == LAST_RASTER_Y) {
                     raster_y = 0;
                     if (cmp_raster == 0) irq_unit.req(IRQ_unit::rst);
-                    out.frame_done();
                 }
                 return;
             case 2:  mob_unit.do_dma(3);  return;
@@ -363,7 +369,7 @@ public:
                     case disp_048_247:
                         gfx_unit.gfx_activation();
                     case disp_010_047: case disp_248_254: case disp_255_289:
-                        output(cycle*8 - 104);
+                        output(line_cycle*8 - 96);
                         return;
                 }
             case 53: // x: 328
@@ -416,7 +422,6 @@ public:
             case 60: mob_unit.pre_dma(3); return;
             case 61: mob_unit.do_dma(1);  return;
             case 62:
-                cycle = 0;
                 mob_unit.pre_dma(4);
                 switch (beam_area) {
                     case v_blank_290_009: case disp_010_047: case disp_255_289:
@@ -972,7 +977,7 @@ private:
 
     u8 reg[REG_COUNT];
 
-    u8 cycle;
+    const u16& cycle;
     u16 raster_y;
     Beam_area beam_area = v_blank_290_009;
 

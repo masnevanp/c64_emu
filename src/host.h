@@ -341,6 +341,9 @@ public:
     void flush() { SDL_ClearQueuedAudio(dev); }
 
     Audio_out() {
+        SDL_AudioSpec want;
+        SDL_AudioSpec have;
+
         SDL_memset(&want, 0, sizeof(want));
         want.freq = 44100;
         want.format = AUDIO_S16LSB;
@@ -360,9 +363,8 @@ public:
     ~Audio_out() { if (dev) SDL_CloseAudioDevice(dev); }
 
 private:
-    SDL_AudioSpec want;
-    SDL_AudioSpec have;
     SDL_AudioDeviceID dev;
+
 };
 
 

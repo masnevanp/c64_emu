@@ -229,8 +229,8 @@ private:
 
 class VIC_out {
 public:
-    VIC_out(Host::Video_out& vid_out_, Host::Input& host_input_, SID& sid_) :
-        vid_out(vid_out_), host_input(host_input_), sid(sid_) { reset(); }
+    VIC_out(Host::Video_out& vid_out_, Host::Input& host_input_, SID& sid_, u16& cycle_) :
+        vid_out(vid_out_), host_input(host_input_), sid(sid_), cycle(cycle_) { reset(); }
 
     void reset() {
         px_pos = frame;
@@ -241,10 +241,15 @@ public:
     void put_pixel(const u8& vic_col) { *px_pos++ = vic_col; }
 
     void line_done(u16 line) {
-        if (line % (VIC_II::RASTER_LINE_COUNT / 8) == 0) host_input.poll(); // freq: 8 per frame ==> ~2.5ms
+        if (line % (VIC_II::RASTER_LINE_COUNT / 8) == 0) { // freq: 8 per frame ==> ~2.5ms
+            host_input.poll();
+        }
     }
 
     void frame_done() {
+        sid.output();
+        cycle = 0;
+
         px_pos = frame;
 
         frame_moment += VIC_II::FRAME_MS;
@@ -274,6 +279,8 @@ private:
     double frame_moment = 0;
     int skip_frames = 0;
 
+    u16& cycle;
+
     u8 frame[VIC_II::VIEW_WIDTH * VIC_II::VIEW_HEIGHT];
     u8* px_pos;
 
@@ -286,9 +293,10 @@ public:
         cpu(on_cpu_halt_sig),
         cia1(1, sync_master, cia1_port_a_out, cia1_port_b_out, int_hub.irq),
         cia2(2, sync_master, cia2_port_a_out, cia2_port_b_out, int_hub.nmi),
-        vic(sync_master, ram, col_ram, rom.charr, int_hub.irq, ba_low, vic_out),
+        sid(cycle),
+        vic(sync_master, ram, col_ram, rom.charr, int_hub.irq, ba_low, cycle, vic_out),
         vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT),
-        vic_out(vid_out, host_input, sid),
+        vic_out(vid_out, host_input, sid, cycle),
         int_hub(cpu),
         kb_matrix(cia1.get_port_a_in(), cia1.get_port_b_in()),
         joy1(cia1.get_port_b_in()),
@@ -297,8 +305,8 @@ public:
         sys_banker(ram, rom, io_space),
         host_input(host_input_handlers)
     {
-        init_ram();
         vid_out.set_scale(30);
+        reset_cold();
     }
 
     void reset_warm() {
@@ -311,23 +319,24 @@ public:
     }
 
     void reset_cold() {
+        init_ram();
         cia1.reset_cold();
         cia2.reset_cold();
         sid.reset();
         vic.reset_cold();
         vic_out.reset();
         kb_matrix.reset();
-        init_ram();
         col_ram.reset();
         sys_banker.reset();
         cpu.reset_cold();
         int_hub.reset();
 
-        nmi_set = false;
+        cycle = 0;
+        ba_low = nmi_set = false;
     }
 
     void run() {
-        for (;;) {
+        for (;;++cycle) {
             sync_master.tick();
             if (!ba_low || cpu.mrw() == NMOS6502::RW::w) {
                 sys_banker.access(cpu.mar(), cpu.mdr(), cpu.mrw());
@@ -336,12 +345,12 @@ public:
             vic.tick();
             cia1.tick();
             cia2.tick();
-            sid.tick();
             int_hub.tick();
         }
     }
 
     u8 ram[0x10000];
+
     CPU cpu;
 
     CIA cia1;
@@ -367,7 +376,9 @@ private:
     IO_space io_space;
     Banker sys_banker;
 
-    bool ba_low = false;
+    u16 cycle;
+
+    bool ba_low;
 
     Host::Input host_input;
 

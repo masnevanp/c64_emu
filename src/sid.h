@@ -12,10 +12,7 @@ class Wrapper {
 public:
     static const int OUTPUT_FREQ = 44100;
 
-    //static const int BUF_TICK_CNT = 100;
-    static const int BUF_TICK_CNT = 2000; // 1ms = ~1000 ticks
-
-    Wrapper()
+    Wrapper(const u16& cycle_) : cycle(cycle_)
     {
         re_sid.set_sampling_parameters(CPU_FREQ, reSID::SAMPLE_RESAMPLE, OUTPUT_FREQ);
         reset();
@@ -24,62 +21,55 @@ public:
     void reset() {
         re_sid.reset();
         flush();
+        ticked = 0;
     }
 
     void flush() {
-        //buf_tick_cnt = next_buf_tick_cnt;
-        buf_tick_cnt = BUF_TICK_CNT;
-        tick_cnt = 0;
         buf_ptr = buf;
         audio_out.flush();
+
+        // queue something (whatever happens to be there) for some breathing room
+        audio_out.put(buf, BUF_SZ);
+        audio_out.put(buf, BUF_SZ / 4);
     }
 
-    void tick(bool do_output = true) {
-        if (!do_output) {
-            re_sid.clock();
-            return;
-        } else if (++tick_cnt < buf_tick_cnt) {
-            return;
+    void tick() {
+        int n = cycle - ticked;
+        if (n) {
+            // there is always enough space in the buffer (hence the '0xffff')
+            buf_ptr += re_sid.clock(n, buf_ptr, 0xffff);
+            ticked = cycle;
         }
-
-        while (tick_cnt) {
-            int n = re_sid.clock(tick_cnt, buf_ptr, buf_end - buf_ptr);
-            buf_ptr += n;
-            if (buf_ptr == buf_end) {
-                audio_out.put(buf, BUF_SZ);
-                buf_ptr = buf;
-            }
-        }
-        if (buf_ptr != buf) {
-            audio_out.put(buf, buf_ptr - buf);
-            buf_ptr = buf;
-        }
-
-        buf_tick_cnt = 1;
     }
 
-    void r(const u8& ri, u8& data) {
-        //std::cout << "SID r: " << (int)ri << "\n";
-        data = re_sid.read(ri);
+    void output() {
+        tick();
+        audio_out.put(buf, buf_ptr - buf);
+        buf_ptr = buf;
+        ticked = 0; // 'cycle' will also get reset (elsewhere)
     }
+
+    void r(const u8& ri, u8& data) { data = re_sid.read(ri); }
+
     void w(const u8& ri, const u8& data) {
-        //std::cout << "SID w: " << (int)ri << " " << (int)data << "\n";
+        tick(); // tick with old state first
         re_sid.write(ri, data);
     }
 
 private:
     reSID::SID re_sid;
 
-    int buf_tick_cnt;
-    int tick_cnt;
-
-    static const u32 BUF_SZ = 0x200; // TODO: calculate from other params?
+    // once per frame (312*63 = 19656 cycles) => ~879.8 samples
+    static const u32 BUF_SZ = 880;
 
     i16 buf[BUF_SZ];
-    i16* buf_ptr = buf;
-    i16* buf_end = buf + BUF_SZ; // one past last
+    i16* buf_ptr;
+
+    u16 ticked; // how many times has re-sid been ticked (for upcoming burst)
+    const u16& cycle; // current cycle number (of the system)
 
     Host::Audio_out audio_out;
+
 };
 
 
