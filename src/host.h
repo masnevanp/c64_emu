@@ -250,17 +250,52 @@ public:
         }
 
         SDL_UpdateTexture(texture, 0, (void*)frame, 4 * frame_width);
-        SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+        SDL_RenderCopy(renderer, texture, nullptr, render_dstrect);
         SDL_RenderPresent(renderer);
     }
 
     void adjust_scale(i8 amount) { set_scale(scale + amount); }
     void set_scale(i8 new_scale) {
+        // TODO: fullscreen scaling
+        if (is_fullscreen()) return;
+
         if (new_scale >= min_scale && new_scale <= max_scale) {
             scale = new_scale;
             int w = aspect_ratio * (scale / 10.0) * frame_width;
             int h = (scale / 10.0) * frame_height;
             SDL_SetWindowSize(window, w, h);
+        }
+    }
+
+    bool is_fullscreen() const { return render_dstrect == &render_dstrect_fullscreen; }
+    void toggle_fullscreen() {
+        if (is_fullscreen()) {
+            if (SDL_SetWindowFullscreen(window, 0) == 0) {
+                render_dstrect = nullptr;
+            } else {
+                SDL_Log("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
+            }
+        } else {
+            if (SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP) == 0) {
+                int win_w; int win_h;
+                SDL_GetWindowSize(window, &win_w, &win_h);
+                int w = aspect_ratio * (((double)win_h / frame_height) * frame_width);
+                if (w < win_w) {
+                    render_dstrect_fullscreen.x = (win_w - w) / 2;
+                    render_dstrect_fullscreen.y = 0;
+                    render_dstrect_fullscreen.w = w;
+                    render_dstrect_fullscreen.h = win_h;
+                } else {
+                    int h =  (((double)win_w / frame_width) * frame_height) / aspect_ratio;
+                    render_dstrect_fullscreen.x = 0;
+                    render_dstrect_fullscreen.y = (win_h - h) / 2;
+                    render_dstrect_fullscreen.w = win_w;
+                    render_dstrect_fullscreen.h = h;
+                }
+                render_dstrect = &render_dstrect_fullscreen;
+            } else {
+                SDL_Log("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
+            }
         }
     }
 
@@ -283,7 +318,7 @@ public:
             exit(1);
         }
 
-        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
         texture = SDL_CreateTexture(renderer,
                         SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
                         frame_width, 2 * frame_height);
@@ -296,7 +331,6 @@ public:
 
         if (SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE) != 0) {
             SDL_Log("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
-            // exit(1);
         }
 
         get_Colodore(palette_1, 60, 100, 75);
@@ -315,6 +349,9 @@ private:
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
     SDL_Texture* texture = nullptr;
+
+    SDL_Rect* render_dstrect = nullptr;
+    SDL_Rect render_dstrect_fullscreen;
 
     const u16 frame_width;
     const u16 frame_height;

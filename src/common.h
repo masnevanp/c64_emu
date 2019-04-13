@@ -40,7 +40,7 @@ namespace Key_code {
 
     /*       PB7   PB6   PB5   PB4   PB3   PB2   PB1   PB0
         PA7  STOP  Q     C=    SPACE 2     CTRL  <-    1
-        PA6  /     ^     =     RSHFT HOME  ;     *     £
+        PA6  /     ^     =     RSHFT HOME  ;     *     Â£
         PA5  ,     @     :     .     -     L     P     +
         PA4  N     O     K     M     0     J     I     9
         PA3  V     U     H     B     8     G     Y     7
@@ -72,7 +72,7 @@ namespace Key_code {
     };
 
     enum System : u8 {
-        rst_w = GS, rst_c, rstre, load, scl_u, scl_d, swp_j, quit, nop,
+        rst_w = GS, rst_c, rstre, load, f_scr, scl_u, scl_d, swp_j, quit, nop,
     };
 
 } // namespace Key_code

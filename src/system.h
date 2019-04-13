@@ -423,6 +423,7 @@ private:
                 case kc::rst_w: reset_warm();                       break;
                 case kc::rst_c: reset_cold();                       break;
                 case kc::load:  load_prg("data/prg/bin.prg", ram);  break;
+                case kc::f_scr: vid_out.toggle_fullscreen();        break;
                 case kc::scl_u: vid_out.adjust_scale(+5);           break;
                 case kc::scl_d: vid_out.adjust_scale(-5);           break;
                 case kc::swp_j: host_input.swap_joysticks();        break;
