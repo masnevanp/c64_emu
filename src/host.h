@@ -244,7 +244,7 @@ public:
             for (int x = 0; x < frame_width; ++x) {
                 u8 vic_col = *vic_frame++;
                 *scan_1++ = palette_1[vic_col];
-                *scan_2++ = palette_2[vic_col];
+                *scan_2++ = palette_2[vic_col][x % 8];
             }
             scan_1 = scan_2;
         }
@@ -334,7 +334,21 @@ public:
         }
 
         get_Colodore(palette_1, 60, 100, 75);
-        get_Colodore(palette_2, 40, 80, 50);
+        //get_Colodore(palette_2, 40, 80, 50);
+
+        u32 pal[16];
+        get_Colodore(pal, 38, 80, 45);
+        for (int c = 0; c < 16; ++c)
+            palette_2[c][0] = pal[c];
+        get_Colodore(pal, 39, 80, 45);
+        for (int c = 0; c < 16; ++c)
+            palette_2[c][1] = palette_2[c][7] = pal[c];
+        get_Colodore(pal, 40, 80, 45);
+        for (int c = 0; c < 16; ++c)
+            palette_2[c][2] = palette_2[c][3] = palette_2[c][5] = palette_2[c][6] = pal[c];
+        get_Colodore(pal, 41, 80, 45);
+        for (int c = 0; c < 16; ++c)
+            palette_2[c][4] = pal[c];
     }
 
     ~Video_out() {
@@ -359,7 +373,7 @@ private:
     u32* frame;
 
     u32 palette_1[16];
-    u32 palette_2[16];
+    u32 palette_2[16][8];
 
     // TODO: tweakable?
     const double aspect_ratio = 0.936;
