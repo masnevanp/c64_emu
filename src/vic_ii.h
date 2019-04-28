@@ -3,8 +3,6 @@
 
 #include <iostream>
 #include "common.h"
-#include "io.h"
-#include "host.h"
 
 
 namespace VIC_II {
@@ -26,7 +24,7 @@ static const double FRAME_MS       = 1000.0 / (CPU_FREQ / (312.0 * 63));
 
 // TODO: parameterize view/border size (all fixed for now)
 static const u16 VIEW_WIDTH        = 384; // lef/right borders: 32 px
-static const u16 VIEW_HEIGHT       = 280; // top/bottom borders: 40 px
+static const u16 VIEW_HEIGHT       = 264; // top/bottom borders: 32 px
 
 static const u16 RASTER_LINE_COUNT = 312;
 static const u8  LINE_CYCLES       =  63;
@@ -100,9 +98,6 @@ private:
 // TODO: lightpen (3.11)
 template <typename Out>
 class Core { // 6569 (PAL-B)
-private:
-    IO::Sync::Slave sync;
-
 public:
     static const u8 REG_COUNT = 64;
 
@@ -128,29 +123,27 @@ public:
     enum CR2  : u8 { mcm_bit = 0x10, csel_bit = 0x08, x_scroll_mask = 0x07, };
     enum MPTR : u8 { vm_mask = 0xf0, cg_mask = 0x0e, };
     /* Raster line : beam_area
-          000..009 : v_blank_290_009 (top v-blank)
-          010..047 : disp_010_047    (top border)
+          000..017 : v_blank
+          018..047 : disp_018_047    (top border)
           048..247 : disp_048_247    (video-matrix access area)
           248..254 : disp_248_254    (post vmaa)
-          255..289 : disp_255_289    (bottom border)
-          290..312 : v_blank_290_009 (bottom v-blank)
+          255..281 : disp_255_281    (bottom border)
+          282..312 : v_blank
     */
     enum Beam_area : u8 {
-        v_blank_290_009, disp_010_047, disp_048_247, disp_248_254, disp_255_289,
+        v_blank, disp_018_047, disp_048_247, disp_248_254, disp_255_281,
     };
 
 
     Core(
-          const IO::Sync::Master& sync_master,
+          /*const IO::Sync::Master& sync_master,*/
           const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
-          Int_sig& irq, bool& ba_low, const u16& cycle_, Out& out_)
-        : sync(sync_master),
-          banker(ram_, charr),
+          Int_sig& irq, u16& ba_low, Out& out_)
+        : banker(ram_, charr),
           irq_unit(reg, irq),
           ba_unit(ba_low),
           mob_unit(banker, col_ram_, reg, raster_y, ba_unit, irq_unit),
-          gfx_unit(banker, col_ram_, reg, raster_y, vert_border_on, ba_unit),
-          cycle(cycle_),
+          gfx_unit(banker, col_ram_, reg, line_cycle, raster_y, vert_border_on, ba_unit),
           out(out_)
     { reset_cold(); }
 
@@ -162,11 +155,10 @@ public:
         reset_warm();
         for (int r = 0; r < REG_COUNT; ++r) w(r, 0);
         raster_y = RASTER_LINE_COUNT - 1;
+        line_cycle = 0;
     }
 
     void r(const u8& ri, u8& data) {
-        tick();
-        // std::cout << "VIC r: " << (int)ri << " " << (int)data << "\n";
         switch (ri) {
             case cr1:
                 data = (reg[cr1] & ~rst8_bit) | ((raster_y & 0x100) >> 1);
@@ -184,7 +176,6 @@ public:
     }
 
     void w(const u8& ri, const u8& data) {
-        // std::cout << "VIC w: " << (int)ri << " " << (int)data << "\n";
         u8 d = data & ~Unused_bits[ri];
         reg[ri] = d;
 
@@ -202,7 +193,7 @@ public:
                 den = d & den_bit;
                 gfx_unit.set_den(den);
                 set_rsel(d & rsel_bit);
-                gfx_unit.y_scroll = d & y_scroll_mask;
+                gfx_unit.set_y_scroll(d & y_scroll_mask, beam_area == disp_048_247);
                 break;
             case rast:
                 cmp_raster = (cmp_raster & 0x100) | d;
@@ -240,15 +231,13 @@ public:
 #pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
 #endif
 
-    void tick() {
+    void tick(const u16& frame_cycle) {
         static const u16 LAST_RASTER_Y = RASTER_LINE_COUNT; // (312 done for 1 cycle)
 
-        if (sync.tick()) return;
-
-        auto line_cycle = cycle % LINE_CYCLES;
+        line_cycle = frame_cycle % LINE_CYCLES;
 
         switch (line_cycle) {
-            case 0: // h-blank (continues)
+            case  0:
                 mob_unit.do_dma(2);
 
                 out.line_done(raster_y);
@@ -256,32 +245,37 @@ public:
                 ++raster_y;
 
                 switch (beam_area) {
-                    case v_blank_290_009:
+                    case v_blank:
                         if (raster_y == LAST_RASTER_Y) {
                             out.frame_done();
                             return;
                         }
-                        if (raster_y == 10)  beam_area = disp_010_047;
+                        if (raster_y == 18)  beam_area = disp_018_047;
                         break;
-                    case disp_010_047:
+                    case disp_018_047:
                         if (raster_y == 48) {
                             gfx_unit.init(den);
                             beam_area = disp_048_247;
                         }
                         break;
                     case disp_048_247:
-                        if (raster_y == 248) beam_area = disp_248_254;
+                        if (raster_y == 248) {
+                            gfx_unit.deinit();
+                            beam_area = disp_248_254;
+                        }
+                        else gfx_unit.ba_eval();
                         break;
                     case disp_248_254:
-                        if (raster_y == 255) beam_area = disp_255_289;
+                        if (raster_y == 255) beam_area = disp_255_281;
                         break;
-                    case disp_255_289:
-                        if (raster_y == 290) beam_area = v_blank_290_009;
+                    case disp_255_281:
+                        if (raster_y == 282) beam_area = v_blank;
                         break;
                 }
 
                 if (raster_y == cmp_raster) irq_unit.req(IRQ_unit::rst);
 
+                return;
                 /* NOTE: mob_unit.pre_dma/do_dma pair is done, so that it takes the specified
                          5 cycles in total. do_dma is done at the last moment possible, and
                          all the memory access is then done at once (which is not how it is
@@ -292,144 +286,125 @@ public:
                          Anyway, the current MOB access would not be 100% cycle/memory accurate
                          in those cases.
                 */
-
-                return;
-            case 1: // h-blank
+            case  1:
                 mob_unit.pre_dma(5);
                 if (raster_y == LAST_RASTER_Y) {
                     raster_y = 0;
                     if (cmp_raster == 0) irq_unit.req(IRQ_unit::rst);
                 }
                 return;
-            case 2:  mob_unit.do_dma(3);  return;
-            case 3:  mob_unit.pre_dma(6); return;
-            case 4:  mob_unit.do_dma(4);  return;
-            case 5:  mob_unit.pre_dma(7); return;
-            case 6:  mob_unit.do_dma(5);  return;
-            case 7:                       return;
-            case 8:  mob_unit.do_dma(6);  return;
-            case 9:                       return;
-            case 10: mob_unit.do_dma(7);  return; // h-blank (ends)
-            case 11: // x: 496
-                switch (beam_area) {
-                    case v_blank_290_009: return;
-                    case disp_048_247:
-                        gfx_unit.gfx_activation();
-                    case disp_010_047: case disp_248_254: case disp_255_289:
-                        output(496);
-                        return;
+            case  2: mob_unit.do_dma(3);  return;
+            case  3: mob_unit.pre_dma(6); return;
+            case  4: mob_unit.do_dma(4);  return;
+            case  5: mob_unit.pre_dma(7); return;
+            case  6: mob_unit.do_dma(5);
+            case  7:                      return;
+            case  8: mob_unit.do_dma(6);
+            case  9:                      return;
+            case 10: mob_unit.do_dma(7);  return;
+            case 11:
+                if (beam_area == disp_048_247) gfx_unit.ba_toggle();
+                return;
+            case 12:
+                if (beam_area != v_blank) output(496);
+                return;
+            case 13:
+                if (beam_area != v_blank) {
+                    gfx_unit.row_start();
+                    output(0);
                 }
-            case 12: // x: 0
-                switch (beam_area) {
-                    case v_blank_290_009: return;
-                    case disp_048_247:
-                        gfx_unit.gfx_activation();
-                    case disp_010_047: case disp_248_254: case disp_255_289:
-                        output(0);
-                        return;
-                }
-            case 13: // x: 8
-                switch (beam_area) {
-                    case v_blank_290_009: return;
-                    case disp_048_247:
-                        gfx_unit.gfx_activation();
-                    case disp_010_047: case disp_248_254: case disp_255_289:
-                        output(8);
-                        return;
-                }
-            case 14: // x: 16
+                return;
+            case 14:
                 mob_unit.inc_mdc_base_2();
-                switch (beam_area) {
-                    case v_blank_290_009: return;
-                    case disp_048_247:
-                        gfx_unit.gfx_activation();
-                    case disp_010_047: case disp_248_254: case disp_255_289:
-                        output(16);
-                        return;
-                }
-            case 15: // x: 24 (display column starts)
+                if (beam_area != v_blank) output(8);
+                return;
+            case 15:
                 mob_unit.inc_mdc_base_1();
                 switch (beam_area) {
-                    case v_blank_290_009: check_left_vb(); return;
+                    case v_blank: return;
                     case disp_048_247:
-                        gfx_unit.gfx_activation();
-                    case disp_010_047: case disp_248_254: case disp_255_289:
-                        gfx_unit.row_start();
-                        output_on_edge(24);
+                        gfx_unit.read_vm();
+                    case disp_018_047: case disp_248_254: case disp_255_281:
+                        output(16);
+                        gfx_unit.read_gfx();
                         return;
                 }
-             // x: 32..327
-            case 16: case 17: case 18: case 19:
+            case 16:
+                switch (beam_area) {
+                    case v_blank: check_left_vb(); return;
+                    case disp_048_247:
+                        gfx_unit.read_vm();
+                    case disp_018_047: case disp_248_254: case disp_255_281:
+                        output_on_edge(24);
+                        gfx_unit.read_gfx();
+                        return;
+                }
+            case 17: case 18: case 19:
             case 20: case 21: case 22: case 23: case 24: case 25: case 26: case 27: case 28: case 29:
             case 30: case 31: case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39:
             case 40: case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: case 49:
-            case 50: case 51: case 52:
+            case 50: case 51: case 52: case 53:
                 switch (beam_area) {
-                    case v_blank_290_009: return;
+                    case v_blank: return;
                     case disp_048_247:
-                        gfx_unit.gfx_activation();
-                    case disp_010_047: case disp_248_254: case disp_255_289:
-                        output(line_cycle*8 - 96);
+                        gfx_unit.read_vm();
+                    case disp_018_047: case disp_248_254: case disp_255_281:
+                        output(line_cycle*8 - 104);
+                        gfx_unit.read_gfx();
                         return;
                 }
-            case 53: // x: 328
+            case 54:
+                mob_unit.check_mdc_base_upd();
+                mob_unit.check_dma();
+                mob_unit.pre_dma(0);
                 switch (beam_area) {
-                    case v_blank_290_009:
+                    case v_blank:
                         check_right_vb(335);
                         return;
                     case disp_048_247:
-                        // TODO: 3.14.5. Doubled text lines ==> act also in 53-56
-                        gfx_unit.gfx_activation();
-                    case disp_010_047: case disp_248_254: case disp_255_289:
+                        gfx_unit.read_vm();
+                        gfx_unit.ba_end();
+                    case disp_018_047: case disp_248_254: case disp_255_281:
                         output_on_edge(328);
+                        gfx_unit.read_gfx();
                         return;
                 }
-            case 54: // x: 336 (display column ends)
-                mob_unit.check_mdc_base_upd();
-                mob_unit.check_dma(0, 3);
-                mob_unit.pre_dma(0);
-                if (beam_area != v_blank_290_009) output(336);
+            case 55:
+                mob_unit.check_dma();
+                if (beam_area != v_blank) output(336);
                 return;
-            case 55: // x: 344
-                mob_unit.check_dma(4, 7);
-                switch (beam_area) {
-                    case v_blank_290_009:
-                        check_right_vb(344);
-                        return;
-                    case disp_010_047: case disp_048_247: case disp_248_254: case disp_255_289:
-                        output_on_edge(344);
-                        return;
-                }
-            case 56: // x: 352
+            case 56:
                 mob_unit.pre_dma(1);
-                if (beam_area != v_blank_290_009) output(352);
+                if (beam_area == v_blank) check_right_vb(344);
+                else output_on_edge(344);
                 return;
-            case 57: // x: 360
+            case 57:
                 mob_unit.check_disp();
                 switch (beam_area) {
-                    case v_blank_290_009: return;
+                    case v_blank: return;
                     case disp_048_247: case disp_248_254:
                         gfx_unit.row_end();
-                    case disp_010_047: case disp_255_289:
-                        output(360);
+                    case disp_018_047: case disp_255_281:
+                        output(352);
                         return;
                 }
-            case 58: // x: 368
+            case 58:
                 mob_unit.pre_dma(2);
-                if (beam_area != v_blank_290_009) output(368);
+                if (beam_area != v_blank) output(360);
                 return;
-            case 59: mob_unit.do_dma(0);  return; // h-blank (first)
+            case 59:
+                mob_unit.do_dma(0);
+                if (beam_area != v_blank) output(368);
+                return;
             case 60: mob_unit.pre_dma(3); return;
             case 61: mob_unit.do_dma(1);  return;
             case 62:
                 mob_unit.pre_dma(4);
                 switch (beam_area) {
-                    case v_blank_290_009: case disp_010_047: case disp_255_289:
+                    case v_blank: case disp_018_047: case disp_255_281:
                         return;
-                    case disp_048_247:
-                        check_top_hb(raster_y);
-                    case disp_248_254:
-                        check_bottom_hb(raster_y);
+                    case disp_048_247: case disp_248_254:
+                        check_hb(raster_y);
                         return;
                 }
         }
@@ -486,13 +461,15 @@ private:
 
     class BA_unit {
     public:
-        void req()  { ++req_cnt; ba_low = true; }
-        void done() { if (--req_cnt == 0) ba_low = false; }
+        BA_unit(u16& ba_low_) : ba_low(ba_low_) {}
 
-        BA_unit(bool& ba_low_) : ba_low(ba_low_) {}
+        void mob_start()       { ba_low += 0x100; }
+        void mob_done()        { ba_low -= 0x100; }
+        void gfx_set(u8 b)     { ba_low = (ba_low & 0x700) | b; }
+        void gfx_reset()       { gfx_set(0); }
+        u8   gfx_state() const { return ba_low & 0xff; }
     private:
-        u8 req_cnt = 0;
-        bool& ba_low;
+        u16& ba_low;
     };
 
 
@@ -503,6 +480,7 @@ private:
 
         class MOB {
         public:
+            // TODO: these 4 flags into one u8...?
             bool ye;
 
             bool disp_on = false;
@@ -570,8 +548,8 @@ private:
         void set_vm_base(u16 vm_base) { mp_base = vm_base | MP_BASE; }
 
         void check_mdc_base_upd() { for(auto&m : mob) if (m.ye) m.mdc_base_upd ^= m.ye; }
-        void check_dma(u8 from, u8 to) {
-            for (u8 mn = from, mb = (0x01 << from); mn <= to; ++mn, mb <<= 1) {
+        void check_dma() {
+            for (u8 mn = 0, mb = 0x01; mn < 8; ++mn, mb <<= 1) {
                 MOB& m = mob[mn];
                 if (!m.dma_on) {
                     if ((reg[mne] & mb) && (reg[m0y + (mn * 2)] == (raster_y & 0xff))) {
@@ -596,7 +574,7 @@ private:
                 if (m.mdc_base == 63) m.dma_on = m.disp_on = false;
             }
         }
-        void pre_dma(u8 mn) { if (mob[mn].dma_on) ba.req(); }
+        void pre_dma(u8 mn) { if (mob[mn].dma_on) ba.mob_start(); }
         void do_dma(u8 mn)  { // do p&s -accesses
             MOB& m = mob[mn];
             // if dma_on, then cpu has already been stopped --> safe to read all at once (1p + 3s)
@@ -607,7 +585,7 @@ private:
                 u32 d2 = bank.r(mp | m.mdc++);
                 u32 d3 = bank.r(mp | m.mdc++);
                 m.load_data(d1, d2, d3);
-                ba.done();
+                ba.mob_done();
             }
         }
 
@@ -688,15 +666,17 @@ private:
             ibmm2 = ecm_set | bmm_set | mcm_set, // invalid bit map mode 2
         };
 
-        u8 y_scroll;
+        u8 y_scroll; // TODO: private?
         u8 x_scroll;
         u16 vm_base;
         u16 c_base;
 
         GFX_unit(
-            Banker& bank_, const Color_RAM& col_ram_, const u8* reg_, const u16& raster_y_,
+            Banker& bank_, const Color_RAM& col_ram_, const u8* reg_,
+            const u8& line_cycle_, const u16& raster_y_,
             const bool& v_border_on_, BA_unit& ba_)
-          : bank(bank_), col_ram(col_ram_), reg(reg_), raster_y(raster_y_),
+          : bank(bank_), col_ram(col_ram_), reg(reg_),
+            line_cycle(line_cycle_), raster_y(raster_y_),
             v_border_on(v_border_on_), ba(ba_)
         { set_mode(scm); }
 
@@ -704,6 +684,14 @@ private:
         void init(bool den)    { frame_den = den; vc_base = 0; }
         // called if cr1.den is modified (interesting only if it happens during VMA_TOP_RASTER_Y)
         void set_den(bool den) { frame_den |= (raster_y == VMA_TOP_RASTER_Y && den); }
+
+        void set_y_scroll(u8 y_scroll_, bool vma_area) {
+            y_scroll = y_scroll_;
+            if (vma_area) {
+                ba_eval();
+                if (line_cycle > 10 && line_cycle < 54) ba_toggle();
+            }
+        }
 
         void set_ecm(bool e)   { set_mode(e ? mode_id | ecm_set : mode_id & ~ecm_set); }
         void set_bmm(bool b)   { set_mode(b ? mode_id | bmm_set : mode_id & ~bmm_set); }
@@ -713,73 +701,50 @@ private:
         void set_bgc1(u8 bgc1) { color_tbl.mccm[1] = bgc1; }
         void set_bgc2(u8 bgc2) { color_tbl.mccm[2] = bgc2; }
 
-        void row_start()       { vc = vc_base; vmri = 0; }
+        void ba_eval() { ba_line = ((raster_y & y_scroll_mask) == y_scroll) && frame_den; }
+
+        void ba_toggle() {
+            if (ba_line) {
+                ba.gfx_set(line_cycle | 0x80); // store cycle for AEC checking later
+                activate_gfx();
+            }
+            else ba.gfx_reset();
+        }
+
+        void row_start() {
+            vc = vc_base;
+            vmri = 0;
+            if (ba_line) rc = 0;
+        }
+
         void row_end() {
-            if (!gfx_idle()) {
-                if (++rc == 8) { gfx_deactivate(); vc_base = vc; }
+            if (rc == 7 && !ba_line) {
+                deactivate_gfx();
+                vc_base = vc;
             }
+            else if (gfx_active()) rc = (rc + 1) & 0x7;
         }
 
-        void gfx_activation() {
-            if (((raster_y & y_scroll_mask) == y_scroll) && frame_den) {
-                ba_low_cnt += 1;
-                if (ba_low_cnt == 1) ba.req();
-                else if (ba_low_cnt == 4) { // 'aec low' ?
-                    // TODO: 3.14.6. DMA delay (should not actually wait 3 cycles & stuph...)
-                    gfx_activate();
-                }
-            } else if (ba_low_cnt > 0) {
-                ba.done();
-                ba_low_cnt = 0;
-            }
-        }
+        void ba_end() { ba.gfx_reset(); }
 
-        u8 pixel_out(u8 pixel_time, bool& fg_gfx) { // 8 pixels/cycle --> pixel_time: 0..7
-            if (pixel_time == x_scroll && !row_done()) {
-                read_vmd();
-                read_gd();
-            } else if (((pixel_time - x_scroll) % mode->pixel_width) == 0) { // TODO: nicer?
-                pixel_data <<= mode->pixel_width;
-            }
+        void deinit() { ba_line = false; }
 
-            u8 p_col;
-            if (!v_border_on) {
-                fg_gfx = pixel_data & 0x80;
-                p_col = mode->color[pixel_data >> (8 - mode->pixel_width)];
-            } else {
-                p_col = reg[bgc0];
-            }
-
-            return p_col;
-        }
-
-    private:
-        static const u16 RC_IDLE = 0x3fff;
-
-        bool gfx_idle()   const { return rc == RC_IDLE; }
-        bool gfx_active() const { return rc < 8; }
-        void gfx_activate()     { rc = 0; };
-        void gfx_deactivate()   { rc = RC_IDLE; };
-        bool vma_row()    const { return rc == 0; }
-        bool row_done()   const { return vmri == 40; }
-
-        void read_vmd() { // video-matrix data
-            if (vma_row()) {
+        void read_vm() {
+            if (ba_line) { // (ba.gfx_state())
                 col_ram.r(vc, vm_row[vmri].cr_data);
                 vm_row[vmri].vm_data = bank.r(vm_base | vc);
-            } else if (gfx_idle()) {
-                vm_row[vmri].cr_data = 0;
             }
         }
 
-        void read_gd() { // gfx data
+        void read_gfx() {
             static const u8 MC_flag          = 0x8;
             static const u16 G_ADDR_ECM_MASK = 0x39ff;
             //mode = &mode_tbl[mode_id]; //if it is necessary to delay the change
 
+            u8 vd = vm_row[vmri].vm_data & vm_mask;
+            u8 cd = vm_row[vmri].cr_data & vm_mask;
             u16 addr;
-            const u8& vd = vm_row[vmri].vm_data;
-            const u8& cd = vm_row[vmri].cr_data;
+
             switch (mode_id) {
                 case scm:
                     mode->color[1] = cd;
@@ -822,19 +787,42 @@ private:
                     break;
             }
 
-            pixel_data = bank.r(addr);
+            next_pixel_data = bank.r(addr);
 
-            ++vc;
-            ++vmri;
-            if (row_done() && ba_low_cnt > 0) {
-                ba.done();
-                ba_low_cnt = 0;
+            if (gfx_active()) {
+                vc = (vc + 1) & 0x3ff;
+                ++vmri;
             }
         }
 
-        u8 frame_den; // set for each frame (at the top of disp.win)
+        u8 pixel_out(u8 pixel_time, bool& fg_gfx) { // 8 pixels/cycle --> pixel_time: 0..7
+            if (pixel_time == x_scroll) {
+                pixel_data = next_pixel_data;
+                next_pixel_data = 0; // TODO: best way?
+            } else if (((pixel_time - x_scroll) % mode->pixel_width) == 0) { // TODO: nicer?
+                pixel_data <<= mode->pixel_width;
+            }
 
-        u8 ba_low_cnt = 0;
+            if (v_border_on) {
+                return reg[bgc0];
+            } else {
+                fg_gfx = pixel_data & 0x80;
+                return mode->color[pixel_data >> (8 - mode->pixel_width)];
+            }
+        }
+
+    private:
+        static const u16 RC_IDLE   = 0x3fff;
+        static const u8  VM_ACTIVE = 0xff;
+        static const u8  VM_IDLE   = 0x00;
+
+        void activate_gfx()   { rc = rc & 0x7; vm_mask = VM_ACTIVE; }
+        void deactivate_gfx() { rc = RC_IDLE;  vm_mask = VM_IDLE; }
+
+        bool gfx_active() const { return vm_mask != VM_IDLE; }
+
+        u8 ba_line = false;
+        u8 frame_den;   // set for each frame (at the top of disp.win)
 
         struct VM_data { // video-matrix data
             u8 vm_data;
@@ -844,10 +832,12 @@ private:
 
         u16 vc_base; // video counter base
         u16 vc;      // video counter
-        u16 rc = 8;  // row counter (0: vm-access on, 8: gfx idle)
+        u16 rc = 7;  // row counter
         u8  vmri;    // vm_row index
+        u8  vm_mask = 0x00; // 0x00 = gfx_idle, 0xff = gfx_active
 
         u8 pixel_data = 0x00;
+        u8 next_pixel_data = 0x00;
 
         struct Color_tbl {
             u8 scm[2];
@@ -888,6 +878,7 @@ private:
         Banker& bank;
         const Color_RAM& col_ram;
         const u8* reg;
+        const u8& line_cycle;
         const u16& raster_y;
         const bool& v_border_on;
         BA_unit& ba;
@@ -911,8 +902,10 @@ private:
     // checks done during blanking periods (don't necessarely need to be pixel-perfect)
     void check_left_vb()               { if (!vert_border_on) main_border_on = false; }
     void check_right_vb(u16 x)         { if (x == cmp_right) main_border_on = true; }
-    void check_top_hb(u16 raster_y)    { if (raster_y == cmp_top && den) vert_border_on = false; }
-    void check_bottom_hb(u16 raster_y) { if (raster_y == cmp_bottom) vert_border_on = true; }
+    void check_hb(u16 raster_y) {
+        if (raster_y == cmp_top && den) vert_border_on = false;
+        else if (raster_y == cmp_bottom) vert_border_on = true;
+    }
 
     /*
     void output(u16 x_from, u16 x_to) {
@@ -940,11 +933,9 @@ private:
     void output_on_edge(u16 x) {
         for (int pt = 0; pt < 8; ++pt) {
             if (x == cmp_left) {
-                if (raster_y == cmp_top) {
-                    if (den) main_border_on = vert_border_on = false;
-                }
+                if (raster_y == cmp_top && den) vert_border_on = false;
                 else if (raster_y == cmp_bottom) vert_border_on = true;
-                else if (!vert_border_on) main_border_on = false;
+                if (!vert_border_on) main_border_on = false;
             } else if (x == cmp_right) main_border_on = true;
             exude_pixel(x++, pt);
         }
@@ -977,9 +968,9 @@ private:
 
     u8 reg[REG_COUNT];
 
-    const u16& cycle;
+    u8 line_cycle;
     u16 raster_y;
-    Beam_area beam_area = v_blank_290_009;
+    Beam_area beam_area = v_blank;
 
     bool den;
     u16 cmp_left;

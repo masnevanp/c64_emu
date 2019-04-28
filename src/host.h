@@ -333,7 +333,7 @@ public:
             SDL_Log("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
         }
 
-        get_Colodore(palette_1, 60, 100, 75);
+        get_Colodore(palette_1, 60, 100, 70);
         //get_Colodore(palette_2, 40, 80, 50);
 
         u32 pal[16];

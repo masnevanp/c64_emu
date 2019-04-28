@@ -229,8 +229,13 @@ private:
 
 class VIC_out {
 public:
-    VIC_out(Host::Video_out& vid_out_, Host::Input& host_input_, SID& sid_, u16& cycle_) :
-        vid_out(vid_out_), host_input(host_input_), sid(sid_), cycle(cycle_) { reset(); }
+    VIC_out(
+        Host::Video_out& vid_out_, Host::Input& host_input_,
+        SID& sid_, u16& frame_cycle_
+    ) :
+        vid_out(vid_out_), host_input(host_input_),
+        sid(sid_), frame_cycle(frame_cycle_)
+    { reset(); }
 
     void reset() {
         px_pos = frame;
@@ -253,7 +258,7 @@ public:
         }
 
         px_pos = frame;
-        cycle = 0;
+        frame_cycle = 0;
 
         frame_moment += VIC_II::FRAME_MS;
         auto wait_target = std::round(frame_moment);
@@ -277,7 +282,7 @@ private:
     double frame_moment = 0;
     int skip_frames = 0;
 
-    u16& cycle;
+    u16& frame_cycle;
 
     u8 frame[VIC_II::VIEW_WIDTH * VIC_II::VIEW_HEIGHT];
     u8* px_pos;
@@ -291,10 +296,10 @@ public:
         cpu(on_cpu_halt_sig),
         cia1(1, sync_master, cia1_port_a_out, cia1_port_b_out, int_hub.irq),
         cia2(2, sync_master, cia2_port_a_out, cia2_port_b_out, int_hub.nmi),
-        sid(cycle),
-        vic(sync_master, ram, col_ram, rom.charr, int_hub.irq, ba_low, cycle, vic_out),
+        sid(frame_cycle),
+        vic(ram, col_ram, rom.charr, int_hub.irq, ba_low, vic_out),
         vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT),
-        vic_out(vid_out, host_input, sid, cycle),
+        vic_out(vid_out, host_input, sid, frame_cycle),
         int_hub(cpu),
         kb_matrix(cia1.get_port_a_in(), cia1.get_port_b_in()),
         joy1(cia1.get_port_b_in()),
@@ -329,18 +334,18 @@ public:
         cpu.reset_cold();
         int_hub.reset();
 
-        cycle = 0;
+        frame_cycle = 0;
         ba_low = nmi_set = false;
     }
 
     void run() {
-        for (;;++cycle) {
+        for (;;++frame_cycle) {
             sync_master.tick();
+            vic.tick(frame_cycle);
             if (!ba_low || cpu.mrw() == NMOS6502::RW::w) {
                 sys_banker.access(cpu.mar(), cpu.mdr(), cpu.mrw());
                 cpu.tick();
             }
-            vic.tick();
             cia1.tick();
             cia2.tick();
             int_hub.tick();
@@ -374,9 +379,9 @@ private:
     IO_space io_space;
     Banker sys_banker;
 
-    u16 cycle;
+    u16 frame_cycle;
 
-    bool ba_low;
+    u16 ba_low;
 
     Host::Input host_input;
 

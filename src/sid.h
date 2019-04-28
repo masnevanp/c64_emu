@@ -2,6 +2,7 @@
 #define SID_H_INCLUDED
 
 #include "resid/sid.h"
+#include "host.h"
 
 
 namespace SID {
@@ -12,7 +13,7 @@ class Wrapper {
 public:
     static const int OUTPUT_FREQ = 44100;
 
-    Wrapper(const u16& cycle_) : cycle(cycle_)
+    Wrapper(const u16& frame_cycle_) : frame_cycle(frame_cycle_)
     {
         re_sid.set_sampling_parameters(CPU_FREQ, reSID::SAMPLE_RESAMPLE, OUTPUT_FREQ);
         reset();
@@ -34,11 +35,11 @@ public:
     }
 
     void tick() {
-        int n = cycle - ticked;
+        int n = frame_cycle - ticked;
         if (n) {
             // there is always enough space in the buffer (hence the '0xffff')
             buf_ptr += re_sid.clock(n, buf_ptr, 0xffff);
-            ticked = cycle;
+            ticked = frame_cycle;
         }
     }
 
@@ -66,7 +67,7 @@ private:
     i16* buf_ptr;
 
     u16 ticked; // how many times has re-sid been ticked (for upcoming burst)
-    const u16& cycle; // current cycle number (of the system)
+    const u16& frame_cycle;
 
     Host::Audio_out audio_out;
 
