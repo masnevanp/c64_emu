@@ -306,17 +306,17 @@ public:
                 if (beam_area == disp_048_247) gfx_unit.ba_toggle();
                 return;
             case 12:
-                if (beam_area != v_blank) output(496);
+                if (beam_area != v_blank) output_at(496);
                 return;
             case 13:
                 if (beam_area != v_blank) {
                     gfx_unit.row_start();
-                    output(0);
+                    output_at(0);
                 }
                 return;
             case 14:
                 mob_unit.inc_mdc_base_2();
-                if (beam_area != v_blank) output(8);
+                if (beam_area != v_blank) output();
                 return;
             case 15:
                 mob_unit.inc_mdc_base_1();
@@ -325,7 +325,7 @@ public:
                     case disp_048_247:
                         gfx_unit.read_vm();
                     case disp_018_047: case disp_248_254: case disp_255_281:
-                        output(16);
+                        output();
                         gfx_unit.read_gfx();
                         return;
                 }
@@ -335,7 +335,7 @@ public:
                     case disp_048_247:
                         gfx_unit.read_vm();
                     case disp_018_047: case disp_248_254: case disp_255_281:
-                        output_on_edge(24);
+                        output_on_edge();
                         gfx_unit.read_gfx();
                         return;
                 }
@@ -349,7 +349,7 @@ public:
                     case disp_048_247:
                         gfx_unit.read_vm();
                     case disp_018_047: case disp_248_254: case disp_255_281:
-                        output(line_cycle*8 - 104);
+                        output();
                         gfx_unit.read_gfx();
                         return;
                 }
@@ -365,18 +365,18 @@ public:
                         gfx_unit.read_vm();
                         gfx_unit.ba_end();
                     case disp_018_047: case disp_248_254: case disp_255_281:
-                        output_on_edge(328);
+                        output_on_edge();
                         gfx_unit.read_gfx();
                         return;
                 }
             case 55:
                 mob_unit.check_dma();
-                if (beam_area != v_blank) output(336);
+                if (beam_area != v_blank) output();
                 return;
             case 56:
                 mob_unit.pre_dma(1);
                 if (beam_area == v_blank) check_right_vb(344);
-                else output_on_edge(344);
+                else output_on_edge();
                 return;
             case 57:
                 mob_unit.check_disp();
@@ -385,16 +385,16 @@ public:
                     case disp_048_247: case disp_248_254:
                         gfx_unit.row_end();
                     case disp_018_047: case disp_255_281:
-                        output(352);
+                        output();
                         return;
                 }
             case 58:
                 mob_unit.pre_dma(2);
-                if (beam_area != v_blank) output(360);
+                if (beam_area != v_blank) output();
                 return;
             case 59:
                 mob_unit.do_dma(0);
-                if (beam_area != v_blank) output(368);
+                if (beam_area != v_blank) output();
                 return;
             case 60: mob_unit.pre_dma(3); return;
             case 61: mob_unit.do_dma(1);  return;
@@ -926,27 +926,33 @@ private:
         }
     }
     */
-    void output(u16 x) {
-        for (int pt = 0; pt < 8; ++pt, ++x)
-            exude_pixel(x, pt);
+    void output_at(u16 x) {
+        raster_x = x;
+        output();
     }
-    void output_on_edge(u16 x) {
+
+    void output() {
+        for (int pt = 0; pt < 8; ++pt)
+            exude_pixel(pt);
+    }
+
+    void output_on_edge() {
         for (int pt = 0; pt < 8; ++pt) {
-            if (x == cmp_left) {
+            if (raster_x == cmp_left) {
                 if (raster_y == cmp_top && den) vert_border_on = false;
                 else if (raster_y == cmp_bottom) vert_border_on = true;
                 if (!vert_border_on) main_border_on = false;
-            } else if (x == cmp_right) main_border_on = true;
-            exude_pixel(x++, pt);
+            } else if (raster_x == cmp_right) main_border_on = true;
+            exude_pixel(pt);
         }
     }
 
-    void exude_pixel(u16 x, u8 pixel_time) {
+    void exude_pixel(u8 pixel_time) {
         bool gfx_fg = false;
         u8 g_col = gfx_unit.pixel_out(pixel_time, gfx_fg); // must call always (to keep in sync)
 
         u8 src_mob = 0; // if not transparet then src bit will be set here
-        u8 m_col = mob_unit.pixel_out(x, gfx_fg, src_mob); // must call always (to keep in sync)
+        u8 m_col = mob_unit.pixel_out(raster_x, gfx_fg, src_mob); // must call always (to keep in sync)
 
         // priorites: border < mob|gfx_fg (based on reg[mndp]) < gfx_bg
         u8 o_col;
@@ -958,6 +964,8 @@ private:
         else o_col = g_col;
 
         out.put_pixel(o_col);
+
+        ++raster_x;
     }
 
 
@@ -969,6 +977,7 @@ private:
     u8 reg[REG_COUNT];
 
     u8 line_cycle;
+    u16 raster_x;
     u16 raster_y;
     Beam_area beam_area = v_blank;
 
