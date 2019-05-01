@@ -198,23 +198,6 @@ private:
 };
 
 
-class Joystick {
-public:
-    Joystick(Port::PD_in& port_in_) : port_in(port_in_) { }
-
-    Sig_key handler {
-        [this](u8 code, u8 down) {
-            const u8 bit_pos = 0x1 << code;
-            const u8 bit_val = down ? 0x0 : bit_pos;
-            port_in(bit_pos, bit_val);
-        }
-    };
-
-private:
-    Port::PD_in& port_in;
-
-};
-
 } // namespace IO
 
 

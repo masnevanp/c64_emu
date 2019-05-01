@@ -301,9 +301,7 @@ public:
         vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT),
         vic_out(vid_out, host_input, sid, frame_cycle),
         int_hub(cpu),
-        kb_matrix(cia1.get_port_a_in(), cia1.get_port_b_in()),
-        joy1(cia1.get_port_b_in()),
-        joy2(cia1.get_port_a_in()),
+        kb_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in),
         io_space(cia1, cia2, sid, vic, col_ram),
         sys_banker(ram, rom, io_space),
         host_input(host_input_handlers)
@@ -365,6 +363,8 @@ public:
     VIC vic;
 
 private:
+    static const u8 LP_BIT = 0x10;
+
     Host::Video_out vid_out;
     VIC_out vic_out;
 
@@ -373,8 +373,6 @@ private:
     IO::Int_hub int_hub;
 
     IO::Keyboard_matrix kb_matrix;
-    IO::Joystick joy1;
-    IO::Joystick joy2;
 
     IO_space io_space;
     Banker sys_banker;
@@ -385,14 +383,16 @@ private:
 
     Host::Input host_input;
 
-
     /* -------------------- CIA port outputs -------------------- */
     // NOTE: there may be coming many updates per cycle (receiver may need to keep track)
     IO::Port::PD_out cia1_port_a_out {
         [this](u8 bits, u8 bit_vals) { kb_matrix.port_a_out(bits, bit_vals); }
     };
     IO::Port::PD_out cia1_port_b_out {
-        [this](u8 bits, u8 bit_vals) { kb_matrix.port_b_out(bits, bit_vals); }
+        [this](u8 bits, u8 bit_vals) {
+            kb_matrix.port_b_out(bits, bit_vals);
+            vic.set_lp_cia1_pb_b4((bit_vals ^ LP_BIT) & bits);
+        }
     };
     IO::Port::PD_out cia2_port_a_out {
         [this](u8 bits, u8 bit_vals) { vic.banker.set_bank(bits, bit_vals);  }
@@ -436,8 +436,22 @@ private:
             }
         },
 
-        joy1.handler,
-        joy2.handler,
+        // joy1
+        [this](u8 code, u8 down) {
+            const u8 bit_pos = 0x1 << code;
+            const u8 bit_val = down ? 0x0 : bit_pos;
+            cia1.port_b.ext_in(bit_pos, bit_val);
+            if (bit_pos == LP_BIT) {
+                vic.set_lp_ctrl_p1_p6(down);
+            }
+        },
+
+        // joy2
+        [this](u8 code, u8 down) {
+            const u8 bit_pos = 0x1 << code;
+            const u8 bit_val = down ? 0x0 : bit_pos;
+            cia1.port_a.ext_in(bit_pos, bit_val);
+        }
     };
 
     Sig on_cpu_halt_sig {

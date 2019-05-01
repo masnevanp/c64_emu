@@ -95,7 +95,6 @@ private:
 };
 
 
-// TODO: lightpen (3.11)
 template <typename Out>
 class Core { // 6569 (PAL-B)
 public:
@@ -155,8 +154,12 @@ public:
         reset_warm();
         for (int r = 0; r < REG_COUNT; ++r) w(r, 0);
         raster_y = RASTER_LINE_COUNT - 1;
-        line_cycle = 0;
+        line_cycle = lp_p1_p6_low = lp_pb_b4_low = 0;
     }
+
+    // TODO: set lp x/y (mouse event)
+    void set_lp_ctrl_p1_p6(u8 low) { set_lp(lp_p1_p6_low = low); }
+    void set_lp_cia1_pb_b4(u8 low) { set_lp(lp_pb_b4_low = low); }
 
     void r(const u8& ri, u8& data) {
         switch (ri) {
@@ -250,7 +253,11 @@ public:
                             out.frame_done();
                             return;
                         }
-                        if (raster_y == 18)  beam_area = disp_018_047;
+                        if (raster_y == 18) {
+                            beam_area = disp_018_047;
+                            frame_lp = 0;
+                            set_lp(lp_p1_p6_low || lp_pb_b4_low);
+                        }
                         break;
                     case disp_018_047:
                         if (raster_y == 48) {
@@ -884,6 +891,15 @@ private:
         BA_unit& ba;
     };
 
+    void set_lp(u8 low) {
+        // TODO: need to adjust the x for CIA originated ones?
+        if (low && !frame_lp) {
+            frame_lp = true;
+            reg[lpx] = raster_x >> 1;
+            reg[lpy] = raster_y;
+            irq_unit.req(IRQ_unit::lp);
+        }
+    }
 
     void set_rsel(bool rs) {
         static const u16 CSEL_top[2]    = { 55, 51 };
@@ -907,25 +923,6 @@ private:
         else if (raster_y == cmp_bottom) vert_border_on = true;
     }
 
-    /*
-    void output(u16 x_from, u16 x_to) {
-        do exude_pixel(x_from, x_from % 8);
-        while(++x_from <= x_to);
-    }
-    void output(u16 x) { output(x, x+7); }
-    void output_on_edge(u16 x) {
-        for (u16 x_to = x+7; x <= x_to; ++x) {
-            if (x == cmp_left) {
-                if (raster_y == cmp_top) {
-                    if (den) main_border_on = vert_border_on = false;
-                }
-                else if (raster_y == cmp_bottom) vert_border_on = true;
-                else if (!vert_border_on) main_border_on = false;
-            } else if (x == cmp_right) main_border_on = true;
-            exude_pixel(x, x % 8);
-        }
-    }
-    */
     void output_at(u16 x) {
         raster_x = x;
         output();
@@ -977,6 +974,9 @@ private:
     u8 reg[REG_COUNT];
 
     u8 line_cycle;
+    u8 frame_lp;
+    u8 lp_p1_p6_low;
+    u8 lp_pb_b4_low;
     u16 raster_x;
     u16 raster_y;
     Beam_area beam_area = v_blank;

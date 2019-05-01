@@ -26,15 +26,18 @@ public:
 
     const int id;
 
+    IO::Port port_a;
+    IO::Port port_b;
+
     Core(
         int id_,
         const IO::Sync::Master& sync_master,
         const PD_out& port_out_a, const PD_out& port_out_b_,
         Int_sig& int_sig_, u8 TOD_freq = 50)
       : id(id_),
+        port_a(port_out_a), port_b(port_out_b_),
         sync(sync_master),
         port_out_b(port_out_b_),
-        port_a(port_out_a), port_b(port_out_b_),
         int_ctrl(int_sig_),
         timer_b(int_ctrl, sig_null, cnt, inmode_mask_b, Int_ctrl::Int_src::tb, timer_pb_out, tb_pb_bit),
         timer_a(int_ctrl, timer_b.tick_ta, cnt, inmode_mask_a, Int_ctrl::Int_src::ta, timer_pb_out, ta_pb_bit),
@@ -140,9 +143,6 @@ public:
         }
         cnt = high;
     }
-
-    PD_in& get_port_a_in() { return port_a.ext_in; }
-    PD_in& get_port_b_in() { return port_b.ext_in; }
 
 private:
     IO::Sync::Slave sync;
@@ -529,8 +529,6 @@ private:
 
     bool cnt;
 
-    IO::Port port_a;
-    IO::Port port_b;
     Int_ctrl int_ctrl;
     Timer timer_b;
     Timer timer_a;
