@@ -261,13 +261,13 @@ public:
                         break;
                     case disp_018_047:
                         if (raster_y == 48) {
-                            gfx_unit.init(den);
+                            gfx_unit.vma_start(den);
                             beam_area = disp_048_247;
                         }
                         break;
                     case disp_048_247:
                         if (raster_y == 248) {
-                            gfx_unit.deinit();
+                            gfx_unit.vma_done();
                             beam_area = disp_248_254;
                         }
                         else gfx_unit.ba_eval();
@@ -330,20 +330,20 @@ public:
                 switch (beam_area) {
                     case v_blank: return;
                     case disp_048_247:
-                        gfx_unit.read_vm();
+                        gfx_unit.vm_read();
                     case disp_018_047: case disp_248_254: case disp_255_281:
                         output();
-                        gfx_unit.read_gfx();
+                        gfx_unit.gfx_read();
                         return;
                 }
             case 16:
                 switch (beam_area) {
                     case v_blank: check_left_vb(); return;
                     case disp_048_247:
-                        gfx_unit.read_vm();
+                        gfx_unit.vm_read();
                     case disp_018_047: case disp_248_254: case disp_255_281:
                         output_on_edge();
-                        gfx_unit.read_gfx();
+                        gfx_unit.gfx_read();
                         return;
                 }
             case 17: case 18: case 19:
@@ -354,10 +354,10 @@ public:
                 switch (beam_area) {
                     case v_blank: return;
                     case disp_048_247:
-                        gfx_unit.read_vm();
+                        gfx_unit.vm_read();
                     case disp_018_047: case disp_248_254: case disp_255_281:
                         output();
-                        gfx_unit.read_gfx();
+                        gfx_unit.gfx_read();
                         return;
                 }
             case 54:
@@ -369,11 +369,11 @@ public:
                         check_right_vb(335);
                         return;
                     case disp_048_247:
-                        gfx_unit.read_vm();
+                        gfx_unit.vm_read();
                         gfx_unit.ba_end();
                     case disp_018_047: case disp_248_254: case disp_255_281:
                         output_on_edge();
-                        gfx_unit.read_gfx();
+                        gfx_unit.gfx_read();
                         return;
                 }
             case 55:
@@ -473,7 +473,7 @@ private:
         void mob_start()       { ba_low += 0x100; }
         void mob_done()        { ba_low -= 0x100; }
         void gfx_set(u8 b)     { ba_low = (ba_low & 0x700) | b; }
-        void gfx_reset()       { gfx_set(0); }
+        void gfx_clear()       { gfx_set(0); }
         u8   gfx_state() const { return ba_low & 0xff; }
     private:
         u16& ba_low;
@@ -687,18 +687,8 @@ private:
             v_border_on(v_border_on_), ba(ba_)
         { set_mode(scm); }
 
-        // called at the beginning of VMA_TOP_RASTER_Y
-        void init(bool den)    { frame_den = den; vc_base = 0; }
         // called if cr1.den is modified (interesting only if it happens during VMA_TOP_RASTER_Y)
-        void set_den(bool den) { frame_den |= (raster_y == VMA_TOP_RASTER_Y && den); }
-
-        void set_y_scroll(u8 y_scroll_, bool vma_area) {
-            y_scroll = y_scroll_;
-            if (vma_area) {
-                ba_eval();
-                if (line_cycle > 10 && line_cycle < 54) ba_toggle();
-            }
-        }
+        void set_den(bool den) { frame_den |= (raster_y == VMA_TOP_RASTER_Y && den);   }
 
         void set_ecm(bool e)   { set_mode(e ? mode_id | ecm_set : mode_id & ~ecm_set); }
         void set_bmm(bool b)   { set_mode(b ? mode_id | bmm_set : mode_id & ~bmm_set); }
@@ -708,6 +698,22 @@ private:
         void set_bgc1(u8 bgc1) { color_tbl.mccm[1] = bgc1; }
         void set_bgc2(u8 bgc2) { color_tbl.mccm[2] = bgc2; }
 
+        void set_y_scroll(u8 y_scroll_, bool vma_area) {
+            y_scroll = y_scroll_;
+            if (vma_area) {
+                ba_eval();
+                if (line_cycle > 10 && line_cycle < 54) ba_toggle();
+            }
+        }
+
+        void vma_start(bool den) {
+            frame_den = den;
+            vc_base = 0;
+            ba_eval();
+        }
+
+        void vma_done() { ba_line = false; }
+
         void ba_eval() { ba_line = ((raster_y & y_scroll_mask) == y_scroll) && frame_den; }
 
         void ba_toggle() {
@@ -715,8 +721,10 @@ private:
                 ba.gfx_set(line_cycle | 0x80); // store cycle for AEC checking later
                 activate_gfx();
             }
-            else ba.gfx_reset();
+            else ba.gfx_clear();
         }
+
+        void ba_end() { ba.gfx_clear(); }
 
         void row_start() {
             vc = vc_base;
@@ -732,18 +740,14 @@ private:
             else if (gfx_active()) rc = (rc + 1) & 0x7;
         }
 
-        void ba_end() { ba.gfx_reset(); }
-
-        void deinit() { ba_line = false; }
-
-        void read_vm() {
+        void vm_read() {
             if (ba_line) { // (ba.gfx_state())
                 col_ram.r(vc, vm_row[vmri].cr_data);
                 vm_row[vmri].vm_data = bank.r(vm_base | vc);
             }
         }
 
-        void read_gfx() {
+        void gfx_read() {
             static const u8 MC_flag          = 0x8;
             static const u16 G_ADDR_ECM_MASK = 0x39ff;
             //mode = &mode_tbl[mode_id]; //if it is necessary to delay the change
