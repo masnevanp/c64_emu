@@ -297,7 +297,7 @@ public:
         cia1(1, sync_master, cia1_port_a_out, cia1_port_b_out, int_hub.irq),
         cia2(2, sync_master, cia2_port_a_out, cia2_port_b_out, int_hub.nmi),
         sid(frame_cycle),
-        vic(ram, col_ram, rom.charr, int_hub.irq, ba_low, vic_out),
+        vic(ram, col_ram, rom.charr, int_hub.irq, rdy_low, vic_out),
         vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT),
         vic_out(vid_out, host_input, sid, frame_cycle),
         int_hub(cpu),
@@ -333,14 +333,14 @@ public:
         int_hub.reset();
 
         frame_cycle = 0;
-        ba_low = nmi_set = false;
+        rdy_low = nmi_set = false;
     }
 
     void run() {
         for (;;++frame_cycle) {
             sync_master.tick();
             vic.tick(frame_cycle);
-            if (!ba_low || cpu.mrw() == NMOS6502::RW::w) {
+            if (!rdy_low || cpu.mrw() == NMOS6502::RW::w) {
                 sys_banker.access(cpu.mar(), cpu.mdr(), cpu.mrw());
                 cpu.tick();
             }
@@ -379,7 +379,7 @@ private:
 
     u16 frame_cycle;
 
-    u16 ba_low;
+    u16 rdy_low;
 
     Host::Input host_input;
 

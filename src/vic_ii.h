@@ -79,7 +79,6 @@ public:
         if (new_mode != mode) {
             mode = new_mode;
             pla = (u8*)PLA[mode];
-            // std::cout << "\n[VIC_II::Banker]: mode " << (int)mode;
         }
     }
 
@@ -135,7 +134,6 @@ public:
 
 
     Core(
-          /*const IO::Sync::Master& sync_master,*/
           const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
           Int_sig& irq, u16& ba_low, Out& out_)
         : banker(ram_, charr),
@@ -218,9 +216,6 @@ public:
             case mnye: for (auto& m : mob_unit.mob) { m.set_ye(d & 0x1); d >>= 1; } break;
             case mnmc: for (auto& m : mob_unit.mob) { m.set_mc(d & 0x1); d >>= 1; } break;
             case mnxe: for (auto& m : mob_unit.mob) { m.set_xe(d & 0x1); d >>= 1; } break;
-            case bgc0: gfx_unit.set_bgc0(d); break;
-            case bgc1: gfx_unit.set_bgc1(d); break;
-            case bgc2: gfx_unit.set_bgc2(d); break;
             case mmc0: for (auto& m : mob_unit.mob) m.set_mc0(d); break;
             case mmc1: for (auto& m : mob_unit.mob) m.set_mc1(d); break;
             case m0c: case m1c: case m2c: case m3c: case m4c: case m5c: case m6c: case m7c:
@@ -342,7 +337,7 @@ public:
                     case disp_048_247:
                         gfx_unit.vm_read();
                     case disp_018_047: case disp_248_254: case disp_255_281:
-                        output_on_edge();
+                        output_on_left_edge();
                         gfx_unit.gfx_read();
                         return;
                 }
@@ -372,7 +367,7 @@ public:
                         gfx_unit.vm_read();
                         gfx_unit.ba_end();
                     case disp_018_047: case disp_248_254: case disp_255_281:
-                        output_on_edge();
+                        output_on_right_edge();
                         gfx_unit.gfx_read();
                         return;
                 }
@@ -383,7 +378,7 @@ public:
             case 56:
                 mob_unit.pre_dma(1);
                 if (beam_area == v_blank) check_right_vb(344);
-                else output_on_edge();
+                else output_on_right_edge();
                 return;
             case 57:
                 mob_unit.check_disp();
@@ -470,13 +465,13 @@ private:
     public:
         BA_unit(u16& ba_low_) : ba_low(ba_low_) {}
 
-        void mob_start()       { ba_low += 0x100; }
-        void mob_done()        { ba_low -= 0x100; }
-        void gfx_set(u8 b)     { ba_low = (ba_low & 0x700) | b; }
-        void gfx_clear()       { gfx_set(0); }
-        u8   gfx_state() const { return ba_low & 0xff; }
+        void mob_start(u8 mn)  { ba_low |=  (0x100 << mn); }
+        void mob_done(u8 mn)   { ba_low &= ~(0x100 << mn); }
+        void gfx_set(u8 b)     { ba_low = (ba_low & 0xff00) | b; }
+        void gfx_rel()         { gfx_set(0); }
+        // u8   gfx_state() const { return ba_low; }
     private:
-        u16& ba_low;
+        u16& ba_low; // 8 MSBs for MOBs, 8 LSBs for GFX
     };
 
 
@@ -487,12 +482,11 @@ private:
 
         class MOB {
         public:
-            // TODO: these 4 flags into one u8...?
-            bool ye;
-
-            bool disp_on = false;
-            bool dma_on = false;
-            bool mdc_base_upd;
+            // flags (TODO: these 4 into one u8...?)
+            u8 ye;
+            u8 disp_on = false;
+            u8 dma_on = false;
+            u8 mdc_base_upd;
 
             u8 mdc_base;
             u8 mdc;
@@ -571,7 +565,9 @@ private:
             for (u8 mn = 0; mn < MOB_COUNT; ++mn) {
                 MOB& m = mob[mn];
                 m.mdc = m.mdc_base;
-                if (m.dma_on && (reg[m0y + (mn * 2)] == (raster_y & 0xff))) m.disp_on = true;
+                if (m.dma_on != m.disp_on && (reg[m0y + (mn * 2)] == (raster_y & 0xff))) {
+                    m.disp_on = true;
+                }
             }
         }
         void inc_mdc_base_2() { for (auto& m : mob) m.mdc_base += (m.mdc_base_upd * 2); }
@@ -581,7 +577,7 @@ private:
                 if (m.mdc_base == 63) m.dma_on = m.disp_on = false;
             }
         }
-        void pre_dma(u8 mn) { if (mob[mn].dma_on) ba.mob_start(); }
+        void pre_dma(u8 mn) { if (mob[mn].dma_on) ba.mob_start(mn); }
         void do_dma(u8 mn)  { // do p&s -accesses
             MOB& m = mob[mn];
             // if dma_on, then cpu has already been stopped --> safe to read all at once (1p + 3s)
@@ -592,7 +588,7 @@ private:
                 u32 d2 = bank.r(mp | m.mdc++);
                 u32 d3 = bank.r(mp | m.mdc++);
                 m.load_data(d1, d2, d3);
-                ba.mob_done();
+                ba.mob_done(mn);
             }
         }
 
@@ -657,11 +653,12 @@ private:
     class GFX_unit {
     public:
         static const u16 VMA_TOP_RASTER_Y = 48;
+        static const u8  FG_GFX_FLAG = 0x80;
 
         enum Mode_bit : u8 {
             ecm_set = 0x4, bmm_set = 0x2, mcm_set = 0x1, not_set = 0x0
         };
-        enum Mode_id : u8 {
+        enum Mode : u8 {
         /*  mode  = ECM-bit | BMM-bit | MCM-bit  */
             scm   = not_set | not_set | not_set, // standard character mode
             mccm  = not_set | not_set | mcm_set, // multi-color character mode
@@ -673,7 +670,7 @@ private:
             ibmm2 = ecm_set | bmm_set | mcm_set, // invalid bit map mode 2
         };
 
-        u8 y_scroll; // TODO: private?
+        u8 y_scroll;
         u8 x_scroll;
         u16 vm_base;
         u16 c_base;
@@ -684,19 +681,14 @@ private:
             const bool& v_border_on_, BA_unit& ba_)
           : bank(bank_), col_ram(col_ram_), reg(reg_),
             line_cycle(line_cycle_), raster_y(raster_y_),
-            v_border_on(v_border_on_), ba(ba_)
-        { set_mode(scm); }
+            v_border_on(v_border_on_), ba(ba_) {}
 
         // called if cr1.den is modified (interesting only if it happens during VMA_TOP_RASTER_Y)
         void set_den(bool den) { frame_den |= (raster_y == VMA_TOP_RASTER_Y && den);   }
 
-        void set_ecm(bool e)   { set_mode(e ? mode_id | ecm_set : mode_id & ~ecm_set); }
-        void set_bmm(bool b)   { set_mode(b ? mode_id | bmm_set : mode_id & ~bmm_set); }
-        void set_mcm(bool m)   { set_mode(m ? mode_id | mcm_set : mode_id & ~mcm_set); }
-
-        void set_bgc0(u8 bgc0) { color_tbl.scm[0] = color_tbl.mccm[0] = color_tbl.mcbmm[0] = bgc0; }
-        void set_bgc1(u8 bgc1) { color_tbl.mccm[1] = bgc1; }
-        void set_bgc2(u8 bgc2) { color_tbl.mccm[2] = bgc2; }
+        void set_ecm(bool e) { mode = e ? mode | ecm_set : mode & ~ecm_set; }
+        void set_bmm(bool b) { mode = b ? mode | bmm_set : mode & ~bmm_set; }
+        void set_mcm(bool m) { mode = m ? mode | mcm_set : mode & ~mcm_set; }
 
         void set_y_scroll(u8 y_scroll_, bool vma_area) {
             y_scroll = y_scroll_;
@@ -721,10 +713,10 @@ private:
                 ba.gfx_set(line_cycle | 0x80); // store cycle for AEC checking later
                 activate_gfx();
             }
-            else ba.gfx_clear();
+            else ba.gfx_rel();
         }
 
-        void ba_end() { ba.gfx_clear(); }
+        void ba_end() { ba.gfx_rel(); }
 
         void row_start() {
             vc = vc_base;
@@ -741,64 +733,121 @@ private:
         }
 
         void vm_read() {
-            if (ba_line) { // (ba.gfx_state())
-                col_ram.r(vc, vm_row[vmri].cr_data);
+            if (ba_line) {
+                col_ram.r(vc, vm_row[vmri].cr_data); // TODO: mask upper bits if 'noise' is implemented
                 vm_row[vmri].vm_data = bank.r(vm_base | vc);
             }
         }
 
         void gfx_read() {
-            static const u8 MC_flag          = 0x8;
+            static const u8  MC_flag         = 0x8;
             static const u16 G_ADDR_ECM_MASK = 0x39ff;
-            //mode = &mode_tbl[mode_id]; //if it is necessary to delay the change
 
             u8 vd = vm_row[vmri].vm_data & vm_mask;
             u8 cd = vm_row[vmri].cr_data & vm_mask;
-            u16 addr;
 
-            switch (mode_id) {
+            u16 addr;
+            u8 data;
+            u8 load_idx = g_out_idx + x_scroll;
+
+            switch (mode) {
                 case scm:
-                    mode->color[1] = cd;
                     addr = c_base | (vd << 3) | rc;
+                    data = bank.r(addr);
+                    cd |= FG_GFX_FLAG;
+                    for (u8 p = 0x80; p; p >>= 1) {
+                        g_out[load_idx++ & 0xf] = data & p ? cd : reg[bgc0];
+                    }
                     break;
                 case mccm:
-                    if (cd & MC_flag) {
-                        mode->pixel_width = 2;
-                        mode->color = color_tbl.mccm;
-                        mode->color[3] = cd & ~MC_flag;
-                    } else {
-                        mode->pixel_width = 1;
-                        mode->color = color_tbl.scm;
-                        mode->color[1] = cd;
-                    }
                     addr = c_base | (vd << 3) | rc;
+                    data = bank.r(addr);
+                    if (cd & MC_flag) {
+                        for (int p = 6; p >= 0; p -= 2) {
+                            auto d = (data >> p) & 0x3;
+                            u8 g = (d == 0x3) ? cd ^ MC_flag : reg[bgc0 + d];
+                            g |= (d << 6); // set fg-gfx flag
+                            g_out[load_idx++ & 0xf] = g;
+                            g_out[load_idx++ & 0xf] = g;
+                        }
+                    } else {
+                        cd |= FG_GFX_FLAG;
+                        for (u8 p = 0x80; p; p >>= 1) {
+                            g_out[load_idx++ & 0xf] = data & p ? cd : reg[bgc0];
+                        }
+                    }
                     break;
-                case sbmm:
-                    mode->color[0] = vd & 0xf;
-                    mode->color[1] = vd >> 4;
+                case sbmm: {
+                    u8 col0 = vd & 0xf;
+                    u8 col1 = (vd >> 4) | FG_GFX_FLAG;
                     addr = (c_base & 0x2000) | (vc << 3) | rc;
+                    data = bank.r(addr);
+                    for (u8 p = 0x80; p; p >>= 1) {
+                        g_out[load_idx++ & 0xf] = data & p ? col1 : col0;
+                    }
                     break;
+                }
                 case mcbmm:
-                    mode->color[1] = vd >> 4;
-                    mode->color[2] = vd & 0xf;
-                    mode->color[3] = cd;
                     addr = (c_base & 0x2000) | (vc << 3) | rc;
+                    data = bank.r(addr);
+                    for (int p = 6; p >= 0; p -= 2) {
+                        auto d = (data >> p) & 0x3;
+                        u8 g;
+                        switch (d) {
+                            case 0x0: g = reg[bgc0]; break;
+                            case 0x1: g = vd >> 4;   break;
+                            case 0x2: g = vd & 0xf;  break;
+                            case 0x3: g = cd;        break;
+                        }
+                        g |= (d << 6); // set fg-gfx flag
+                        g_out[load_idx++ & 0xf] = g;
+                        g_out[load_idx++ & 0xf] = g;
+                    }
                     break;
-                case ecm:
-                    mode->color[0] = reg[bgc0 + (vd >> 6)];
-                    mode->color[1] = cd;
+                case ecm: {
+                    u8 col0 = reg[bgc0 + (vd >> 6)];
+                    u8 col1 = cd | FG_GFX_FLAG;
                     addr = (c_base | (vd << 3) | rc) & G_ADDR_ECM_MASK;
+                    data = bank.r(addr);
+                    for (u8 p = 0x80; p; p >>= 1) {
+                        g_out[load_idx++ & 0xf] = data & p ? col1 : col0;
+                    }
                     break;
+                }
                 case icm:
-                    mode->pixel_width = (cd & MC_flag) ? 2 : 1;
                     addr = (c_base | (vd << 3) | rc) & G_ADDR_ECM_MASK;
+                    data = bank.r(addr);
+                    if (cd & MC_flag) {
+                        for (int p = 0; p < 4; ++p) {
+                            u8 g = data & 0xc0; // sets color to 0 and fg-gfx flag
+                            g_out[load_idx++ & 0xf] = g;
+                            g_out[load_idx++ & 0xf] = g;
+                            data <<= 2;
+                        }
+                    } else {
+                        for (u8 p = 0x80; p; p >>= 1) {
+                            g_out[load_idx++ & 0xf] = data & p ? (0 | FG_GFX_FLAG) : 0;
+                        }
+                    }
                     break;
-                case ibmm1: case ibmm2: default:
+                case ibmm1:
                     addr = ((c_base & 0x2000) | (vc << 3) | rc) & G_ADDR_ECM_MASK;
+                    data = bank.r(addr);
+                    for (u8 p = 0x80; p; p >>= 1) {
+                        g_out[load_idx++ & 0xf] = data & p ? (0 | FG_GFX_FLAG) : 0;
+                    }
+                    break;
+                case ibmm2:
+                    addr = ((c_base & 0x2000) | (vc << 3) | rc) & G_ADDR_ECM_MASK;
+                    data = bank.r(addr);
+                    for (int p = 0; p < 4; ++p) {
+                        u8 g = data & 0xc0; // sets color to 0 and fg-gfx flag
+                        g_out[load_idx++ & 0xf] = g;
+                        g_out[load_idx++ & 0xf] = g;
+                        data <<= 2;
+                    }
                     break;
             }
-
-            next_pixel_data = bank.r(addr);
 
             if (gfx_active()) {
                 vc = (vc + 1) & 0x3ff;
@@ -806,34 +855,27 @@ private:
             }
         }
 
-        u8 pixel_out(u8 pixel_time, bool& fg_gfx) { // 8 pixels/cycle --> pixel_time: 0..7
-            if (pixel_time == x_scroll) {
-                pixel_data = next_pixel_data;
-                next_pixel_data = 0; // TODO: best way?
-            } else if (((pixel_time - x_scroll) % mode->pixel_width) == 0) { // TODO: nicer?
-                pixel_data <<= mode->pixel_width;
-            }
-
+        u8 pixel_out(bool& fg_gfx) {
             if (v_border_on) {
                 return reg[bgc0];
             } else {
-                fg_gfx = pixel_data & 0x80;
-                return mode->color[pixel_data >> (8 - mode->pixel_width)];
+                u8 px = g_out[g_out_idx & 0xf];
+                g_out[g_out_idx++ & 0xf] = reg[bgc0];
+                fg_gfx = px & FG_GFX_FLAG;
+                return px & 0xf;
             }
         }
 
     private:
+        enum VM_Mask : u8 { idle = 0x00, active = 0xff };
         static const u16 RC_IDLE   = 0x3fff;
-        static const u8  VM_ACTIVE = 0xff;
-        static const u8  VM_IDLE   = 0x00;
 
-        void activate_gfx()   { rc = rc & 0x7; vm_mask = VM_ACTIVE; }
-        void deactivate_gfx() { rc = RC_IDLE;  vm_mask = VM_IDLE; }
-
-        bool gfx_active() const { return vm_mask != VM_IDLE; }
+        void activate_gfx()     { rc = rc & 0x7; vm_mask = active; }
+        void deactivate_gfx()   { rc = RC_IDLE;  vm_mask = idle; }
+        bool gfx_active() const { return vm_mask; }
 
         u8 ba_line = false;
-        u8 frame_den;   // set for each frame (at the top of disp.win)
+        u8 frame_den; // set for each frame (at the top of disp.win)
 
         struct VM_data { // video-matrix data
             u8 vm_data;
@@ -841,50 +883,16 @@ private:
         };
         VM_data vm_row[40]; // vm row buffer
 
-        u16 vc_base; // video counter base
-        u16 vc;      // video counter
-        u16 rc = 7;  // row counter
-        u8  vmri;    // vm_row index
-        u8  vm_mask = 0x00; // 0x00 = gfx_idle, 0xff = gfx_active
+        u16 vc_base;  // video counter base
+        u16 vc;       // video counter
+        u16 rc = 7;   // row counter
+        u8  vmri;     // vm_row index
+        VM_Mask vm_mask = idle;
 
-        u8 pixel_data = 0x00;
-        u8 next_pixel_data = 0x00;
+        u8 g_out[16]; // 15 would be enough, but 16 works out more nicely...
+        u8 g_out_idx;
 
-        struct Color_tbl {
-            u8 scm[2];
-            u8 mccm[4];
-            u8 sbmm[2];
-            u8 mcbmm[4];
-            u8 ecm[2];
-            u8 invalid[4] = { 0, 0, 0, 0 }; // all black
-        };
-        Color_tbl color_tbl;
-
-        struct Mode {
-            u8 pixel_width;
-            u8* color;
-        };
-        Mode mode_tbl[8] = {
-            { 1, color_tbl.scm     },
-            { 2, color_tbl.mccm    }, // pixel_width set dynamically based on c-data
-            { 1, color_tbl.sbmm    },
-            { 2, color_tbl.mcbmm   },
-            { 1, color_tbl.ecm     },
-            { 2, color_tbl.invalid }, // pixel_width set dynamically based on c-data
-            { 1, color_tbl.invalid },
-            { 2, color_tbl.invalid },
-        };
-        Mode* mode = &mode_tbl[0]; // active mode
-
-        u8 mode_id;
-        /*
-           TODO: switch mode immediately, or do it at next g_access()..?
-
-           What does VIC-II do when mode is changed in the middle of a line, and xscroll != 0?
-           Spit out the remaining pixels, and then change mode?
-           Or change it immediately? (the simpler alternative)
-        */
-        void set_mode(u8 m) { mode_id = m; mode = &mode_tbl[m]; }
+        u8 mode = scm;
 
         Banker& bank;
         const Color_RAM& col_ram;
@@ -918,7 +926,6 @@ private:
         cmp_right = CSEL_right[cs];
     }
 
-
     // checks done during blanking periods (don't necessarely need to be pixel-perfect)
     void check_left_vb()               { if (!vert_border_on) main_border_on = false; }
     void check_right_vb(u16 x)         { if (x == cmp_right) main_border_on = true; }
@@ -927,30 +934,36 @@ private:
         else if (raster_y == cmp_bottom) vert_border_on = true;
     }
 
+    void output() {
+        for (int x = 0; x < 8; ++x) exude_pixel();
+    }
+
     void output_at(u16 x) {
         raster_x = x;
         output();
     }
 
-    void output() {
-        for (int pt = 0; pt < 8; ++pt)
-            exude_pixel(pt);
-    }
-
-    void output_on_edge() {
-        for (int pt = 0; pt < 8; ++pt) {
+    void output_on_left_edge() {
+        for (int x = 0; x < 8; ++x) {
             if (raster_x == cmp_left) {
                 if (raster_y == cmp_top && den) vert_border_on = false;
                 else if (raster_y == cmp_bottom) vert_border_on = true;
                 if (!vert_border_on) main_border_on = false;
-            } else if (raster_x == cmp_right) main_border_on = true;
-            exude_pixel(pt);
+            }
+            exude_pixel();
         }
     }
 
-    void exude_pixel(u8 pixel_time) {
+    void output_on_right_edge() {
+        for (int x = 0; x < 8; ++x) {
+            if (raster_x == cmp_right) main_border_on = true;
+            exude_pixel();
+        }
+    }
+
+    void exude_pixel() {
         bool gfx_fg = false;
-        u8 g_col = gfx_unit.pixel_out(pixel_time, gfx_fg); // must call always (to keep in sync)
+        u8 g_col = gfx_unit.pixel_out(gfx_fg); // must call always (to keep in sync)
 
         u8 src_mob = 0; // if not transparet then src bit will be set here
         u8 m_col = mob_unit.pixel_out(raster_x, gfx_fg, src_mob); // must call always (to keep in sync)
