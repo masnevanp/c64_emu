@@ -857,6 +857,7 @@ private:
 
         u8 pixel_out(bool& fg_gfx) {
             if (v_border_on) {
+                g_out[g_out_idx++ & 0xf] = reg[bgc0];
                 return reg[bgc0];
             } else {
                 u8 px = g_out[g_out_idx & 0xf];
