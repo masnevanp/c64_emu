@@ -613,6 +613,8 @@ private:
     public:
         static const u16 VMA_TOP_RASTER_Y = 48;
         static const u8  FG_GFX_FLAG = 0x80;
+        static const u8  BG_COL_FLAG = 0x20; // works out since 'bgc0..bgc3' --> '0x21..0x24'
+        static const u8  BG_COL_MASK = 0x27;
 
         enum Mode_bit : u8 {
             ecm_set = 0x4, bmm_set = 0x2, mcm_set = 0x1, not_set = 0x0
@@ -702,6 +704,7 @@ private:
 
         void gfx_read() {
             static const u8  MC_flag         = 0x8;
+            static const u8  BGC0            = (u8)bgc0;
             static const u16 G_ADDR_ECM_MASK = 0x39ff;
 
             u8 vd = vm_row[vmri].vm_data & vm_mask;
@@ -717,7 +720,7 @@ private:
                     data = bank.r(addr);
                     cd |= FG_GFX_FLAG;
                     for (u8 p = 0x80; p; p >>= 1) {
-                        g_out[load_idx++ & 0x1f] = data & p ? cd : reg[bgc0];
+                        g_out[load_idx++ & 0x1f] = data & p ? cd : BGC0;
                     }
                     break;
                 case mccm:
@@ -726,15 +729,15 @@ private:
                     if (cd & MC_flag) {
                         for (int p = 6; p >= 0; p -= 2) {
                             auto d = (data >> p) & 0x3;
-                            u8 g = (d == 0x3) ? cd ^ MC_flag : reg[bgc0 + d];
-                            g |= (d << 6); // set fg-gfx flag
+                            u8 g = (d == 0x3) ? cd ^ MC_flag : BGC0 + d;
+                            g |= (d << 6); // sets fg-gfx flag
                             g_out[load_idx++ & 0x1f] = g;
                             g_out[load_idx++ & 0x1f] = g;
                         }
                     } else {
                         cd |= FG_GFX_FLAG;
                         for (u8 p = 0x80; p; p >>= 1) {
-                            g_out[load_idx++ & 0x1f] = data & p ? cd : reg[bgc0];
+                            g_out[load_idx++ & 0x1f] = data & p ? cd : BGC0;
                         }
                     }
                     break;
@@ -755,18 +758,18 @@ private:
                         auto d = (data >> p) & 0x3;
                         u8 g;
                         switch (d) {
-                            case 0x0: g = reg[bgc0]; break;
-                            case 0x1: g = vd >> 4;   break;
-                            case 0x2: g = vd & 0xf;  break;
-                            case 0x3: g = cd;        break;
+                            case 0x0: g = BGC0;     break;
+                            case 0x1: g = vd >> 4;  break;
+                            case 0x2: g = vd & 0xf; break;
+                            case 0x3: g = cd;       break;
                         }
-                        g |= (d << 6); // set fg-gfx flag
+                        g |= (d << 6); // sets fg-gfx flag
                         g_out[load_idx++ & 0x1f] = g;
                         g_out[load_idx++ & 0x1f] = g;
                     }
                     break;
                 case ecm: {
-                    u8 col0 = reg[bgc0 + (vd >> 6)];
+                    u8 col0 = BGC0 + (vd >> 6);
                     u8 col1 = cd | FG_GFX_FLAG;
                     addr = (c_base | (vd << 3) | rc) & G_ADDR_ECM_MASK;
                     data = bank.r(addr);
@@ -824,7 +827,7 @@ private:
                 u8 px = g_out[g_out_idx & 0x1f];
                 g_out[g_out_idx++ & 0x1f] = reg[bgc0];
                 fg_gfx = px & FG_GFX_FLAG;
-                return px & 0xf;
+                return px & BG_COL_FLAG ? reg[px & BG_COL_MASK] : px & 0xf;
             }
         }
 
