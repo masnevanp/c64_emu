@@ -120,18 +120,6 @@ public:
     };
     enum CR2  : u8 { mcm_bit = 0x10, csel_bit = 0x08, x_scroll_mask = 0x07, };
     enum MPTR : u8 { vm_mask = 0xf0, cg_mask = 0x0e, };
-    /* Raster line : beam_area
-          000..017 : v_blank
-          018..047 : disp_018_047    (top border)
-          048..247 : disp_048_247    (video-matrix access area)
-          248..254 : disp_248_254    (post vmaa)
-          255..281 : disp_255_281    (bottom border)
-          282..312 : v_blank
-    */
-    enum Beam_area : u8 {
-        v_blank, disp_018_047, disp_048_247, disp_248_254, disp_255_281,
-    };
-
 
     Core(
           const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
@@ -152,7 +140,10 @@ public:
         reset_warm();
         for (int r = 0; r < REG_COUNT; ++r) w(r, 0);
         raster_y = RASTER_LINE_COUNT - 1;
+        v_blank = true;
         line_cycle = lp_p1_p6_low = lp_pb_b4_low = 0;
+        gfx_unit.vma_end();
+        gfx_unit.ba_end();
     }
 
     // TODO: set lp x/y (mouse event)
@@ -194,7 +185,7 @@ public:
                 den = d & den_bit;
                 gfx_unit.set_den(den);
                 set_rsel(d & rsel_bit);
-                gfx_unit.set_y_scroll(d & y_scroll_mask, beam_area == disp_048_247);
+                gfx_unit.set_y_scroll(d & y_scroll_mask);
                 break;
             case rast:
                 cmp_raster = (cmp_raster & 0x100) | d;
@@ -242,40 +233,27 @@ public:
 
                 ++raster_y;
 
-                switch (beam_area) {
-                    case v_blank:
-                        if (raster_y == LAST_RASTER_Y) {
-                            out.frame_done();
-                            return;
-                        }
-                        if (raster_y == 18) {
-                            beam_area = disp_018_047;
-                            frame_lp = 0;
-                            set_lp(lp_p1_p6_low || lp_pb_b4_low);
-                        }
-                        break;
-                    case disp_018_047:
-                        if (raster_y == 48) {
-                            gfx_unit.vma_start(den);
-                            beam_area = disp_048_247;
-                        }
-                        break;
-                    case disp_048_247:
-                        if (raster_y == 248) {
-                            gfx_unit.vma_done();
-                            beam_area = disp_248_254;
-                        }
-                        else gfx_unit.ba_eval();
-                        break;
-                    case disp_248_254:
-                        if (raster_y == 255) beam_area = disp_255_281;
-                        break;
-                    case disp_255_281:
-                        if (raster_y == 282) beam_area = v_blank;
-                        break;
+                if (raster_y == LAST_RASTER_Y) {
+                    out.frame_done();
+                    return;
                 }
 
                 if (raster_y == cmp_raster) irq_unit.req(IRQ_unit::rst);
+
+                if (raster_y & 0x1) return; // odd?
+
+                // TODO: reveal the magic numbers....
+                if (raster_y == 18) {
+                    v_blank = false;
+                    frame_lp = 0;
+                    set_lp(lp_p1_p6_low || lp_pb_b4_low);
+                } else if (raster_y == 48) {
+                    gfx_unit.vma_start(den);
+                } else if (raster_y == 248) {
+                    gfx_unit.vma_end();
+                } else if (raster_y == 282) {
+                    v_blank = true;
+                }
 
                 return;
                 /* NOTE: mob_unit.pre_dma/do_dma pair is done, so that it takes the specified
@@ -295,120 +273,102 @@ public:
                     if (cmp_raster == 0) irq_unit.req(IRQ_unit::rst);
                 }
                 return;
-            case  2: mob_unit.do_dma(3);  return;
-            case  3: mob_unit.pre_dma(6); return;
-            case  4: mob_unit.do_dma(4);  return;
-            case  5: mob_unit.pre_dma(7); return;
+            case  2: mob_unit.do_dma(3);   return;
+            case  3: mob_unit.pre_dma(6);  return;
+            case  4: mob_unit.do_dma(4);   return;
+            case  5: mob_unit.pre_dma(7);  return;
             case  6: mob_unit.do_dma(5);
-            case  7:                      return;
+            case  7:                       return;
             case  8: mob_unit.do_dma(6);
-            case  9:                      return;
-            case 10: mob_unit.do_dma(7);  return;
-            case 11:
-                if (beam_area == disp_048_247) gfx_unit.ba_toggle();
+            case  9:                       return;
+            case 10: mob_unit.do_dma(7);   return;
+            case 11: gfx_unit.ba_start();  return;
+            case 12: // 496..499
+                if (!v_blank) output_4px_at(496);
                 return;
-            case 12:
-                if (beam_area != v_blank) output_at(496);
-                return;
-            case 13:
-                if (beam_area != v_blank) {
+            case 13: // 500
+                if (!v_blank) {
                     gfx_unit.row_start();
-                    output_at(0);
+                    output_4px();
+                    output_4px_at(0);
                 }
                 return;
-            case 14:
+            case 14: // 4
                 mob_unit.inc_mdc_base_2();
-                if (beam_area != v_blank) output();
+                if (!v_blank) {
+                    gfx_unit.vm_read();
+                    output();
+                }
                 return;
-            case 15:
+            case 15: // 12
                 mob_unit.inc_mdc_base_1();
-                switch (beam_area) {
-                    case v_blank: return;
-                    case disp_048_247:
-                        gfx_unit.vm_read();
-                    case disp_018_047: case disp_248_254: case disp_255_281:
-                        output();
-                        gfx_unit.gfx_read();
-                        return;
+                if (!v_blank) {
+                    gfx_unit.gfx_read();
+                    gfx_unit.vm_read();
+                    output();
                 }
-            case 16:
-                switch (beam_area) {
-                    case v_blank: check_left_vb(); return;
-                    case disp_048_247:
-                        gfx_unit.vm_read();
-                    case disp_018_047: case disp_248_254: case disp_255_281:
-                        output_on_left_edge();
-                        gfx_unit.gfx_read();
-                        return;
+                return;
+            case 16: case 17: // 20..35
+                if (!v_blank) {
+                    gfx_unit.gfx_read();
+                    gfx_unit.vm_read();
+                    output_on_left_edge();
                 }
-            case 17: case 18: case 19:
+                return;
+            case 18: case 19:
             case 20: case 21: case 22: case 23: case 24: case 25: case 26: case 27: case 28: case 29:
             case 30: case 31: case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39:
             case 40: case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: case 49:
-            case 50: case 51: case 52: case 53:
-                switch (beam_area) {
-                    case v_blank: return;
-                    case disp_048_247:
-                        gfx_unit.vm_read();
-                    case disp_018_047: case disp_248_254: case disp_255_281:
-                        output();
-                        gfx_unit.gfx_read();
-                        return;
+            case 50: case 51: case 52: case 53: // 36..323
+                if (!v_blank) {
+                    gfx_unit.gfx_read();
+                    gfx_unit.vm_read();
+                    output();
                 }
-            case 54:
+                return;
+            case 54: // 324
                 mob_unit.check_mdc_base_upd();
                 mob_unit.check_dma();
                 mob_unit.pre_dma(0);
-                switch (beam_area) {
-                    case v_blank:
-                        check_right_vb(335);
-                        return;
-                    case disp_048_247:
-                        gfx_unit.vm_read();
-                        gfx_unit.ba_end();
-                    case disp_018_047: case disp_248_254: case disp_255_281:
-                        output_on_right_edge();
-                        gfx_unit.gfx_read();
-                        return;
+                if (!v_blank) {
+                    gfx_unit.gfx_read();
+                    gfx_unit.ba_end();
+                    output();
                 }
-            case 55:
+                return;
+            case 55: // 332
                 mob_unit.check_dma();
-                if (beam_area != v_blank) output();
+                mob_unit.pre_dma(0);
+                if (!v_blank) output_on_right_edge();
                 return;
-            case 56:
+            case 56: // 340
                 mob_unit.pre_dma(1);
-                if (beam_area == v_blank) check_right_vb(344);
-                else output_on_right_edge();
+                if (!v_blank) output_on_right_edge();
                 return;
-            case 57:
+            case 57: // 348
                 mob_unit.check_disp();
-                switch (beam_area) {
-                    case v_blank: return;
-                    case disp_048_247: case disp_248_254:
-                        gfx_unit.row_end();
-                    case disp_018_047: case disp_255_281:
-                        output();
-                        return;
+                if (!v_blank) {
+                    gfx_unit.row_end();
+                    output();
                 }
-            case 58:
+                return;
+            case 58: // 356
                 mob_unit.pre_dma(2);
-                if (beam_area != v_blank) output();
+                if (!v_blank) output();
                 return;
-            case 59:
+            case 59: // 364
                 mob_unit.do_dma(0);
-                if (beam_area != v_blank) output();
+                if (!v_blank) output();
                 return;
-            case 60: mob_unit.pre_dma(3); return;
-            case 61: mob_unit.do_dma(1);  return;
+            case 60: // 372..375
+                mob_unit.pre_dma(3);
+                if (!v_blank) output_4px();
+                return;
+            case 61: mob_unit.do_dma(1); return;
             case 62:
                 mob_unit.pre_dma(4);
-                switch (beam_area) {
-                    case v_blank: case disp_018_047: case disp_255_281:
-                        return;
-                    case disp_048_247: case disp_248_254:
-                        check_hb(raster_y);
-                        return;
-                }
+                check_hb();
+                return;
         }
     }
 
@@ -469,7 +429,6 @@ private:
         void mob_done(u8 mn)   { ba_low &= ~(0x100 << mn); }
         void gfx_set(u8 b)     { ba_low = (ba_low & 0xff00) | b; }
         void gfx_rel()         { gfx_set(0); }
-        // u8   gfx_state() const { return ba_low; }
     private:
         u16& ba_low; // 8 MSBs for MOBs, 8 LSBs for GFX
     };
@@ -683,57 +642,59 @@ private:
             line_cycle(line_cycle_), raster_y(raster_y_),
             v_border_on(v_border_on_), ba(ba_) {}
 
+        void set_ecm(bool e)   { mode = e ? mode | ecm_set : mode & ~ecm_set; }
+        void set_bmm(bool b)   { mode = b ? mode | bmm_set : mode & ~bmm_set; }
+        void set_mcm(bool m)   { mode = m ? mode | mcm_set : mode & ~mcm_set; }
+
         // called if cr1.den is modified (interesting only if it happens during VMA_TOP_RASTER_Y)
-        void set_den(bool den) { frame_den |= (raster_y == VMA_TOP_RASTER_Y && den);   }
+        void set_den(bool den) {
+            ba_area |= ((raster_y == VMA_TOP_RASTER_Y) && den);
+            ba_update();
+        }
 
-        void set_ecm(bool e) { mode = e ? mode | ecm_set : mode & ~ecm_set; }
-        void set_bmm(bool b) { mode = b ? mode | bmm_set : mode & ~bmm_set; }
-        void set_mcm(bool m) { mode = m ? mode | mcm_set : mode & ~mcm_set; }
-
-        void set_y_scroll(u8 y_scroll_, bool vma_area) {
+        void set_y_scroll(u8 y_scroll_) {
             y_scroll = y_scroll_;
-            if (vma_area) {
-                ba_eval();
-                if (line_cycle > 10 && line_cycle < 54) ba_toggle();
+            ba_update();
+        }
+
+        void vma_start(bool den) { ba_area = den; vc_base = 0; }
+        void vma_end()           { ba_area = ba_line = false;  }
+
+        void ba_start() { ba_update();  }
+        void ba_end()   { ba.gfx_rel(); }
+        void ba_update() {
+            if (ba_area) {
+                ba_line = (raster_y & y_scroll_mask) == y_scroll;
+                if (ba_line) {
+                    if (line_cycle > 10 && line_cycle < 54) {
+                        ba.gfx_set(line_cycle | 0x80); // store cycle for AEC checking later
+                        // activate_gfx() delayed (called from vm_read())
+                    } else {
+                        activate_gfx();
+                    }
+                } else {
+                    ba.gfx_rel();
+                }
             }
         }
-
-        void vma_start(bool den) {
-            frame_den = den;
-            vc_base = 0;
-            ba_eval();
-        }
-
-        void vma_done() { ba_line = false; }
-
-        void ba_eval() { ba_line = ((raster_y & y_scroll_mask) == y_scroll) && frame_den; }
-
-        void ba_toggle() {
-            if (ba_line) {
-                ba.gfx_set(line_cycle | 0x80); // store cycle for AEC checking later
-                activate_gfx();
-            }
-            else ba.gfx_rel();
-        }
-
-        void ba_end() { ba.gfx_rel(); }
 
         void row_start() {
             vc = vc_base;
             vmri = 0;
             if (ba_line) rc = 0;
         }
-
         void row_end() {
-            if (rc == 7 && !ba_line) {
-                deactivate_gfx();
+            if (ba_line) activate_gfx();
+            if (rc == 7) {
                 vc_base = vc;
-            }
-            else if (gfx_active()) rc = (rc + 1) & 0x7;
+                if (!ba_line) deactivate_gfx();
+			}
+            if (gfx_active()) rc = (rc + 1) & 0x7;
         }
 
         void vm_read() {
             if (ba_line) {
+                activate_gfx(); // delayed (see ba_update())
                 col_ram.r(vc, vm_row[vmri].cr_data); // TODO: mask upper bits if 'noise' is implemented
                 vm_row[vmri].vm_data = bank.r(vm_base | vc);
             }
@@ -748,7 +709,7 @@ private:
 
             u16 addr;
             u8 data;
-            u8 load_idx = g_out_idx + x_scroll;
+            u8 load_idx = g_out_idx + x_scroll + 12;
 
             switch (mode) {
                 case scm:
@@ -756,7 +717,7 @@ private:
                     data = bank.r(addr);
                     cd |= FG_GFX_FLAG;
                     for (u8 p = 0x80; p; p >>= 1) {
-                        g_out[load_idx++ & 0xf] = data & p ? cd : reg[bgc0];
+                        g_out[load_idx++ & 0x1f] = data & p ? cd : reg[bgc0];
                     }
                     break;
                 case mccm:
@@ -767,13 +728,13 @@ private:
                             auto d = (data >> p) & 0x3;
                             u8 g = (d == 0x3) ? cd ^ MC_flag : reg[bgc0 + d];
                             g |= (d << 6); // set fg-gfx flag
-                            g_out[load_idx++ & 0xf] = g;
-                            g_out[load_idx++ & 0xf] = g;
+                            g_out[load_idx++ & 0x1f] = g;
+                            g_out[load_idx++ & 0x1f] = g;
                         }
                     } else {
                         cd |= FG_GFX_FLAG;
                         for (u8 p = 0x80; p; p >>= 1) {
-                            g_out[load_idx++ & 0xf] = data & p ? cd : reg[bgc0];
+                            g_out[load_idx++ & 0x1f] = data & p ? cd : reg[bgc0];
                         }
                     }
                     break;
@@ -783,7 +744,7 @@ private:
                     addr = (c_base & 0x2000) | (vc << 3) | rc;
                     data = bank.r(addr);
                     for (u8 p = 0x80; p; p >>= 1) {
-                        g_out[load_idx++ & 0xf] = data & p ? col1 : col0;
+                        g_out[load_idx++ & 0x1f] = data & p ? col1 : col0;
                     }
                     break;
                 }
@@ -800,8 +761,8 @@ private:
                             case 0x3: g = cd;        break;
                         }
                         g |= (d << 6); // set fg-gfx flag
-                        g_out[load_idx++ & 0xf] = g;
-                        g_out[load_idx++ & 0xf] = g;
+                        g_out[load_idx++ & 0x1f] = g;
+                        g_out[load_idx++ & 0x1f] = g;
                     }
                     break;
                 case ecm: {
@@ -810,7 +771,7 @@ private:
                     addr = (c_base | (vd << 3) | rc) & G_ADDR_ECM_MASK;
                     data = bank.r(addr);
                     for (u8 p = 0x80; p; p >>= 1) {
-                        g_out[load_idx++ & 0xf] = data & p ? col1 : col0;
+                        g_out[load_idx++ & 0x1f] = data & p ? col1 : col0;
                     }
                     break;
                 }
@@ -820,13 +781,13 @@ private:
                     if (cd & MC_flag) {
                         for (int p = 0; p < 4; ++p) {
                             u8 g = data & 0xc0; // sets color to 0 and fg-gfx flag
-                            g_out[load_idx++ & 0xf] = g;
-                            g_out[load_idx++ & 0xf] = g;
+                            g_out[load_idx++ & 0x1f] = g;
+                            g_out[load_idx++ & 0x1f] = g;
                             data <<= 2;
                         }
                     } else {
                         for (u8 p = 0x80; p; p >>= 1) {
-                            g_out[load_idx++ & 0xf] = data & p ? (0 | FG_GFX_FLAG) : 0;
+                            g_out[load_idx++ & 0x1f] = data & p ? (0 | FG_GFX_FLAG) : 0;
                         }
                     }
                     break;
@@ -834,7 +795,7 @@ private:
                     addr = ((c_base & 0x2000) | (vc << 3) | rc) & G_ADDR_ECM_MASK;
                     data = bank.r(addr);
                     for (u8 p = 0x80; p; p >>= 1) {
-                        g_out[load_idx++ & 0xf] = data & p ? (0 | FG_GFX_FLAG) : 0;
+                        g_out[load_idx++ & 0x1f] = data & p ? (0 | FG_GFX_FLAG) : 0;
                     }
                     break;
                 case ibmm2:
@@ -842,8 +803,8 @@ private:
                     data = bank.r(addr);
                     for (int p = 0; p < 4; ++p) {
                         u8 g = data & 0xc0; // sets color to 0 and fg-gfx flag
-                        g_out[load_idx++ & 0xf] = g;
-                        g_out[load_idx++ & 0xf] = g;
+                        g_out[load_idx++ & 0x1f] = g;
+                        g_out[load_idx++ & 0x1f] = g;
                         data <<= 2;
                     }
                     break;
@@ -857,11 +818,11 @@ private:
 
         u8 pixel_out(bool& fg_gfx) {
             if (v_border_on) {
-                g_out[g_out_idx++ & 0xf] = reg[bgc0];
+                g_out[g_out_idx++ & 0x1f] = reg[bgc0];
                 return reg[bgc0];
             } else {
-                u8 px = g_out[g_out_idx & 0xf];
-                g_out[g_out_idx++ & 0xf] = reg[bgc0];
+                u8 px = g_out[g_out_idx & 0x1f];
+                g_out[g_out_idx++ & 0x1f] = reg[bgc0];
                 fg_gfx = px & FG_GFX_FLAG;
                 return px & 0xf;
             }
@@ -869,14 +830,14 @@ private:
 
     private:
         enum VM_Mask : u8 { idle = 0x00, active = 0xff };
-        static const u16 RC_IDLE   = 0x3fff;
+        static const u16 RC_IDLE = 0x3fff;
 
-        void activate_gfx()     { rc = rc & 0x7; vm_mask = active; }
-        void deactivate_gfx()   { rc = RC_IDLE;  vm_mask = idle; }
+        void activate_gfx()     { vm_mask = active; rc &= 0x7; }
+        void deactivate_gfx()   { vm_mask = idle;   rc = RC_IDLE; }
         bool gfx_active() const { return vm_mask; }
 
-        u8 ba_line = false;
-        u8 frame_den; // set for each frame (at the top of disp.win)
+        u8 ba_area; // set for each frame (at the top of disp.win)
+        u8 ba_line;
 
         struct VM_data { // video-matrix data
             u8 vm_data;
@@ -884,13 +845,13 @@ private:
         };
         VM_data vm_row[40]; // vm row buffer
 
-        u16 vc_base;  // video counter base
-        u16 vc;       // video counter
-        u16 rc = 7;   // row counter
-        u8  vmri;     // vm_row index
+        u16 vc_base;
+        u16 vc;
+        u16 rc = RC_IDLE;
+        u8  vmri; // vm_row index
         VM_Mask vm_mask = idle;
 
-        u8 g_out[16]; // 15 would be enough, but 16 works out more nicely...
+        u8 g_out[32];
         u8 g_out_idx;
 
         u8 mode = scm;
@@ -927,21 +888,22 @@ private:
         cmp_right = CSEL_right[cs];
     }
 
-    // checks done during blanking periods (don't necessarely need to be pixel-perfect)
-    void check_left_vb()               { if (!vert_border_on) main_border_on = false; }
-    void check_right_vb(u16 x)         { if (x == cmp_right) main_border_on = true; }
-    void check_hb(u16 raster_y) {
+    void check_hb() {
         if (raster_y == cmp_top && den) vert_border_on = false;
         else if (raster_y == cmp_bottom) vert_border_on = true;
     }
 
-    void output() {
-        for (int x = 0; x < 8; ++x) exude_pixel();
+    void output_4px_at(u16 x) {
+        raster_x = x;
+        for (int x = 0; x < 4; ++x) exude_pixel();
     }
 
-    void output_at(u16 x) {
-        raster_x = x;
-        output();
+    void output_4px() {
+        for (int x = 0; x < 4; ++x) exude_pixel();
+    }
+
+    void output() {
+        for (int x = 0; x < 8; ++x) exude_pixel();
     }
 
     void output_on_left_edge() {
@@ -997,7 +959,7 @@ private:
     u8 lp_pb_b4_low;
     u16 raster_x;
     u16 raster_y;
-    Beam_area beam_area = v_blank;
+    u8 v_blank;
 
     bool den;
     u16 cmp_left;
