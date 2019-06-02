@@ -240,20 +240,22 @@ public:
 
                 if (raster_y == cmp_raster) irq_unit.req(IRQ_unit::rst);
 
-                if (raster_y & 0x1) return; // odd?
-
-                // TODO: reveal the magic numbers....
-                if (raster_y == 18) {
-                    v_blank = false;
-                    frame_lp = 0;
-                    set_lp(lp_p1_p6_low || lp_pb_b4_low);
-                } else if (raster_y == 48) {
-                    gfx_unit.vma_start(den);
-                } else if (raster_y == 248) {
-                    gfx_unit.vma_end();
-                } else if (raster_y == 282) {
-                    v_blank = true;
+                if ((raster_y % 2) == 0) {
+                    // TODO: reveal the magic numbers....
+                    if (raster_y == 18) {
+                        v_blank = false;
+                        frame_lp = 0;
+                        set_lp(lp_p1_p6_low || lp_pb_b4_low);
+                    } else if (raster_y == 48) {
+                        gfx_unit.vma_start(den);
+                    } else if (raster_y == 248) {
+                        gfx_unit.vma_end();
+                    } else if (raster_y == 282) {
+                        v_blank = true;
+                    }
                 }
+
+                gfx_unit.ba_check();
 
                 return;
                 /* NOTE: mob_unit.pre_dma/do_dma pair is done, so that it takes the specified
@@ -282,7 +284,7 @@ public:
             case  8: mob_unit.do_dma(6);
             case  9:                       return;
             case 10: mob_unit.do_dma(7);   return;
-            case 11: gfx_unit.ba_start();  return;
+            case 11: gfx_unit.ba_check();  return;
             case 12: // 496..499
                 if (!v_blank) output_4px_at(496);
                 return;
@@ -651,34 +653,33 @@ private:
         // called if cr1.den is modified (interesting only if it happens during VMA_TOP_RASTER_Y)
         void set_den(bool den) {
             ba_area |= ((raster_y == VMA_TOP_RASTER_Y) && den);
-            ba_update();
+            ba_check();
         }
 
         void set_y_scroll(u8 y_scroll_) {
             y_scroll = y_scroll_;
-            ba_update();
+            ba_check();
+            if (!ba_line) ba.gfx_rel();
         }
 
         void vma_start(bool den) { ba_area = den; vc_base = 0; }
         void vma_end()           { ba_area = ba_line = false;  }
 
-        void ba_start() { ba_update();  }
-        void ba_end()   { ba.gfx_rel(); }
-        void ba_update() {
+        void ba_check() {
             if (ba_area) {
                 ba_line = (raster_y & y_scroll_mask) == y_scroll;
                 if (ba_line) {
                     if (line_cycle > 10 && line_cycle < 54) {
                         ba.gfx_set(line_cycle | 0x80); // store cycle for AEC checking later
-                        // activate_gfx() delayed (called from vm_read())
+                        if (line_cycle < 14) activate_gfx();
+                        // else activate_gfx() delayed (called from vm_read())
                     } else {
                         activate_gfx();
                     }
-                } else {
-                    ba.gfx_rel();
                 }
             }
         }
+        void ba_end() { ba.gfx_rel(); }
 
         void row_start() {
             vc = vc_base;
@@ -686,17 +687,19 @@ private:
             if (ba_line) rc = 0;
         }
         void row_end() {
-            if (ba_line) activate_gfx();
             if (rc == 7) {
                 vc_base = vc;
-                if (!ba_line) deactivate_gfx();
+                if (!ba_line) {
+                    deactivate_gfx();
+                    return;
+                }
 			}
             if (gfx_active()) rc = (rc + 1) & 0x7;
         }
 
         void vm_read() {
             if (ba_line) {
-                activate_gfx(); // delayed (see ba_update())
+                activate_gfx(); // delayed (see ba_check())
                 col_ram.r(vc, vm_row[vmri].cr_data); // TODO: mask upper bits if 'noise' is implemented
                 vm_row[vmri].vm_data = bank.r(vm_base | vc);
             }
