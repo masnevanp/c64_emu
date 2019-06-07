@@ -286,20 +286,20 @@ public:
             case 10: mob_unit.do_dma(7);   return;
             case 11: gfx_unit.ba_check();  return;
             case 12: // 496..499
-                if (!v_blank) output_4px_at(496);
+                if (!v_blank) output_border_at(496, 4);
                 return;
             case 13: // 500
                 if (!v_blank) {
                     gfx_unit.row_start();
-                    output_4px();
-                    output_4px_at(0);
+                    output_border(4);
+                    output_border_at(0, 4);
                 }
                 return;
             case 14: // 4
                 mob_unit.inc_mdc_base_2();
                 if (!v_blank) {
                     gfx_unit.vm_read();
-                    output();
+                    output_border();
                 }
                 return;
             case 15: // 12
@@ -345,26 +345,29 @@ public:
                 return;
             case 56: // 340
                 mob_unit.pre_dma(1);
-                if (!v_blank) output_on_right_edge();
+                if (!v_blank) {
+                    output_on_right_edge(5);
+                    output_border(3);
+                }
                 return;
             case 57: // 348
                 mob_unit.check_disp();
                 if (!v_blank) {
                     gfx_unit.row_end();
-                    output();
+                    output_border();
                 }
                 return;
             case 58: // 356
                 mob_unit.pre_dma(2);
-                if (!v_blank) output();
+                if (!v_blank) output_border();
                 return;
             case 59: // 364
                 mob_unit.do_dma(0);
-                if (!v_blank) output();
+                if (!v_blank) output_border();
                 return;
             case 60: // 372..375
                 mob_unit.pre_dma(3);
-                if (!v_blank) output_4px();
+                if (!v_blank) output_border(4);
                 return;
             case 61: mob_unit.do_dma(1); return;
             case 62:
@@ -685,6 +688,18 @@ private:
             vc = vc_base;
             vmri = 0;
             if (ba_line) rc = 0;
+            if (x_scroll) {
+                u8 col;
+                switch (mode) {
+                    case scm: case mccm: case mcbmm: col = reg[bgc0]; break;
+                    case sbmm: col = vm_row[39].vm_data & 0xf; break;
+                    case ecm:  col = reg[bgc0 + (vm_row[vmri].vm_data >> 6)]; break;
+                    default:   col = 0; break;
+                }
+                g_out_idx = 11 + x_scroll;
+                while (g_out_idx > 11) g_out[g_out_idx--] = col;
+            }
+            g_out_idx = 0;
         }
         void row_end() {
             if (rc == 7) {
@@ -824,8 +839,8 @@ private:
 
         u8 pixel_out(bool& fg_gfx) {
             if (v_border_on) {
-                g_out[g_out_idx++ & 0x1f] = reg[bgc0];
-                return reg[bgc0];
+                ++g_out_idx;
+                return 0; // return whatever... (not actually used)
             } else {
                 u8 px = g_out[g_out_idx & 0x1f];
                 g_out[g_out_idx++ & 0x1f] = reg[bgc0];
@@ -899,21 +914,14 @@ private:
         else if (raster_y == cmp_bottom) vert_border_on = true;
     }
 
-    void output_4px_at(u16 x) {
-        raster_x = x;
-        for (int x = 0; x < 4; ++x) exude_pixel();
+    void output_border_at(u16 at_x, u8 px_count = 8) {
+        raster_x = at_x;
+        while (px_count--) exude_border_pixel();
     }
-
-    void output_4px() {
-        for (int x = 0; x < 4; ++x) exude_pixel();
-    }
-
-    void output() {
-        for (int x = 0; x < 8; ++x) exude_pixel();
-    }
-
-    void output_on_left_edge() {
-        for (int x = 0; x < 8; ++x) {
+    void output_border(u8 px_count = 8) { while (px_count--) exude_border_pixel(); }
+    void output(u8 px_count = 8) { while (px_count--) exude_pixel(); }
+    void output_on_left_edge(u8 px_count = 8) {
+        while (px_count--) {
             if (raster_x == cmp_left) {
                 if (raster_y == cmp_top && den) vert_border_on = false;
                 else if (raster_y == cmp_bottom) vert_border_on = true;
@@ -922,12 +930,20 @@ private:
             exude_pixel();
         }
     }
-
-    void output_on_right_edge() {
-        for (int x = 0; x < 8; ++x) {
+    void output_on_right_edge(u8 px_count = 8) {
+        while (px_count--) {
             if (raster_x == cmp_right) main_border_on = true;
             exude_pixel();
         }
+    }
+
+    void exude_border_pixel() {
+        u8 _;
+        u8 col = mob_unit.pixel_out(raster_x, false, _); // must call always (to keep in sync)
+        if (main_border_on) col = reg[ecol];
+        else if (col == TRANSPARENT) col = reg[bgc0];
+        out.put_pixel(col);
+        ++raster_x;
     }
 
     void exude_pixel() {
