@@ -286,13 +286,14 @@ public:
             case 10: mob_unit.do_dma(7);   return;
             case 11: gfx_unit.ba_check();  return;
             case 12: // 496..499
-                if (!v_blank) output_border_at(496, 4);
+                if (!v_blank) output_border(4);
                 return;
             case 13: // 500
                 if (!v_blank) {
                     gfx_unit.row_start();
                     output_border(4);
-                    output_border_at(0, 4);
+                    raster_x = 0;
+                    output_border(4);
                 }
                 return;
             case 14: // 4
@@ -305,6 +306,7 @@ public:
             case 15: // 12
                 mob_unit.inc_mdc_base_1();
                 if (!v_blank) {
+                    gfx_unit.g_out_init();
                     gfx_unit.gfx_read();
                     gfx_unit.vm_read();
                     output();
@@ -688,6 +690,19 @@ private:
             vc = vc_base;
             vmri = 0;
             if (ba_line) rc = 0;
+        }
+        void row_end() {
+            if (rc == 7) {
+                vc_base = vc;
+                if (!ba_line) {
+                    deactivate_gfx();
+                    return;
+                }
+			}
+            if (gfx_active()) rc = (rc + 1) & 0x7;
+        }
+
+        void g_out_init() {
             if (x_scroll) {
                 u8 col;
                 switch (mode) {
@@ -700,16 +715,6 @@ private:
                 while (g_out_idx > 11) g_out[g_out_idx--] = col;
             }
             g_out_idx = 0;
-        }
-        void row_end() {
-            if (rc == 7) {
-                vc_base = vc;
-                if (!ba_line) {
-                    deactivate_gfx();
-                    return;
-                }
-			}
-            if (gfx_active()) rc = (rc + 1) & 0x7;
         }
 
         void vm_read() {
@@ -840,7 +845,7 @@ private:
         u8 pixel_out(bool& fg_gfx) {
             if (v_border_on) {
                 ++g_out_idx;
-                return 0; // return whatever... (not actually used)
+                return reg[bgc0];
             } else {
                 u8 px = g_out[g_out_idx & 0x1f];
                 g_out[g_out_idx++ & 0x1f] = reg[bgc0];
@@ -914,13 +919,10 @@ private:
         else if (raster_y == cmp_bottom) vert_border_on = true;
     }
 
-    void output_border_at(u16 at_x, u8 px_count = 8) {
-        raster_x = at_x;
-        while (px_count--) exude_border_pixel();
-    }
-    void output_border(u8 px_count = 8) { while (px_count--) exude_border_pixel(); }
-    void output(u8 px_count = 8) { while (px_count--) exude_pixel(); }
-    void output_on_left_edge(u8 px_count = 8) {
+    void output_border(int px_count = 8) { while (px_count--) exude_border_pixel(); }
+    void output(int px_count = 8)        { while (px_count--) exude_pixel(); }
+
+    void output_on_left_edge(int px_count = 8) {
         while (px_count--) {
             if (raster_x == cmp_left) {
                 if (raster_y == cmp_top && den) vert_border_on = false;
@@ -930,7 +932,7 @@ private:
             exude_pixel();
         }
     }
-    void output_on_right_edge(u8 px_count = 8) {
+    void output_on_right_edge(int px_count = 8) {
         while (px_count--) {
             if (raster_x == cmp_right) main_border_on = true;
             exude_pixel();
