@@ -221,7 +221,7 @@ public:
 #endif
 
     void tick(const u16& frame_cycle) {
-        static const u16 LAST_RASTER_Y = RASTER_LINE_COUNT; // (312 done for 1 cycle)
+        static const u16 LAST_RASTER_Y = RASTER_LINE_COUNT - 1;
 
         line_cycle = frame_cycle % LINE_CYCLES;
 
@@ -231,12 +231,13 @@ public:
 
                 out.line_done(raster_y);
 
-                ++raster_y;
-
                 if (raster_y == LAST_RASTER_Y) {
                     out.frame_done();
+                    raster_y = 0;
                     return;
                 }
+
+                ++raster_y;
 
                 if (raster_y == cmp_raster) irq_unit.req(IRQ_unit::rst);
 
@@ -270,8 +271,7 @@ public:
                 */
             case  1:
                 mob_unit.pre_dma(5);
-                if (raster_y == LAST_RASTER_Y) {
-                    raster_y = 0;
+                if (raster_y == 0) {
                     if (cmp_raster == 0) irq_unit.req(IRQ_unit::rst);
                 }
                 return;
@@ -285,93 +285,88 @@ public:
             case  9:                       return;
             case 10: mob_unit.do_dma(7);   return;
             case 11: gfx_unit.ba_check();  return;
-            case 12: // 496..499
-                if (!v_blank) output_border(4);
-                return;
-            case 13: // 500
+            case 12: // 496..503
                 if (!v_blank) {
-                    gfx_unit.row_start();
-                    output_border(4);
-                    raster_x = 0;
-                    output_border(4);
-                }
-                return;
-            case 14: // 4
-                mob_unit.inc_mdc_base_2();
-                if (!v_blank) {
-                    gfx_unit.vm_read();
                     output_border();
+                    raster_x = 0;
                 }
                 return;
-            case 15: // 12
-                mob_unit.inc_mdc_base_1();
+            case 13: // 0
                 if (!v_blank) {
+                    output_border();
+                    gfx_unit.row_start();
+                }
+                return;
+            case 14: // 8
+                if (!v_blank) {
+                    output_border();
+                    gfx_unit.vm_read();
+                }
+                mob_unit.inc_mdc_base_2();
+                return;
+            case 15: // 16
+                if (!v_blank) {
+                    output_border();
                     gfx_unit.g_out_init();
                     gfx_unit.gfx_read();
                     gfx_unit.vm_read();
-                    output();
                 }
+                mob_unit.inc_mdc_base_1();
                 return;
-            case 16: case 17: // 20..35
+            case 16: // 24
                 if (!v_blank) {
+                    output_on_left_edge();
                     gfx_unit.gfx_read();
                     gfx_unit.vm_read();
-                    output_on_left_edge();
                 }
                 return;
-            case 18: case 19:
+            case 17: case 18: case 19:
             case 20: case 21: case 22: case 23: case 24: case 25: case 26: case 27: case 28: case 29:
             case 30: case 31: case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39:
             case 40: case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: case 49:
-            case 50: case 51: case 52: case 53: // 36..323
+            case 50: case 51: case 52: case 53: // 32..327
                 if (!v_blank) {
+                    output();
                     gfx_unit.gfx_read();
                     gfx_unit.vm_read();
-                    output();
                 }
                 return;
-            case 54: // 324
+            case 54: // 328
+                if (!v_blank) {
+                    output_on_right_edge();
+                    gfx_unit.gfx_read();
+                    gfx_unit.ba_end();
+                }
                 mob_unit.check_mdc_base_upd();
                 mob_unit.check_dma();
                 mob_unit.pre_dma(0);
-                if (!v_blank) {
-                    gfx_unit.gfx_read();
-                    gfx_unit.ba_end();
-                    output();
-                }
                 return;
-            case 55: // 332
+            case 55: // 336
+                if (!v_blank) output();
                 mob_unit.check_dma();
                 mob_unit.pre_dma(0);
+                return;
+            case 56: // 344
+                mob_unit.pre_dma(1);
                 if (!v_blank) output_on_right_edge();
                 return;
-            case 56: // 340
-                mob_unit.pre_dma(1);
+            case 57: // 352
                 if (!v_blank) {
-                    output_on_right_edge(5);
-                    output_border(3);
-                }
-                return;
-            case 57: // 348
-                mob_unit.check_disp();
-                if (!v_blank) {
-                    gfx_unit.row_end();
                     output_border();
+                    gfx_unit.row_end();
                 }
+                mob_unit.check_disp();
                 return;
-            case 58: // 356
+            case 58: // 360
                 mob_unit.pre_dma(2);
                 if (!v_blank) output_border();
                 return;
-            case 59: // 364
+            case 59: // 368
                 mob_unit.do_dma(0);
                 if (!v_blank) output_border();
                 return;
-            case 60: // 372..375
-                mob_unit.pre_dma(3);
-                if (!v_blank) output_border(4);
-                return;
-            case 61: mob_unit.do_dma(1); return;
+            case 60: mob_unit.pre_dma(3); return;
+            case 61: mob_unit.do_dma(1);  return;
             case 62:
                 mob_unit.pre_dma(4);
                 check_hb();
@@ -459,7 +454,7 @@ private:
 
             void set_x_hi(u8 hi)  { x = hi ? x | 0x100 : x & 0x0ff; }
             void set_x_lo(u8 lo)  { x = (x & 0x100) | lo; }
-            void set_ye(bool ye_) { ye = ye_; mdc_base_upd = !ye; }
+            void set_ye(bool ye_) { ye = ye_; if (!ye) mdc_base_upd = true; }
             void set_mc(bool mc)  {
                 pixel_mask = mc ? PIXEL_MASK_MC : PIXEL_MASK_SC;
                 shift_amount = mc ? 2 : 1;
@@ -514,7 +509,7 @@ private:
 
         void set_vm_base(u16 vm_base) { mp_base = vm_base | MP_BASE; }
 
-        void check_mdc_base_upd() { for(auto&m : mob) if (m.ye) m.mdc_base_upd ^= m.ye; }
+        void check_mdc_base_upd() { for(auto&m : mob) if (m.ye) m.mdc_base_upd = !m.mdc_base_upd; }
         void check_dma() {
             for (u8 mn = 0, mb = 0x01; mn < 8; ++mn, mb <<= 1) {
                 MOB& m = mob[mn];
@@ -531,8 +526,10 @@ private:
             for (u8 mn = 0; mn < MOB_COUNT; ++mn) {
                 MOB& m = mob[mn];
                 m.mdc = m.mdc_base;
-                if (m.dma_on != m.disp_on && (reg[m0y + (mn * 2)] == (raster_y & 0xff))) {
-                    m.disp_on = true;
+                if (m.dma_on) {
+                    if (reg[m0y + (mn * 2)] == (raster_y & 0xff)) m.disp_on = true;
+                } else {
+                    m.disp_on = false;
                 }
             }
         }
@@ -540,7 +537,7 @@ private:
         void inc_mdc_base_1() {
             for (auto& m : mob) {
                 m.mdc_base += m.mdc_base_upd;
-                if (m.mdc_base == 63) m.dma_on = m.disp_on = false;
+                if (m.mdc_base == 63) m.dma_on = false;
             }
         }
         void pre_dma(u8 mn) { if (mob[mn].dma_on) ba.mob_start(mn); }
@@ -711,10 +708,9 @@ private:
                     case ecm:  col = reg[bgc0 + (vm_row[vmri].vm_data >> 6)]; break;
                     default:   col = 0; break;
                 }
-                g_out_idx = 11 + x_scroll;
-                while (g_out_idx > 11) g_out[g_out_idx--] = col;
+                g_out_idx = x_scroll;
+                while (g_out_idx > 0) g_out[--g_out_idx] = col;
             }
-            g_out_idx = 0;
         }
 
         void vm_read() {
@@ -735,7 +731,7 @@ private:
 
             u16 addr;
             u8 data;
-            u8 load_idx = g_out_idx + x_scroll + 12;
+            u8 load_idx = g_out_idx + x_scroll;
 
             switch (mode) {
                 case scm:
@@ -743,7 +739,7 @@ private:
                     data = bank.r(addr);
                     cd |= FG_GFX_FLAG;
                     for (u8 p = 0x80; p; p >>= 1) {
-                        g_out[load_idx++ & 0x1f] = data & p ? cd : BGC0;
+                        g_out[load_idx++ & 0xf] = data & p ? cd : BGC0;
                     }
                     break;
                 case mccm:
@@ -754,13 +750,13 @@ private:
                             auto d = (data >> p) & 0x3;
                             u8 g = (d == 0x3) ? cd ^ MC_flag : BGC0 + d;
                             g |= (d << 6); // sets fg-gfx flag
-                            g_out[load_idx++ & 0x1f] = g;
-                            g_out[load_idx++ & 0x1f] = g;
+                            g_out[load_idx++ & 0xf] = g;
+                            g_out[load_idx++ & 0xf] = g;
                         }
                     } else {
                         cd |= FG_GFX_FLAG;
                         for (u8 p = 0x80; p; p >>= 1) {
-                            g_out[load_idx++ & 0x1f] = data & p ? cd : BGC0;
+                            g_out[load_idx++ & 0xf] = data & p ? cd : BGC0;
                         }
                     }
                     break;
@@ -770,7 +766,7 @@ private:
                     addr = (c_base & 0x2000) | (vc << 3) | rc;
                     data = bank.r(addr);
                     for (u8 p = 0x80; p; p >>= 1) {
-                        g_out[load_idx++ & 0x1f] = data & p ? col1 : col0;
+                        g_out[load_idx++ & 0xf] = data & p ? col1 : col0;
                     }
                     break;
                 }
@@ -787,8 +783,8 @@ private:
                             case 0x3: g = cd;       break;
                         }
                         g |= (d << 6); // sets fg-gfx flag
-                        g_out[load_idx++ & 0x1f] = g;
-                        g_out[load_idx++ & 0x1f] = g;
+                        g_out[load_idx++ & 0xf] = g;
+                        g_out[load_idx++ & 0xf] = g;
                     }
                     break;
                 case ecm: {
@@ -797,7 +793,7 @@ private:
                     addr = (c_base | (vd << 3) | rc) & G_ADDR_ECM_MASK;
                     data = bank.r(addr);
                     for (u8 p = 0x80; p; p >>= 1) {
-                        g_out[load_idx++ & 0x1f] = data & p ? col1 : col0;
+                        g_out[load_idx++ & 0xf] = data & p ? col1 : col0;
                     }
                     break;
                 }
@@ -807,13 +803,13 @@ private:
                     if (cd & MC_flag) {
                         for (int p = 0; p < 4; ++p) {
                             u8 g = data & 0xc0; // sets color to 0 and fg-gfx flag
-                            g_out[load_idx++ & 0x1f] = g;
-                            g_out[load_idx++ & 0x1f] = g;
+                            g_out[load_idx++ & 0xf] = g;
+                            g_out[load_idx++ & 0xf] = g;
                             data <<= 2;
                         }
                     } else {
                         for (u8 p = 0x80; p; p >>= 1) {
-                            g_out[load_idx++ & 0x1f] = data & p ? (0 | FG_GFX_FLAG) : 0;
+                            g_out[load_idx++ & 0xf] = data & p ? (0 | FG_GFX_FLAG) : 0;
                         }
                     }
                     break;
@@ -821,7 +817,7 @@ private:
                     addr = ((c_base & 0x2000) | (vc << 3) | rc) & G_ADDR_ECM_MASK;
                     data = bank.r(addr);
                     for (u8 p = 0x80; p; p >>= 1) {
-                        g_out[load_idx++ & 0x1f] = data & p ? (0 | FG_GFX_FLAG) : 0;
+                        g_out[load_idx++ & 0xf] = data & p ? (0 | FG_GFX_FLAG) : 0;
                     }
                     break;
                 case ibmm2:
@@ -829,8 +825,8 @@ private:
                     data = bank.r(addr);
                     for (int p = 0; p < 4; ++p) {
                         u8 g = data & 0xc0; // sets color to 0 and fg-gfx flag
-                        g_out[load_idx++ & 0x1f] = g;
-                        g_out[load_idx++ & 0x1f] = g;
+                        g_out[load_idx++ & 0xf] = g;
+                        g_out[load_idx++ & 0xf] = g;
                         data <<= 2;
                     }
                     break;
@@ -844,11 +840,10 @@ private:
 
         u8 pixel_out(bool& fg_gfx) {
             if (v_border_on) {
-                ++g_out_idx;
                 return reg[bgc0];
             } else {
-                u8 px = g_out[g_out_idx & 0x1f];
-                g_out[g_out_idx++ & 0x1f] = reg[bgc0];
+                u8 px = g_out[g_out_idx & 0xf];
+                g_out[g_out_idx++ & 0xf] = reg[bgc0];
                 fg_gfx = px & FG_GFX_FLAG;
                 return px & BG_COL_FLAG ? reg[px & BG_COL_MASK] : px & 0xf;
             }
@@ -877,7 +872,7 @@ private:
         u8  vmri; // vm_row index
         VM_Mask vm_mask = idle;
 
-        u8 g_out[32];
+        u8 g_out[16];
         u8 g_out_idx;
 
         u8 mode = scm;
