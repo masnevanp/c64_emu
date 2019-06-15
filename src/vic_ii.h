@@ -284,26 +284,23 @@ public:
             case  8: mob_unit.do_dma(6);
             case  9:                       return;
             case 10: mob_unit.do_dma(7);   return;
-            case 11: gfx_unit.ba_check();  return;
-            case 12: // 496..499
-                if (!v_blank) output(4);
-                return;
-            case 13: // 500..3
+            case 11: gfx_unit.ba_check();
+            case 12:                       return;
+            case 13: // 496..503
                 if (!v_blank) {
-                    output(4);
+                    output();
                     raster_x = 0;
-                    output(4);
                     gfx_unit.row_start();
                 }
                 return;
-            case 14: // 4
+            case 14: // 0
                 if (!v_blank) {
                     output();
                     gfx_unit.vm_read();
                 }
                 mob_unit.inc_mdc_base_2();
                 return;
-            case 15: // 12
+            case 15: // 8
                 if (!v_blank) {
                     output();
                     gfx_unit.gfx_read();
@@ -311,7 +308,14 @@ public:
                 }
                 mob_unit.inc_mdc_base_1();
                 return;
-            case 16: case 17: // 20..35
+            case 16: // 16
+                if (!v_blank) {
+                    output();
+                    gfx_unit.gfx_read();
+                    gfx_unit.vm_read();
+                }
+                return;
+            case 17: // 24..31
                 if (!v_blank) {
                     output_on_left_edge();
                     gfx_unit.gfx_read();
@@ -322,14 +326,14 @@ public:
             case 20: case 21: case 22: case 23: case 24: case 25: case 26: case 27: case 28: case 29:
             case 30: case 31: case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39:
             case 40: case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: case 49:
-            case 50: case 51: case 52: case 53: // 36..323
+            case 50: case 51: case 52: case 53: // 32..319
                 if (!v_blank) {
                     output();
                     gfx_unit.gfx_read();
                     gfx_unit.vm_read();
                 }
                 return;
-            case 54: // 324
+            case 54: // 320
                 if (!v_blank) {
                     output();
                     gfx_unit.gfx_read();
@@ -339,40 +343,38 @@ public:
                 mob_unit.check_dma();
                 mob_unit.pre_dma(0);
                 return;
-            case 55: // 332
+            case 55: // 328
                 if (!v_blank) output_on_right_edge();
                 mob_unit.check_dma();
                 mob_unit.pre_dma(0);
                 return;
-            case 56: // 340
+            case 56: // 336
+                if (!v_blank) output();
                 mob_unit.pre_dma(1);
+                return;
+            case 57: // 344
                 if (!v_blank) {
                     output_on_right_edge();
-                }
-                return;
-            case 57: // 358
-                if (!v_blank) {
-                    output();
                     gfx_unit.row_end();
                 }
                 mob_unit.check_disp();
                 return;
-            case 58: // 356
+            case 58: // 352
+                if (!v_blank) output();
                 mob_unit.pre_dma(2);
-                if (!v_blank) output();
                 return;
-            case 59: // 364
+            case 59: // 360
+                if (!v_blank) output();
                 mob_unit.do_dma(0);
-                if (!v_blank) output();
                 return;
-            case 60: // 373..375
+            case 60: // 368
+                if (!v_blank) output();
                 mob_unit.pre_dma(3);
-                if (!v_blank) output(4);
                 return;
             case 61: mob_unit.do_dma(1);  return;
             case 62:
-                mob_unit.pre_dma(4);
                 check_hb();
+                mob_unit.pre_dma(4);
                 return;
         }
     }
@@ -720,7 +722,7 @@ private:
 
             u16 addr;
             u8 data;
-            u8 load_idx = g_out_idx + x_scroll + 4;
+            u8 load_idx = g_out_idx + x_scroll + 8;
 
             switch (mode) {
                 case scm:
