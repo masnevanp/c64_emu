@@ -220,6 +220,17 @@ public:
 #pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
 #endif
 
+    /* NOTE:
+        mob_unit.pre_dma/do_dma pair is done, so that it takes the specified
+        5 cycles in total. do_dma is done at the last moment possible, and
+        all the memory access is then done at once (which is not how it is
+        done in reality). Normally this is not an issue since the CPU is asleep
+        all the way through (and hence, cannot modify the memory). But...
+      TODO:
+        Might a cartridge modify the memory during these cycles? Surely not in
+        a 'safe' way since VIC has/uses the bus for both phases, right?
+        Anyway, the current MOB access would not be 100% cycle/memory accurate
+        in those cases. */
     void tick(const u16& frame_cycle) {
         static const u16 LAST_RASTER_Y = RASTER_LINE_COUNT - 1;
 
@@ -259,33 +270,34 @@ public:
                 gfx_unit.ba_check();
 
                 return;
-                /* NOTE: mob_unit.pre_dma/do_dma pair is done, so that it takes the specified
-                         5 cycles in total. do_dma is done at the last moment possible, and
-                         all the memory access is then done at once (which is not how it is
-                         done in reality). Normally this is not an issue since the CPU is asleep
-                         all the way through (and hence, cannot modify the memory). But...
-                   TODO: Might a cartridge modify the memory during these cycles? Surely not in
-                         a 'safe' way since VIC has/uses the bus for both phases, right?
-                         Anyway, the current MOB access would not be 100% cycle/memory accurate
-                         in those cases.
-                */
             case  1:
                 mob_unit.pre_dma(5);
                 if (raster_y == 0) {
                     if (cmp_raster == 0) irq_unit.req(IRQ_unit::rst);
                 }
                 return;
-            case  2: mob_unit.do_dma(3);   return;
-            case  3: mob_unit.pre_dma(6);  return;
-            case  4: mob_unit.do_dma(4);   return;
-            case  5: mob_unit.pre_dma(7);  return;
-            case  6: mob_unit.do_dma(5);
-            case  7:                       return;
-            case  8: mob_unit.do_dma(6);
-            case  9:                       return;
-            case 10: mob_unit.do_dma(7);   return;
-            case 11: gfx_unit.ba_check();
-            case 12:                       return;
+            case  2: mob_unit.do_dma(3);  return;
+            case  3: mob_unit.pre_dma(6); return;
+            case  4: mob_unit.do_dma(4);  return;
+            case  5: mob_unit.pre_dma(7); return;
+            case  6: mob_unit.do_dma(5);  return;
+            case  7: // 448..
+                if (!v_blank) {
+                    raster_x = 448;
+                    update_mobs();
+                }
+                return;
+            case  8:
+                if (!v_blank) update_mobs();
+                mob_unit.do_dma(6);
+                return;
+            case  9: if (!v_blank) update_mobs(); return;
+            case 10:
+                if (!v_blank) update_mobs();
+                mob_unit.do_dma(7);
+                return;
+            case 11: gfx_unit.ba_check(); // fall through
+            case 12: if (!v_blank) update_mobs(); return;
             case 13: // 496..503
                 if (!v_blank) {
                     output();
@@ -357,7 +369,7 @@ public:
                     output_on_right_edge();
                     gfx_unit.row_end();
                 }
-                mob_unit.check_disp();
+                mob_unit.load_mdc();
                 return;
             case 58: // 352
                 if (!v_blank) output();
@@ -450,7 +462,6 @@ private:
         public:
             // flags (TODO: these 4 into one u8...?)
             u8 ye;
-            u8 disp_on = false;
             u8 dma_on = false;
             u8 mdc_base_upd;
 
@@ -527,17 +538,7 @@ private:
                 }
             }
         }
-        void check_disp() {
-            for (u8 mn = 0; mn < MOB_COUNT; ++mn) {
-                MOB& m = mob[mn];
-                m.mdc = m.mdc_base;
-                if (m.dma_on) {
-                    if (reg[m0y + (mn * 2)] == (raster_y & 0xff)) m.disp_on = true;
-                } else {
-                    m.disp_on = false;
-                }
-            }
-        }
+        void load_mdc()       { for (auto& m : mob) m.mdc = m.mdc_base; }
         void inc_mdc_base_2() { for (auto& m : mob) m.mdc_base += (m.mdc_base_upd * 2); }
         void inc_mdc_base_1() {
             for (auto& m : mob) {
@@ -598,6 +599,33 @@ private:
             }
 
             return col;
+        }
+
+        void update(u16 x, u16 x_stop) { // update during h-blank
+            u8 mmc_total = 0x00; // mob-mob colliders
+
+            for (; x < x_stop; ++x) {
+                bool mmc_on = false; // mob-mob coll. happened
+                u8 mmc = 0x00; // mob-mob colliders (for single pixel)
+                u8 mn = MOB_COUNT;
+                u8 mb = 0x80; // mob bit ('id')
+
+                do {
+                    MOB& m = mob[--mn];
+                    if (m.pixel_out(x) != TRANSPARENT) {
+                        if (mmc != 0x00) mmc_on = true;
+                        mmc |= mb;
+                    }
+                    mb >>= 1;
+                } while (mn > 0);
+
+                if (mmc_on) mmc_total |= mmc;
+            }
+
+            if (mmc_total) {
+                if (reg[mnm] == 0x00) irq_unit.req(IRQ_unit::mmc);
+                reg[mnm] |= mmc_total;
+            }
         }
 
         MOB_unit(
@@ -911,6 +939,11 @@ private:
     void check_hb() {
         if (raster_y == cmp_top && den) vert_border_on = false;
         else if (raster_y == cmp_bottom) vert_border_on = true;
+    }
+
+    void update_mobs() {
+        mob_unit.update(raster_x, raster_x + 8);
+        raster_x += 8;
     }
 
     void output(int px_count = 8) { while (px_count--) exude_pixel(); }
