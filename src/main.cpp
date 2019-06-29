@@ -52,10 +52,8 @@ void run_c64() {
     // test programs, 'SYS2068' to run
 
     // --------- fail ---------
-    //load_test("mmu", c64.ram);
     //load_test("trap12", c64.ram);
-    //load_test("trap16", c64.ram);
-    //load_test("trap17 ", c64.ram);
+    //load_test("trap15", c64.ram); (due to trap12 failing)
     //load_test("cpuport", c64.ram);
 
     // ---------- ok ----------
@@ -81,6 +79,10 @@ void run_c64() {
     //load_test("irq", c64.ram);
     //load_test("nmi", c64.ram);
     //load_test("branchwrap", c64.ram);
+    //load_test("mmu", c64.ram);
+    //load_test("trap16", c64.ram);
+    //load_test("trap17 ", c64.ram);
+    //and the rest of traps
 
     c64.run();
 }

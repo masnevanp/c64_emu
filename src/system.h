@@ -18,7 +18,7 @@ namespace System {
 
 class VIC_out;
 
-using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is handled externally (in banking)
+using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Banker)
 using CIA = CIA::Core;
 using SID = SID::Wrapper;
 using VIC = VIC_II::Core<VIC_out>;
@@ -89,19 +89,15 @@ private:
 
 class Banker {
 public:
-    Banker(u8* ram_, const ROM& rom, IO_space& io_)
-        : io_port(io_port_out, IO_PORT_INIT_DD),
-          ram(ram_),
+    Banker(u8* ram_, const ROM& rom, IO_space& io_space_)
+        : ram(ram_),
           bas0(rom.basic),   bas1(rom.basic + 0x1000),
           kern0(rom.kernal), kern1(rom.kernal + 0x1000),
           charr(rom.charr),
-          io(io_)
+          io_space(io_space_)
     { reset(); }
 
-    void reset() {
-        io_port.reset();
-        set_mode(0x1f, 0x1f);
-    }
+    void reset() { w_dd(0x00); } // all inputs
 
     // NOTE: Ultimax config --> writes also directed to ROM
     enum Mapping : u8 {
@@ -123,36 +119,32 @@ public:
         // if (addr <= 1) std::cout << "a: " << (int)addr << " d: " << (int)data << " rw: " << (int)rw << "\n";
         switch (pla->pl[rw][addr >> 12]) {
             case ram0_r:
-                if (addr <= 0x1) {
-                    data = (addr == 0x0) ? io_port.r_dd() : io_port.r_pd();
-                } else { data = ram[addr]; }
+                data = (addr > 0x0001)
+                            ? ram[addr]
+                            : ((addr == 0x0000) ? r_dd() : r_pd());
                 return;
             case ram0_w:
-                if (addr <= 0x1) {
-                    if (addr == 0x0) io_port.w_dd(data);
-                    else io_port.w_pd(data);
-                } else {
-                    ram[addr] = data;
-                }
+                if (addr > 0x0001) ram[addr] = data;
+                else (addr == 0x0000) ? w_dd(data) : w_pd(data);
                 return;
-            case ram_r:   data = ram[addr];             return;
-            case ram_w:   ram[addr] = data;             return;
-            case bas0_r:  data = bas0[addr & 0x0fff];   return;
-            case bas1_r:  data = bas1[addr & 0x0fff];   return;
-            case kern0_r: data = kern0[addr & 0x0fff];  return;
-            case kern1_r: data = kern1[addr & 0x0fff];  return;
-            case charr_r: data = charr[addr & 0x0fff];  return;
-            case roml0_r: data = roml0[addr & 0x0fff];  return;
-            case roml0_w:                               return; // TODO: what?
-            case roml1_r: data = roml1[addr & 0x0fff];  return;
-            case roml1_w:                               return; // TODO: what?
-            case romh0_r: data = romh0[addr & 0x0fff];  return;
-            case romh0_w:                               return; // TODO: what?
-            case romh1_r: data = romh1[addr & 0x0fff];  return;
-            case romh1_w:                               return; // TODO: what?
-            case io_r:    io.r(addr & 0x0fff, data);    return;
-            case io_w:    io.w(addr & 0x0fff, data);    return;
-            case none_r: case none_w: return; // TODO: anything?
+            case ram_r:   data = ram[addr];                return;
+            case ram_w:   ram[addr] = data;                return;
+            case bas0_r:  data = bas0[addr & 0x0fff];      return;
+            case bas1_r:  data = bas1[addr & 0x0fff];      return;
+            case kern0_r: data = kern0[addr & 0x0fff];     return;
+            case kern1_r: data = kern1[addr & 0x0fff];     return;
+            case charr_r: data = charr[addr & 0x0fff];     return;
+            case roml0_r: data = roml0[addr & 0x0fff];     return;
+            case roml0_w:                                  return; // TODO: what?
+            case roml1_r: data = roml1[addr & 0x0fff];     return;
+            case roml1_w:                                  return; // TODO: what?
+            case romh0_r: data = romh0[addr & 0x0fff];     return;
+            case romh0_w:                                  return; // TODO: what?
+            case romh1_r: data = romh1[addr & 0x0fff];     return;
+            case romh1_w:                                  return; // TODO: what?
+            case io_r:    io_space.r(addr & 0x0fff, data); return;
+            case io_w:    io_space.w(addr & 0x0fff, data); return;
+            case none_r: case none_w:                      return; // TODO: anything?
         }
     }
 
@@ -170,9 +162,6 @@ public:
             are not pulled down from the cartridge port, resistors in RP4 pull them up."
             ..."
     */
-    // TODO: a separate IO port component? (or at least make these private?)
-    void set_loram_hiram_charen(u8 bits, u8 bit_vals) { set_mode(bits & 0x07, bit_vals); }
-    void set_game_exrom(u8 bits, u8 bit_vals)         { set_mode(bits & 0x18, bit_vals); }
 
     // TODO: should these include the game|exrom flags? or set them automagically?
     void attach_roml(const u8* roml) { roml0 = roml; roml1 = roml + 0x1000; }
@@ -180,20 +169,29 @@ public:
     // TODO: detatch rom...
 
 private:
-    void set_mode(u8 bits, u8 bit_vals) {
-        u8 new_mode = ((mode & ~bits) | (bit_vals & bits));
-        if (new_mode != mode) {
-            mode = new_mode;
-            // std::cout << "\n[System::Banker]: mode " << (int)mode;
-            pla = &PLA[Mode_to_PLA_idx[mode]];
-        }
-    }
+    /* TODO:
+       - a separate IO port component...?
+       - casette bits (3..5)
+       - exrom|game bits
+    */
+    static const u8 loram_hiram_charen_bits = 0x7;
 
-    IO::Port::PD_out io_port_out {
-        [this](u8 bits, u8 bit_vals) {
-            set_loram_hiram_charen(bits, bit_vals);
-        }
-    };
+    u8 io_port_dd;
+    u8 io_port_pd;
+
+    // pd bits 0..2 pulled up (in input mode)
+    u8 r_dd() const { return io_port_dd; }
+    u8 r_pd() const { return (io_port_pd | (~io_port_dd & loram_hiram_charen_bits)); }
+
+    void w_dd(const u8& dd) { io_port_dd = dd; set_pla(); }
+    void w_pd(const u8& pd) { io_port_pd = pd; set_pla(); }
+
+    void set_pla() {
+        static const u8 exrom_game = 0x18; // TODO (harcoded for now)
+        u8 lhc = r_pd() & loram_hiram_charen_bits;
+        u8 mode = exrom_game | lhc;
+        pla = &PLA[Mode_to_PLA_idx[mode]];
+    }
 
     // There is a PLA_Line for each mode, and for each mode there are separate r/w configs
     struct PLA_Line {
@@ -203,11 +201,7 @@ private:
     static const PLA_Line PLA[14];       // 14 unique configs
     static const u8 Mode_to_PLA_idx[32]; // map: mode --> mode_idx (in PLA[])
 
-    // TODO: exrom&game bits handling
-    u8 mode = 0x00;      // current mode
     const PLA_Line* pla; // the active PLA line (set based on mode)
-
-    IO::Port io_port;
 
     u8* ram;
 
@@ -222,7 +216,7 @@ private:
     const u8* romh0;
     const u8* romh1;
 
-    IO_space& io;
+    IO_space& io_space;
 
 };
 
@@ -386,7 +380,9 @@ private:
     /* -------------------- CIA port outputs -------------------- */
     // NOTE: there may be coming many updates per cycle (receiver may need to keep track)
     IO::Port::PD_out cia1_port_a_out {
-        [this](u8 bits, u8 bit_vals) { kb_matrix.port_a_out(bits, bit_vals); }
+        [this](u8 bits, u8 bit_vals) {
+            kb_matrix.port_a_out(bits, bit_vals);
+        }
     };
     IO::Port::PD_out cia1_port_b_out {
         [this](u8 bits, u8 bit_vals) {
@@ -395,10 +391,15 @@ private:
         }
     };
     IO::Port::PD_out cia2_port_a_out {
-        [this](u8 bits, u8 bit_vals) { vic.banker.set_bank(bits, bit_vals);  }
+        [this](u8 bits, u8 bit_vals) {
+            u8 va14_va15 = ((bit_vals & bits) | ~bits) & 0x3;
+            vic.banker.set_bank(va14_va15);
+        }
     };
     IO::Port::PD_out cia2_port_b_out {
-        [this](u8 bits, u8 bit_vals) { UNUSED(bits); UNUSED(bit_vals);       }
+        [this](u8 bits, u8 bit_vals) {
+            UNUSED(bits); UNUSED(bit_vals);
+        }
     };
 
 

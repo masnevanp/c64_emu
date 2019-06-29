@@ -50,8 +50,9 @@ private:
 class Banker {
 public:
     // TODO: ROMH
-    Banker(const u8* ram_, const u8* charr) : ram(ram_), chr(charr) {
-        set_bank(0x3, 0x3);
+    Banker(const u8* ram_, const u8* charr) : ram(ram_), chr(charr)
+    {
+        set_bank(0x3);
     }
 
     enum Mapping : u8 {
@@ -73,19 +74,11 @@ public:
     }
 
     // TODO: full mode handling (ultimax + special modes)
-    void set_bank(u8 bits, u8 bit_vals) {
-        // TODO: a util func (set_bits(old, new_bits, new_bit_vals))
-        u8 new_mode = ((bit_vals & bits) | (mode & ~bits)) & 0x3;
-        if (new_mode != mode) {
-            mode = new_mode;
-            pla = (u8*)PLA[mode];
-        }
-    }
+    void set_bank(u8 va14_va15) { pla = (u8*)PLA[va14_va15]; }
 
 private:
     static const u8 PLA[4][4];
 
-    u8 mode = 0xff; // active mode
     const u8* pla;  // active pla line
 
     const u8* ram;

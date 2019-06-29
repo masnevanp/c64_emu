@@ -79,7 +79,7 @@ public:
     using PD_in  = Sig2<u8, u8>; // bits, bit_vals
     using PD_out = Sig2<u8, u8>; // bits, bit_vals
 
-    Port(const PD_out& ext_out_, u8 init_dd_ = 0xff) : ext_out(ext_out_), init_dd(init_dd_)
+    Port(const PD_out& ext_out_) : ext_out(ext_out_)
     {
         reset();
     }
@@ -89,7 +89,7 @@ public:
         because of passive pullups).
     */
     void reset() {
-        set_dd(init_dd);
+        set_dd(0xff);
         p_in     = 0xff;
         p_out    = 0x00;
     }
