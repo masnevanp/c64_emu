@@ -387,7 +387,7 @@ private:
     IO::Port::PD_out cia1_port_b_out {
         [this](u8 bits, u8 bit_vals) {
             kb_matrix.port_b_out(bits, bit_vals);
-            vic.set_lp_cia1_pb_b4((bit_vals ^ LP_BIT) & bits);
+            vic.set_lp_cia1_pb_b4((bits & LP_BIT) & ~bit_vals);
         }
     };
     IO::Port::PD_out cia2_port_a_out {
