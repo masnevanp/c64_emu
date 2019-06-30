@@ -171,24 +171,38 @@ public:
 private:
     /* TODO:
        - a separate IO port component...?
-       - casette bits (3..5)
-       - exrom|game bits
+       - cassette (datasette) emulation?
+       - exrom|game bits (harcoded for now)
     */
-    static const u8 loram_hiram_charen_bits = 0x7;
+    enum IO_bits : u8 {
+        loram_hiram_charen_bits = 0x07,
+        cassette_switch_sense = 0x10,
+        cassette_motor_control = 0x20,
+    };
 
     u8 io_port_dd;
     u8 io_port_pd;
+    u8 io_port_state;
 
-    // pd bits 0..2 pulled up (in input mode)
     u8 r_dd() const { return io_port_dd; }
-    u8 r_pd() const { return (io_port_pd | (~io_port_dd & loram_hiram_charen_bits)); }
+    u8 r_pd() const {
+        static const u8 pull_up = IO_bits::loram_hiram_charen_bits | IO_bits::cassette_switch_sense;
+        u8 pulled_up = ~io_port_dd & pull_up;
+        u8 cmc = ~cassette_motor_control | io_port_dd; // dd input -> 0
+        return (io_port_state | pulled_up) & cmc;
+    }
 
-    void w_dd(const u8& dd) { io_port_dd = dd; set_pla(); }
-    void w_pd(const u8& pd) { io_port_pd = pd; set_pla(); }
+    void w_dd(const u8& dd) { io_port_dd = dd; update_state(); }
+    void w_pd(const u8& pd) { io_port_pd = pd; update_state(); }
+
+    void update_state() { // output bits set from 'pd', input bits unchanged
+        io_port_state = (io_port_pd & io_port_dd) | (io_port_state & ~io_port_dd);
+        set_pla();
+    }
 
     void set_pla() {
-        static const u8 exrom_game = 0x18; // TODO (harcoded for now)
-        u8 lhc = r_pd() & loram_hiram_charen_bits;
+        static const u8 exrom_game = 0x18; // harcoded
+        u8 lhc = (io_port_state | ~io_port_dd) & loram_hiram_charen_bits; // inputs -> pulled up
         u8 mode = exrom_game | lhc;
         pla = &PLA[Mode_to_PLA_idx[mode]];
     }
