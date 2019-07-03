@@ -115,7 +115,7 @@ void NMOS6502::Core::exec_cycle() {
                 // case err: abort(); return;  // Needed? Tests don't cover halts...
             }
             break;
-        case idx_ind: zpa += x; a2 = zpa + 0x01; break;
+        case idx_ind: zpa += x; a2 = (u8)(zpa + 0x01); break;
         case abs_x:
             a1l += x;
             if (a1l < x) { a2 = a1 + 0x0100; mcp += 3; return; }
@@ -134,7 +134,7 @@ void NMOS6502::Core::exec_cycle() {
         case st_reg: st_reg_sel(); break;
         case st_abs_x: a2 = a1 + x; a1l += x; break;
         case st_abs_y: a2 = a1 + y; a1l += y; break;
-        case st_idx_ind: zpa += x; a2 = zpa + 0x01; st_reg_sel(); break;
+        case st_idx_ind: zpa += x; a2 = (u8)(zpa + 0x01); st_reg_sel(); break;
         case st_zp_x: zpa += x; st_reg_sel(); break;
         case st_zp_y: zpa += y; st_reg_sel(); break;
         case st_ind_y: a2 = a1 + y; a1l += y; break;
@@ -232,7 +232,7 @@ void NMOS6502::Core::do_sbc() {
 
 
 void NMOS6502::Core::do_ud_arr() {
-    /* Totally based on c64doc.txt by John West & Marko Mäkelä.
+    /* Totally based on c64doc.txt by John West & Marko MÃ¤kelÃ¤.
         (http://www.6502.org/users/andre/petindex/local/64doc.txt)
     */
     if (is_set(Flag::D)) {
