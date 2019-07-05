@@ -97,7 +97,10 @@ public:
           io_space(io_space_)
     { reset(); }
 
-    void reset() { w_dd(0x00); } // all inputs
+    void reset() {
+        io_port_state = 0x00;
+        w_dd(0x00); // all inputs
+    }
 
     // NOTE: Ultimax config --> writes also directed to ROM
     enum Mapping : u8 {
