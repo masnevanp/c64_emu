@@ -24,21 +24,18 @@ public:
 
     enum Timer_PB_bit : u8 { ta_pb_bit = 0x40, tb_pb_bit = 0x80 };
 
-    const int id;
-
     IO::Port port_a;
     IO::Port port_b;
 
     Core(
-        int id_,
         const IO::Sync::Master& sync_master,
         const PD_out& port_out_a, const PD_out& port_out_b_,
-        Int_sig& int_sig_, u8 TOD_freq = 50)
-      : id(id_),
+        IO::Int_hub& int_hub_, IO::Int_hub::Src int_src_, u8 TOD_freq = 50)
+      :
         port_a(port_out_a), port_b(port_out_b_),
         sync(sync_master),
         port_out_b(port_out_b_),
-        int_ctrl(int_sig_),
+        int_ctrl(int_hub_, int_src_),
         timer_b(int_ctrl, sig_null, cnt, inmode_mask_b, Int_ctrl::Int_src::tb, timer_pb_out, tb_pb_bit),
         timer_a(int_ctrl, timer_b.tick_ta, cnt, inmode_mask_a, Int_ctrl::Int_src::ta, timer_pb_out, ta_pb_bit),
         tod(int_ctrl)
@@ -181,27 +178,27 @@ private:
             sc = 0x80,
         };
 
-        Int_ctrl(Int_sig& int_sig_) : int_sig(int_sig_) { reset(); }
+        Int_ctrl(IO::Int_hub& int_hub_, IO::Int_hub::Src int_id_)
+                    : int_hub(int_hub_), int_id(int_id_)
+        { reset(); }
 
-        void reset() { clr_int_sig = new_icr = icr = mask = 0x00; }
+        void reset() { new_icr = icr = mask = 0x00; }
 
         void set(const u8& int_src) { icr |= int_src; }
 
         u8 r_icr() { // 'acked'
             u8 r = icr;
-            clr_int_sig = (icr & ICR_R::ir);
             icr = 0x00;
             return r;
         }
         void w_icr(const u8& data) { new_icr = data | 0x100; }
 
         void tick() {
-            if (clr_int_sig) {
-                int_sig.clr();
-                clr_int_sig = false;
-            } else if ((icr & mask) && !(icr & ICR_R::ir)) { // enabled & int_sig not yet set?
-                int_sig.set();
-                icr |= ICR_R::ir; // int_sig is active
+            if (icr & mask) {
+                icr |= ICR_R::ir;
+                int_hub.set(int_id);
+            } else {
+                int_hub.clr(int_id);
             }
 
             if (new_icr) {
@@ -211,6 +208,7 @@ private:
                     mask = (new_icr & ICR_W::sc) // set/clr?
                                 ? ((mask | new_icr) & ~ICR_W::sc) // set
                                 : (mask & ~new_icr); // clr
+                    new_icr = 0x00;
                 }
             }
         }
@@ -221,9 +219,8 @@ private:
         u8 icr;
         u8 mask;
 
-        u8 clr_int_sig;
-
-        Int_sig& int_sig;
+        IO::Int_hub& int_hub;
+        const IO::Int_hub::Src int_id;
     };
 
 

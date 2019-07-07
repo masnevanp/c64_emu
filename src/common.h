@@ -24,12 +24,6 @@ template<typename T1, typename T2>
 using Sig2 = std::function<void (T1, T2)>;
 
 
-struct Int_sig {
-    Sig set;
-    Sig clr;
-};
-
-
 namespace Key_code {
     enum Group { keyboard, keyboard_ext, joystick, system };
 

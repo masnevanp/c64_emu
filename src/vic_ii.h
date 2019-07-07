@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include "common.h"
+#include "io.h"
 
 
 namespace VIC_II {
@@ -116,9 +117,9 @@ public:
 
     Core(
           const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
-          Int_sig& irq, u16& ba_low, Out& out_)
+          IO::Int_hub& int_hub, u16& ba_low, Out& out_)
         : banker(ram_, charr),
-          irq_unit(reg, irq),
+          irq_unit(reg, int_hub),
           ba_unit(ba_low),
           mob_unit(banker, col_ram_, reg, raster_y, ba_unit, irq_unit),
           gfx_unit(banker, col_ram_, reg, line_cycle, raster_y, vert_border_on, ba_unit),
@@ -127,10 +128,7 @@ public:
 
     Banker banker;
 
-    void reset_warm() { irq_unit.reset(); }
-
     void reset_cold() {
-        reset_warm();
         for (int r = 0; r < REG_COUNT; ++r) w(r, 0);
         raster_y = RASTER_LINE_COUNT - 1;
         v_blank = true;
@@ -394,42 +392,27 @@ private:
         enum Ireg : u8 {
             rst = 0x01, mdc = 0x02, mmc = 0x04, lp = 0x08,
             irq = 0x80,
-            irq_id_bits = 0x0f,
         };
 
-        IRQ_unit(u8* reg_, Int_sig& irq_sig_) : reg(reg_), irq_sig(irq_sig_) { reset(); }
+        IRQ_unit(u8* reg_, IO::Int_hub& int_hub_) : reg(reg_), int_hub(int_hub_) { }
 
-        void reset() { irq_set = 0x00; }
-
-        void w_ireg(u8 data) {
-            u8 new_int_bits = (reg[ireg] & ~data) & irq_id_bits;
-            if (((new_int_bits & reg[ien]) == 0x00) && irq_set) {
-                irq_sig.clr();
-                irq_set = 0x00;
-            }
-            reg[ireg] = new_int_bits | irq_set;
-        }
-
-        void ien_upd() { check(); }
-
-        void req(u8 kind) {
-            reg[ireg] |= kind;
-            check();
-        }
+        void w_ireg(u8 data) { reg[ireg] &= ~data; update(); }
+        void ien_upd()       { update(); }
+        void req(u8 kind)    { reg[ireg] |= kind;  update(); }
 
     private:
-        void check() {
-            if ((reg[ireg] & reg[ien]) && !irq_set) {
-                irq_sig.set();
-                irq_set = irq;
-                reg[ireg] |= irq;
+        void update() {
+            if (reg[ireg] & reg[ien]) {
+                reg[ireg] |= Ireg::irq;
+                int_hub.set(IO::Int_hub::Src::vic);
+            } else {
+                reg[ireg] &= ~Ireg::irq;
+                int_hub.clr(IO::Int_hub::Src::vic);
             }
         }
 
-        u8 irq_set;
-
         u8* reg;
-        Int_sig& irq_sig;
+        IO::Int_hub& int_hub;
     };
 
 

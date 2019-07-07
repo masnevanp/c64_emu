@@ -34,42 +34,45 @@ namespace Sync {
 
 class Int_hub {
 public:
+    // TODO: irq/nmi source: cart./exp. port
+    enum Src : u8 {
+        cia1 = 0x01, vic  = 0x02, // IRQ sources
+        cia2 = 0x10, rstr = 0x20, // NMI sources
+        irq  = 0x0f, nmi  = 0xf0, // source mask
+    };
+
     Int_hub(NMOS6502::Core& cpu_) : cpu(cpu_) { reset(); }
 
-    void reset() {
-        nmi_state = irq_state = false;
-        nmi_req_cnt = irq_req_cnt = 0x00;
-    }
+    void reset() { state = old_state = 0x00; nmi_act = irq_act = false; }
 
-    Int_sig nmi {
-        [this]() { ++nmi_req_cnt; }, // set
-        [this]() { --nmi_req_cnt; }, // clr
-    };
-    Int_sig irq {
-        [this]() { ++irq_req_cnt; }, // set
-        [this]() { --irq_req_cnt; }, // clr
-    };
+    void set(Src s) { state |= s;  }
+    void clr(Src s) { state &= ~s; }
 
     void tick() {
-        bool new_state = (nmi_req_cnt > 0);
-        if (nmi_state != new_state) {
-            nmi_state = new_state;
-            cpu.set_nmi(nmi_state);
-        }
+        if (state != old_state) {
+            old_state = state;
 
-        new_state = (irq_req_cnt > 0);
-        if (irq_state != new_state) {
-            irq_state = new_state;
-            cpu.set_irq(irq_state);
+            bool act = (state & Src::nmi);
+            if (nmi_act != act) {
+                nmi_act = act;
+                cpu.set_nmi(nmi_act);
+                clr(Src::rstr); // auto clr (pulse)
+            }
+
+            act = (state & Src::irq);
+            if (irq_act != act) {
+                irq_act = act;
+                cpu.set_irq(irq_act);
+            }
         }
     }
 
 private:
-    NMOS6502::Core& cpu;
-    bool nmi_state;
-    bool irq_state;
-    u8 nmi_req_cnt;
-    u8 irq_req_cnt;
+    NMOS6502::Core& cpu; // TODO: replace with a generic signal?
+    u8 state;
+    u8 old_state;
+    bool nmi_act;
+    bool irq_act;
 };
 
 

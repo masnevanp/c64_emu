@@ -305,10 +305,10 @@ class C64 {
 public:
     C64(const ROM& rom) :
         cpu(on_cpu_halt_sig),
-        cia1(1, sync_master, cia1_port_a_out, cia1_port_b_out, int_hub.irq),
-        cia2(2, sync_master, cia2_port_a_out, cia2_port_b_out, int_hub.nmi),
+        cia1(sync_master, cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1),
+        cia2(sync_master, cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
         sid(frame_cycle),
-        vic(ram, col_ram, rom.charr, int_hub.irq, rdy_low, vic_out),
+        vic(ram, col_ram, rom.charr, int_hub, rdy_low, vic_out),
         vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT),
         vic_out(vid_out, host_input, sid, frame_cycle),
         int_hub(cpu),
@@ -324,10 +324,8 @@ public:
     void reset_warm() {
         cia1.reset_warm(); // need to reset for correct irq handling
         cia2.reset_warm();
-        vic.reset_warm();
         cpu.reset_warm();
         int_hub.reset();
-        nmi_set = false;
     }
 
     void reset_cold() {
@@ -344,7 +342,7 @@ public:
         int_hub.reset();
 
         frame_cycle = 0;
-        rdy_low = nmi_set = false;
+        rdy_low = false;
     }
 
     void run() {
@@ -419,10 +417,7 @@ private:
         }
     };
 
-
     /* -------------------- Host input -------------------- */
-    bool nmi_set;
-
     Host::Input::Handlers host_input_handlers {
         // keyboard
         kb_matrix.handler,
@@ -431,16 +426,10 @@ private:
         [this](u8 code, u8 down) {
             using kc = Key_code::System;
 
-            if (code == kc::rstre) {
-                if (down != nmi_set) {
-                    nmi_set = down;
-                    if (nmi_set) int_hub.nmi.set();
-                    else int_hub.nmi.clr();
-                }
+            if (!down) {
+                if (code == kc::rstre) int_hub.set(IO::Int_hub::Src::rstr);
                 return;
             }
-
-            if (!down) return;
 
             switch (code) {
                 case kc::rst_w: reset_warm();                       break;
