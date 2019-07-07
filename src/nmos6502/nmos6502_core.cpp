@@ -56,7 +56,7 @@ void NMOS6502::Core::exec_cycle() {
                 if (nmi_req) nmi_req = NMI_taken;
             }
             // fall through
-        case dispatch_brk: // hw-ints not taken on the instuction following a brk (sw or hw)
+        case dispatch_brk: // hw-ints not taken on the instruction following a brk (sw or hw)
             brk_src |= (ir == OPC_brk); // bit 0
 
             if (brk_src) {
@@ -95,8 +95,8 @@ void NMOS6502::Core::exec_cycle() {
                 case sb_txa:  set_nz(a = x);  break;   case sb_txs:  sp = x;         break;
                 case sb_tya:  set_nz(a = y);  break;   case rm_adc:  do_adc();       break;
                 case rm_and:  set_nz(a &= d); break;   case rm_bit:  do_bit();       break;
-                case rm_cmp:  do_cmp();       break;   case rm_cpx:  do_cpx();       break;
-                case rm_cpy:  do_cpy();       break;   case rm_eor:  set_nz(a ^= d); break;
+                case rm_cmp:  do_cmp(a);      break;   case rm_cpx:  do_cmp(x);      break;
+                case rm_cpy:  do_cmp(y);      break;   case rm_eor:  set_nz(a ^= d); break;
                 case rm_lda:  set_nz(a = d);  break;   case rm_ldx:  set_nz(x = d);  break;
                 case rm_ldy:  set_nz(y = d);  break;   case rm_ora:  set_nz(a |= d); break;
                 case rm_sbc:  do_sbc();       break;   case rmw_asl: do_asl(d);      break;
@@ -105,7 +105,7 @@ void NMOS6502::Core::exec_cycle() {
                 case rmw_ror: do_ror(d);      break;   case nop:                     break;
                 case ud_ahx:  d=a&x&(a1h+1);  break;   case ud_alr:  a&=d;do_lsr(a); break;
                 case ud_anc:  do_ud_anc();    break;   case ud_arr:  do_ud_arr();    break;
-                case ud_axs:  do_ud_axs();    break;   case ud_dcp:  d--; do_cmp();  break;
+                case ud_axs:  do_ud_axs();    break;   case ud_dcp:  d--; do_cmp(a); break;
                 case ud_isc:  d++; do_sbc();  break;   case ud_las:  do_ud_las();    break;
                 case ud_lax:  set_nz(a=x=d);  break;   case ud_lxa:  do_ud_lxa();    break;
                 case ud_rla:  do_ud_rla();    break;   case ud_rra:  do_ud_rra();    break;

@@ -85,7 +85,7 @@ private:
 
     // carry & borrow
     u8 C() const { return p & Flag::C; }
-    u8 B() const { return (p & Flag::C) ^ 0x01; }
+    u8 B() const { return C() ^ 0x1; }
 
     void do_bra() {
         // mapping: condition code -> flag bit position
@@ -107,7 +107,7 @@ private:
     void do_asl(u8& d) { set(Flag::C, d & 0x80); set_nz(d <<= 1); }
     void do_lsr(u8& d) { clr(Flag::N); set(Flag::C, d & 0x01); set(Flag::Z, !(d >>= 1)); }
     void do_rol(u8& d) {
-        bool old_c = p & Flag::C;
+        u8 old_c = p & Flag::C;
         set(Flag::C, d & 0x80);
         d <<= 1;
         set_nz(d |= old_c);
@@ -119,9 +119,7 @@ private:
         set_nz(d |= old_c);
     }
     void do_bit() { p = (p & 0x3f) | (d & 0xc0); set(Flag::Z, (a & d) == 0x00); }
-    void do_cmp() { set(Flag::C, a >= d); set_nz(a - d); }
-    void do_cpx() { set(Flag::C, x >= d); set_nz(x - d); }
-    void do_cpy() { set(Flag::C, y >= d); set_nz(y - d); }
+    void do_cmp(const Reg8& r) { set(Flag::C, r >= d); set_nz(r - d); }
     void do_adc();
     void do_sbc();
 
