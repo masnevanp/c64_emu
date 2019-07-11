@@ -166,7 +166,7 @@ void NMOS6502::Core::exec_cycle() {
             if (irq_req && (irq_req < 0x04)) irq_req = 0x01;
             break;
         case abs_y_rmw: a2 = a1 + y; a1l += y; break;
-        case sig_hlt: if (sig_halt) sig_halt(); break;
+        case sig_hlt: sig_halt(); break;
         case hlt: return; // stuck on same mop, resume() bumps forward
     }
     ++mcp;
