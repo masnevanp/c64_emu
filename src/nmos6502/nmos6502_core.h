@@ -31,7 +31,6 @@ public:
     void reset_cold();
 
     bool is_halted() const { return mcp->mopc == hlt; }
-    void resume() { if (is_halted()) ++mcp; } // bump forward
 
     void set(Flag f, bool set = true) { p = set ? p | f : p & ~f; }
     void set_nz(const u8& res) { set(Flag::N, res & 0x80); set(Flag::Z, res == 0x00); }
