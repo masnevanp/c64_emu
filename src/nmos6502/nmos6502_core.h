@@ -24,8 +24,10 @@ public:
     const MOP** OPC_MC; // opc -> micro-code mapping
     const MOP* mcp; // micro-code pointer ('mc pc')
 
+    Sig sig_halt = [](){};
 
-    Core(const Sig& sig_halt_ = sig_null);
+
+    Core();
 
     void reset_warm();
     void reset_cold();
@@ -168,7 +170,6 @@ private:
         { 1, 0, Vec::nmi, (u8)~Flag::B }, // irq & nmi* & sw brk
     };
 
-    const Sig& sig_halt;
 };
 
 

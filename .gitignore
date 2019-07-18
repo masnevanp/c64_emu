@@ -2,7 +2,7 @@ bin
 obj
 _local
 data/c64_roms/*.rom
-data/prg/*.prg
+data/prg/*
 *.bak
 .vscode
 c64_emu.cbp

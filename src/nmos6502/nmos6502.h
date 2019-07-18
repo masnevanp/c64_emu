@@ -42,8 +42,6 @@ namespace NMOS6502 {
     enum RW : u8 { w = 0, r = 1 };
     extern const std::string RW_str[];
 
-    extern const Sig sig_null;
-
 } // namespace NMOS6502
 
 

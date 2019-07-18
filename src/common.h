@@ -66,7 +66,7 @@ namespace Key_code {
     };
 
     enum System : u8 {
-        rst_w = GS, rst_c, rstre, load, f_scr, scl_u, scl_d, swp_j, quit, nop,
+        rst_w = GS, rst_c, rstre, swp_j, f_scr, scl_u, scl_d, quit, nop,
     };
 
 } // namespace Key_code

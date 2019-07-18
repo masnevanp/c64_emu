@@ -28,8 +28,6 @@ using Color_RAM = VIC_II::Color_RAM;
 static const u8 IO_PORT_INIT_DD = 0xef; // Source: Mapping the Commodore C64, by Sheldon Leemon
 
 
-bool load_prg(const std::string filename, u8* ram);
-
 
 struct ROM {
     const u8* basic;
@@ -304,7 +302,6 @@ private:
 class C64 {
 public:
     C64(const ROM& rom) :
-        cpu(on_cpu_halt_sig),
         cia1(sync_master, cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1),
         cia2(sync_master, cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
         sid(frame_cycle),
@@ -434,11 +431,10 @@ private:
             switch (code) {
                 case kc::rst_w: reset_warm();                       break;
                 case kc::rst_c: reset_cold();                       break;
-                case kc::load:  load_prg("data/prg/bin.prg", ram);  break;
+                case kc::swp_j: host_input.swap_joysticks();        break;
                 case kc::f_scr: vid_out.toggle_fullscreen();        break;
                 case kc::scl_u: vid_out.adjust_scale(+5);           break;
                 case kc::scl_d: vid_out.adjust_scale(-5);           break;
-                case kc::swp_j: host_input.swap_joysticks();        break;
                 case kc::quit:  exit(0);                            break;
             }
         },
@@ -458,13 +454,6 @@ private:
             const u8 bit_pos = 0x1 << code;
             const u8 bit_val = down ? 0x0 : bit_pos;
             cia1.port_a.ext_in(bit_pos, bit_val);
-        }
-    };
-
-    Sig on_cpu_halt_sig {
-        [this]() {
-            std::cout << "\n****** CPU halted! ******\n";
-            Dbg::print_status(cpu, ram);
         }
     };
 

@@ -13,5 +13,3 @@ const std::string NMOS6502::R8_str[] = {
 
 
 const std::string NMOS6502::RW_str[] = { "w", "r" };
-
-const NMOS6502::Sig NMOS6502::sig_null = [](){};

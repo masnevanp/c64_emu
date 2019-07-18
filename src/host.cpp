@@ -9,8 +9,8 @@ using js = Key_code::Joystick;
 using sy = Key_code::System;
 
 
-static const u8 j1 = 0x00;
-static const u8 j2 = Host::Input::JOY_ID_BIT;
+static const u8 J1 = 0x00;
+static const u8 J2 = Host::Input::JOY_ID_BIT;
 
 
 // TODO: analyze... use more scancodes?
@@ -44,13 +44,13 @@ u8 Host::KC_LU_TBL[] = {
     /* 80..   : SDL_Keycode 40000039.. --> Key_code (80 = kc 40000039, 81 = kc 4000003a, ...) */
     // 80..8f
     ke::s_lck, kb::f1,    ke::f2,    kb::f3,    ke::f4,    kb::f5,    ke::f6,    kb::f7,
-    ke::f8,    sy::rst_w, sy::rst_c, sy::load,  sy::quit,  sy::nop,   sy::f_scr, sy::rstre,
+    ke::f8,    sy::rst_w, sy::rst_c, sy::swp_j, sy::quit,  sy::nop,   sy::f_scr, sy::rstre,
     // 90..9f
     sy::nop,   kb::home,  sy::scl_u, sy::nop,   sy::rstre, sy::scl_d, kb::crs_r, ke::crs_l,
-    kb::crs_d, ke::crs_u, sy::nop,   j1|js::ju, kb::mul,   kb::minus, kb::plus,  kb::ret,
+    kb::crs_d, ke::crs_u, sy::nop,   J1|js::ju, kb::mul,   kb::minus, kb::plus,  kb::ret,
     // a0..af
-    j2|js::jl, j2|js::jd, j2|js::jr, j1|js::jb, j2|js::ju, sy::nop,   j1|js::jl, j1|js::jd,
-    j1|js::jr, j2|js::jb, sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    J2|js::jl, J2|js::jd, J2|js::jr, J1|js::jb, J2|js::ju, sy::nop,   J1|js::jl, J1|js::jd,
+    J1|js::jr, J2|js::jb, sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
     // b0..bf
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,

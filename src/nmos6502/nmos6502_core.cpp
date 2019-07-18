@@ -2,13 +2,12 @@
 #include "nmos6502_core.h"
 
 
-NMOS6502::Core::Core(const Sig& sig_halt_) :
+NMOS6502::Core::Core() :
     r8((Reg8*)r16),
     pc(r16[R16::pc]), spf(r16[R16::spf]), zpaf(r16[R16::zpaf]),
     a1(r16[R16::a1]), a2(r16[R16::a2]), a3(r16[R16::a3]), a4(r16[R16::a4]),
     pcl(r8[R8::pcl]), pch(r8[R8::pch]), sp(r8[R8::sp]), p(r8[R8::p]), a(r8[R8::a]), x(r8[R8::x]), y(r8[R8::y]),
-    d(r8[R8::d]), ir(r8[R8::ir]), zpa(r8[R8::zpa]), a1l(r8[R8::a1l]), a1h(r8[R8::a1h]),
-    sig_halt(sig_halt_)
+    d(r8[R8::d]), ir(r8[R8::ir]), zpa(r8[R8::zpa]), a1l(r8[R8::a1l]), a1h(r8[R8::a1h])
 {
     //MC = MC::get_mc();
     //OPC_MC_PTR = MC::get_opc_mc_ptr();

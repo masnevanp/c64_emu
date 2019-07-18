@@ -2,24 +2,6 @@
 #include "system.h"
 
 
-bool System::load_prg(const std::string filename, u8* ram) {
-    char bin[0x10000];
-    auto sz = read_bin_file(filename, bin);
-
-    if (sz > 2) {
-        std::cout << "Loaded '" << filename << "', " << sz << " bytes ";
-    } else {
-        std::cout << "Failed to load '" << filename << "'\n";
-        return false;
-    }
-    u16 addr = (bin[1] << 8) | bin[0];
-    std::cout << "@ " << addr << "\n";
-    for (unsigned int b = 2; b < sz; ++b)
-        ram[addr++] = bin[b];
-
-    return true;
-}
-
 
 /*
      m  x   g   c   h   l  00-0f 10-7f 80-9f a0-bf c0-cf d0-df e0-ff  pla_idx
