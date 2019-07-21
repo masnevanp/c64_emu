@@ -435,10 +435,10 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
         };
         static const MOP hlt[] = {
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::nmop     ),
-            MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ), // TODO:
-            MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ), // correct addr
-            MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::sig_hlt  ), // for these
-            MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::hlt      ), // 4 cycles
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::n, MOPC::nmop     ), // TODO:
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::n, MOPC::nmop     ), // correct addr
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::n, MOPC::sig_hlt  ), // for these
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::n, MOPC::hlt      ), // 4 cycles
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
             // MOP(0,         0,        0,     0,         MOPC::__end ),
         };

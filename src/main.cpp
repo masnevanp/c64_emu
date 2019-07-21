@@ -1,85 +1,22 @@
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "nmos6502/nmos6502.h"
-#include "nmos6502/nmos6502_core.h"
 #include "utils.h"
 #include "dbg.h"
 #include "system.h"
 #include "iec.h"
+#include "iec_devs.h"
+#include "tape.h"
 #include "test.h"
 
 
-static const u8 insta_load_opc = 0xf2;
 
-
-// 'halt' instructions used for trapping
-void patch_insta_load_kernal_trap(u8* kernal) {
-    // instant load - trap loading from the tape device (device 1)
-    kernal[0x1539] = insta_load_opc; // a halting instruction
-    kernal[0x153a] = 0xea; // nop
-    kernal[0x153b] = 0x60; // rts
-}
-
-
-void insta_load(System::C64& c64) {
-    // IDEAs:
-    //   - 'LOAD' or 'LOAD""' loads the directory listing (auto-list somehow?)
-    //   - listing has entries for sub/parent directories (parent = '..')
-    //        LOAD".." --> cd up
-    //        LOAD"some-sub-dir" --> cd some-sub-dir
-    //   - or 'LOAD' loads & autostart a loader program (native, but can interact with host)
-    static const std::string dir = "data/prg/"; // TODO...
-    u16 filename_addr = c64.ram[0xbc] * 0x100 + c64.ram[0xbb];
-    u8 filename_len = c64.ram[0xb7];
-    std::string filename(&c64.ram[filename_addr], &c64.ram[filename_addr + filename_len]);
-    filename = as_lower(dir + filename);
-
-    auto bin = read_bin_file(filename);
-    auto sz = bin.size();
-    if (sz > 2) {
-        std::cout << "\nLoaded '" << filename << "', " << sz << " bytes ";
-
-        // load addr (used if 2nd.addr == 0)
-        c64.ram[0xc3] = c64.cpu.x;
-        c64.ram[0xc4] = c64.cpu.y;
-
-        u8 scnd_addr = c64.ram[0xb9];
-
-        u16 addr = (scnd_addr == 0)
-            ? c64.cpu.y * 0x100 + c64.cpu.x
-            : bin[1] * 0x100 + bin[0];
-
-        for (u16 b = 2; b < sz; ++b)
-            c64.ram[addr++] = bin[b];
-
-        // end pointer
-        c64.ram[0xae] = c64.cpu.x = addr;
-        c64.ram[0xaf] = c64.cpu.y = addr >> 8;
-
-        // status
-        c64.cpu.clr(NMOS6502::Flag::C); // no error
-        c64.ram[0x90] = 0x00; // io status ok
-    } else {
-        std::cout << "\nFailed to load '" << filename << "'";
-        c64.cpu.pc = 0xf704; // jmp to 'file not found'
-    }
-
-    return;
-}
-
-
-class Dummy_device : public IEC::Virtual::Device {
-public:
-    virtual IEC::IO_ST talk(u8 a)         { msg("t", a); x = a; c = 0; return IEC::IO_ST::ok; }
-    virtual IEC::IO_ST listen(u8 a)       { msg("l", a); x = a; c = 0; return IEC::IO_ST::ok; }
-    virtual void sleep()                  { msg("s", c); }
-    virtual IEC::IO_ST read(u8& d)        { msg("r", x); d = x; ++c; return IEC::IO_ST::eof;}
-    virtual IEC::IO_ST write(const u8& d) { msg("w", d); x = d; ++c; return IEC::IO_ST::ok; }
-private:
-    u8 x = 0x00;
-    int c = 0;
-    void msg(const char* m, int d) { std::cout << " DD:" << m << ',' << d; }
+// Halting instuctions are used as traps
+enum Trap_OPC {
+    IEC_routine = 0x02,
+    tape_routine = 0x12,
 };
 
 
@@ -92,32 +29,39 @@ void run_c64() {
     read_bin_file("data/c64_roms/kernal.rom", (char*)kernal);
     read_bin_file("data/c64_roms/char.rom", (char*)charr);
 
-    patch_insta_load_kernal_trap(kernal);
-    IEC::Virtual::patch_kernal_traps(kernal);
+    IEC::Virtual::Controller iec_ctrl;
+    Volatile_disk vol_disk;
+    Dummy_device dd;
+    Host_drive hd("data/prg/");
+    iec_ctrl.attach(vol_disk, 10);
+    iec_ctrl.attach(dd, 30);
+    iec_ctrl.attach(hd, 8);
+
+    Tape::Virtual::install_kernal_traps(kernal, Trap_OPC::tape_routine);
+    IEC::Virtual::install_kernal_traps(kernal, Trap_OPC::IEC_routine);
 
     System::ROM roms{basic, kernal, charr};
     System::C64 c64(roms);
 
-    IEC::Virtual::Controller iec_ctrl;
-    IEC::Virtual::Volatile_disk vol_disk;
-    Dummy_device dd;
-    iec_ctrl.attach(vol_disk, 10);
-    iec_ctrl.attach(dd, 30);
-
-    NMOS6502::Sig on_halt = [&]() {
+    c64.cpu.sig_halt = [&]() {
         // TODO: verify that it is a kernal trap, e.g. 'banker.mapping(cpu.pc) == kernal' ?
-        if (c64.cpu.ir == insta_load_opc) {
-            insta_load(c64);
-        } else if (!IEC::Virtual::handle_trap(c64, iec_ctrl)) {
-            std::cout << "\n****** CPU halted! ******\n";
-            Dbg::print_status(c64.cpu, c64.ram);
-            return;
+        bool handled = false;
+        switch (c64.cpu.ir) {
+            case Trap_OPC::IEC_routine:
+                handled = IEC::Virtual::on_trap(c64.cpu, c64.ram, iec_ctrl);
+                break;
+            case Trap_OPC::tape_routine:
+                handled = Tape::Virtual::on_trap(c64.cpu, c64.ram);
+                break;
         }
 
-        ++c64.cpu.mcp; // halted --> bump forward
+        if (handled) {
+            ++c64.cpu.mcp; // halted --> bump forward
+        } else {
+            std::cout << "\n****** CPU halted! ******\n";
+            Dbg::print_status(c64.cpu, c64.ram);
+        }
     };
-
-    c64.cpu.sig_halt = on_halt;
 
     c64.run();
 }
