@@ -93,7 +93,7 @@ class Core { // 6569 (PAL-B)
 public:
     static const u8 REG_COUNT = 64;
 
-    static const u8 TRANSPARENT = 0xff;
+    static const u8 TRANSPARENT_PX = 0xff;
 
 
     enum Reg : u8 {
@@ -462,9 +462,9 @@ private:
             }
 
             u8 pixel_out(u16 px) {
-                if (data == OUT_OF_DATA) return TRANSPARENT;
+                if (data == OUT_OF_DATA) return TRANSPARENT_PX;
                 if ((data & PRISTINE_DATA) == PRISTINE_DATA) {
-                    if (px != x) return TRANSPARENT;
+                    if (px != x) return TRANSPARENT_PX;
                     data ^= PRISTINE_FLIP;
                 }
                 u8 p_col = col[(data & pixel_mask) >> 30];
@@ -493,7 +493,7 @@ private:
             u8 shift_delay;
             u8 shift_timer  = 0;
 
-            u8 col[4] = { TRANSPARENT, 0, 0, 0 };
+            u8 col[4] = { TRANSPARENT_PX, 0, 0, 0 };
         };
 
 
@@ -545,14 +545,14 @@ private:
             u8 mdc = 0x00; // mob-gfx colliders
             u8 mmc = 0x00; // mob-mob colliders
             bool mmc_on = false; // mob-mob coll. happened
-            u8 col = TRANSPARENT;
+            u8 col = TRANSPARENT_PX;
             u8 mn = MOB_COUNT;
             u8 mb = 0x80; // mob bit ('id')
 
             do {
                 MOB& m = mob[--mn];
                 u8 m_col = m.pixel_out(x);
-                if (m_col != TRANSPARENT) {
+                if (m_col != TRANSPARENT_PX) {
                     col = m_col;
                     src_mb = mb;
 
@@ -588,7 +588,7 @@ private:
 
                 do {
                     MOB& m = mob[--mn];
-                    if (m.pixel_out(x) != TRANSPARENT) {
+                    if (m.pixel_out(x) != TRANSPARENT_PX) {
                         if (mmc != 0x00) mmc_on = true;
                         mmc |= mb;
                     }
@@ -950,7 +950,7 @@ private:
         // priorites: border < mob|gfx_fg (based on reg[mndp]) < gfx_bg
         u8 o_col;
         if (main_border_on) o_col = reg[ecol];
-        else if (m_col != TRANSPARENT) {
+        else if (m_col != TRANSPARENT_PX) {
             if (!gfx_fg) o_col = m_col;
             else o_col = (reg[mndp] & src_mob) ? g_col : m_col;
         }

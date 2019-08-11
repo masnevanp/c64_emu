@@ -20,7 +20,7 @@ class VIC_out;
 
 using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Banker)
 using CIA = CIA::Core;
-using SID = SID::Wrapper;
+using TheSID = reSID_Wrapper; // 'The' due to nameclash
 using VIC = VIC_II::Core<VIC_out>;
 using Color_RAM = VIC_II::Color_RAM;
 
@@ -40,7 +40,7 @@ class IO_space {
 public:
     IO_space(
         CIA& cia1_, CIA& cia2_,
-        SID& sid_,
+        TheSID& sid_,
         VIC& vic_,
         Color_RAM& col_ram_)
       :
@@ -78,7 +78,7 @@ public:
 private:
     CIA& cia1;
     CIA& cia2;
-    SID& sid;
+    TheSID& sid;
     VIC& vic;
     Color_RAM& col_ram;
 
@@ -240,7 +240,7 @@ class VIC_out {
 public:
     VIC_out(
         Host::Video_out& vid_out_, Host::Input& host_input_,
-        SID& sid_, u16& frame_cycle_
+        TheSID& sid_, u16& frame_cycle_
     ) :
         vid_out(vid_out_), host_input(host_input_),
         sid(sid_), frame_cycle(frame_cycle_)
@@ -285,7 +285,7 @@ private:
     Host::Video_out& vid_out;
     Host::Input& host_input;
 
-    SID& sid;
+    TheSID& sid;
 
     Clock clock;
     double frame_moment = 0;
@@ -363,7 +363,7 @@ public:
     CIA cia1;
     CIA cia2;
 
-    SID sid;
+    TheSID sid;
 
     Color_RAM col_ram;
     VIC vic;

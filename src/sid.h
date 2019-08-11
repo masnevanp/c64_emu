@@ -5,15 +5,13 @@
 #include "host.h"
 
 
-namespace SID {
-
 
 // Using reSID by Dag Lem for core functionality
-class Wrapper {
+class reSID_Wrapper {
 public:
     static const int OUTPUT_FREQ = 44100;
 
-    Wrapper(const u16& frame_cycle_) : frame_cycle(frame_cycle_)
+    reSID_Wrapper(const u16& frame_cycle_) : frame_cycle(frame_cycle_)
     {
         re_sid.set_sampling_parameters(CPU_FREQ, reSID::SAMPLE_RESAMPLE, OUTPUT_FREQ);
         reset();
@@ -73,7 +71,5 @@ private:
 
 };
 
-
-} // namespace SID
 
 #endif // SID_H_INCLUDED

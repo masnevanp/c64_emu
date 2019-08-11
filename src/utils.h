@@ -6,6 +6,9 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#ifdef __MINGW32__
+#include <windows.h>
+#endif
 #include "common.h"
 
 #define UNUSED(x) (void)(x)
@@ -29,7 +32,11 @@ public:
         auto elapsed_ms = std::chrono::duration_cast<ms>(t2 - t1).count();
         auto wait_period_ms = target_elapsed_ms - elapsed_ms;
         if (wait_period_ms > 0) {
-            std::this_thread::sleep_for(ms(wait_period_ms));
+            #ifdef __MINGW32__
+                Sleep(wait_period_ms);
+            #else
+                std::this_thread::sleep_for(ms(wait_period_ms));
+            #endif
         }
         if (reset) {
             t1 = t2;
