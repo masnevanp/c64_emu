@@ -64,19 +64,29 @@ void get_Colodore(u32* target_palette, double brightness, double contrast, doubl
 }
 
 
-std::vector<char> read_bin_file(const std::string& filename) {
-    std::ifstream f(filename, std::ios::binary);
-    return std::vector<char>(
-        std::istreambuf_iterator<char>(f),
-        std::istreambuf_iterator<char>()
-    );
+std::vector<u8> read_file(const std::string& filename) {
+    std::ifstream f(filename, std::ios::binary | std::ios::ate);
+
+    if (!f) return std::vector<u8>(0);
+
+    auto sz = f.tellg();
+    std::vector<u8> bin(sz);
+    f.seekg(0);
+    f.read((char*)bin.data(), sz);
+    return bin;
 }
 
 
-size_t read_bin_file(const std::string& filename, char* buf) {
-    auto bin = read_bin_file(filename);
-    std::copy(bin.begin(), bin.end(), buf);
-    return bin.size();
+size_t read_file(const std::string& filename, u8* buf) {
+    std::ifstream f(filename, std::ios::binary | std::ios::ate);
+
+    if (!f) return 0;
+
+    auto sz = f.tellg();
+    f.seekg(0);
+    f.read((char*)buf, sz);
+
+    return sz;
 }
 
 

@@ -6,7 +6,7 @@ namespace Test {
 
 
 void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) {
-    auto mem_ = read_bin_file("data/6502_functional_test/6502_functional_test.bin");
+    auto mem_ = read_file("data/6502_functional_test/6502_functional_test.bin");
     if (mem_.size() != 0x10000) {
         std::cerr << "Failed to read test.bin" << "\n";
         return;
@@ -88,7 +88,7 @@ void run_test_suite()
 
     auto load = [&](const std::string& filename) {
         const std::string fn = "data/testsuite-2.15/bin/" + as_lower(filename);
-        auto bin = read_bin_file(fn);
+        auto bin = read_file(fn);
         auto sz = bin.size();
         //std::cout << "\nLoading: " << fn;
         if (sz > 2) {

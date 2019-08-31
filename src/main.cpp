@@ -25,9 +25,9 @@ void run_c64() {
     u8 kernal[0x2000];
     u8 charr[0x1000];
 
-    read_bin_file("data/c64_roms/basic.rom", (char*)basic);
-    read_bin_file("data/c64_roms/kernal.rom", (char*)kernal);
-    read_bin_file("data/c64_roms/char.rom", (char*)charr);
+    read_file("data/c64_roms/basic.rom", basic);
+    read_file("data/c64_roms/kernal.rom", kernal);
+    read_file("data/c64_roms/char.rom", charr);
 
     IEC::Virtual::Controller iec_ctrl;
     Volatile_disk vol_disk;

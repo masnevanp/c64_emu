@@ -55,7 +55,7 @@ public:
     virtual IEC::IO_ST write(const u8& d) { return cur_ch->write(d); }
 
 private:
-    using buffer = std::vector<char>;
+    using buffer = std::vector<u8>;
 
     struct Ch {
         enum Mode : u8 { r, w, a };
@@ -71,7 +71,7 @@ private:
         void check_opening(const std::string& host_dir) {
             if (status == Status::opening && name.size() > 0) {
                 if (mode == Mode::r) {
-                    data = read_bin_file(host_dir + std::string(name.begin(), name.end()));
+                    data = read_file(host_dir + std::string(name.begin(), name.end()));
                     if (data.size() < 2) return close(); // TODO: 'sz < 2' ok for non-prg files...
                 } else {
                     data.clear(); // TODO: write/append, open/create actual file here?

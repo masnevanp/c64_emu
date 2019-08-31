@@ -53,9 +53,9 @@ private:
 // Colodore by pepto - http://www.pepto.de/projects/colorvic/
 void get_Colodore(u32* target_palette, double brightness = 50, double contrast = 100, double saturation = 50);
 
-std::vector<char> read_bin_file(const std::string& filename);
+std::vector<u8> read_file(const std::string& filename);
 
-size_t read_bin_file(const std::string& filename, char* buf);
+size_t read_file(const std::string& filename, u8* buf);
 
 std::string as_lower(const std::string& src);
 

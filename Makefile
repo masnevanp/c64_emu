@@ -4,7 +4,7 @@ TARGET := c64_emu
 BUILD ?= debug
 VERSION_INFO ?= unknown
 
-CXXFLAGS := -std=c++11 -Wall -pedantic -Wextra -D__VERSION_INFO__=\"$(VERSION_INFO)\"
+CXXFLAGS := -std=c++17 -Wall -pedantic -Wextra -D__VERSION_INFO__=\"$(VERSION_INFO)\"
 LDFLAGS :=
 
 ifeq ($(BUILD), release)
