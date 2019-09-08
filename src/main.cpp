@@ -32,7 +32,7 @@ void run_c64() {
     IEC::Virtual::Controller iec_ctrl;
     Volatile_disk vol_disk;
     Dummy_device dd;
-    Host_drive hd("data/prg/");
+    Host_drive hd("data/prg");
     iec_ctrl.attach(vol_disk, 10);
     iec_ctrl.attach(dd, 30);
     iec_ctrl.attach(hd, 8);

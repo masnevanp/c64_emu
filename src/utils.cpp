@@ -2,8 +2,9 @@
 #include "utils.h"
 
 #include <fstream>
-#include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <iostream>
 
 
 
@@ -67,12 +68,18 @@ void get_Colodore(u32* target_palette, double brightness, double contrast, doubl
 std::vector<u8> read_file(const std::string& filename) {
     std::ifstream f(filename, std::ios::binary | std::ios::ate);
 
-    if (!f) return std::vector<u8>(0);
+    if (!f) {
+        std::cout << "\nFailed to load '" << filename << "'";
+        return std::vector<u8>(0);
+    }
 
     auto sz = f.tellg();
     std::vector<u8> bin(sz);
     f.seekg(0);
     f.read((char*)bin.data(), sz);
+
+    std::cout << "\nLoaded '" << filename << "', " << sz << " bytes ";
+
     return bin;
 }
 
@@ -90,8 +97,37 @@ size_t read_file(const std::string& filename, u8* buf) {
 }
 
 
+// the names found in a dir
+std::vector<std::string> dir_listing(const std::string& dir) {
+    std::vector<std::string> names;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        std::string name = as_upper(entry.path().filename().string());
+        names.push_back(name);
+    }
+    return names;
+}
+
+
 std::string as_lower(const std::string& src) {
     std::string dst(src);
     std::transform(src.begin(), src.end(), dst.begin(), ::tolower);
     return dst;
+}
+
+
+std::string as_upper(const std::string& src) {
+    std::string dst(src);
+    std::transform(src.begin(), src.end(), dst.begin(), ::toupper);
+    return dst;
+}
+
+
+std::string replace(std::string s, const std::string& what, const std::string& with) {
+    if (what.length() == 0) return s;
+    size_t pos = 0;
+    while ((pos = s.find(what, pos)) != std::string::npos) {
+        s.replace(pos, what.length(), with);
+        pos += with.length();
+    }
+    return s;
 }

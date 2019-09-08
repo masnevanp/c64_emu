@@ -7,6 +7,7 @@
 
 #include "iec.h"
 #include "utils.h"
+#include "file_utils.h"
 
 
 // TODO: namespace?
@@ -71,7 +72,10 @@ private:
         void check_opening(const std::string& host_dir) {
             if (status == Status::opening && name.size() > 0) {
                 if (mode == Mode::r) {
-                    data = read_file(host_dir + std::string(name.begin(), name.end()));
+                    std::string name_str(name.begin(), name.end());
+                    data = (name_str == "$")
+                        ? dir_basic_listing(host_dir)
+                        : read_file(host_dir, name_str);
                     if (data.size() < 2) return close(); // TODO: 'sz < 2' ok for non-prg files...
                 } else {
                     data.clear(); // TODO: write/append, open/create actual file here?

@@ -57,6 +57,14 @@ std::vector<u8> read_file(const std::string& filename);
 
 size_t read_file(const std::string& filename, u8* buf);
 
+// the names found in a dir
+std::vector<std::string> dir_listing(const std::string& dir);
+
 std::string as_lower(const std::string& src);
+
+std::string as_upper(const std::string& src);
+
+std::string replace(std::string s, const std::string& what, const std::string& with);
+
 
 #endif // UTILS_H_INCLUDED
