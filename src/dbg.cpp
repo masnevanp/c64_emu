@@ -53,7 +53,7 @@ void Dbg::print_mem(u8* mem, u16 page) {
 void Dbg::print_status(const NMOS6502::Core& cpu, u8* mem) {
     std::cout << "\npc: " << print_u16(cpu.pc);
     std::cout << " [ " << print_u8(mem[cpu.pc]);
-    std::cout << " " << print_u8(mem[(cpu.pc+1) && 0xffff]) << " " << print_u8(mem[(cpu.pc+2) && 0xffff]);
+    std::cout << " " << print_u8(mem[(cpu.pc+1) & 0xffff]) << " " << print_u8(mem[(cpu.pc+2) & 0xffff]);
     std::cout << " ]";
     std::cout << "\nsp: " << print_u16(cpu.spf);
     std::cout << " [";

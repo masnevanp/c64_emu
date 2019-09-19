@@ -25,9 +25,6 @@ using VIC = VIC_II::Core<VIC_out>;
 using Color_RAM = VIC_II::Color_RAM;
 
 
-static const u8 IO_PORT_INIT_DD = 0xef; // Source: Mapping the Commodore C64, by Sheldon Leemon
-
-
 
 struct ROM {
     const u8* basic;
@@ -410,7 +407,7 @@ private:
     };
     IO::Port::PD_out cia2_port_b_out {
         [this](u8 bits, u8 bit_vals) {
-            UNUSED(bits); UNUSED(bit_vals);
+            UNUSED(this); UNUSED(bits); UNUSED(bit_vals);
         }
     };
 

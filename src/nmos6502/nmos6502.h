@@ -3,6 +3,7 @@
 
 #include <string>
 #include <functional>
+#include <cstdint>
 
 
 namespace NMOS6502 {

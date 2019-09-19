@@ -124,8 +124,6 @@ private:
 
     const PD_out& ext_out;
 
-    u8 init_dd;
-
     u8 in_bits;
     u8 out_bits;
     u8 p_in;
