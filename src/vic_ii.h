@@ -119,7 +119,7 @@ public:
           irq_unit(reg, out_),
           ba_unit(ba_low),
           mob_unit(banker, col_ram_, reg, raster_y, ba_unit, irq_unit),
-          gfx_unit(banker, col_ram_, reg, line_cycle, raster_y, vert_border_on, ba_unit),
+          gfx_unit(banker, col_ram_, reg, line_cycle, raster_y, ba_unit),
           out(out_) { }
 
     Banker banker;
@@ -180,7 +180,7 @@ public:
             case cr2:
                 gfx_unit.set_mcm(d & mcm_bit);
                 set_csel(d & CR2::csel_bit);
-                gfx_unit.x_scroll = d & x_scroll_mask;
+                gfx_unit.set_x_scroll(d & x_scroll_mask);
                 break;
             case mptr:
                 gfx_unit.c_base = d & MPTR::cg_mask;
@@ -287,21 +287,25 @@ public:
             case 12: if (!v_blank) update_mobs(); return;
             case 13: // 496..503
                 if (!v_blank) {
-                    output();
+                    gfx_unit.gfx_border_read();
+                    output_border();
                     raster_x = 0;
                     gfx_unit.row_start();
                 }
                 return;
             case 14: // 0
                 if (!v_blank) {
-                    output();
+                    gfx_unit.gfx_border_read();
+                    output_border();
                     gfx_unit.vm_read();
                 }
                 mob_unit.inc_mdc_base_2();
                 return;
             case 15: // 8
                 if (!v_blank) {
-                    output();
+                    gfx_unit.gfx_border_read();
+                    output_border();
+                    gfx_unit.gfx_pad_left();
                     gfx_unit.gfx_read();
                     gfx_unit.vm_read();
                 }
@@ -309,14 +313,15 @@ public:
                 return;
             case 16: // 16
                 if (!v_blank) {
-                    output();
+                    gfx_unit.gfx_border_read();
+                    output_border();
                     gfx_unit.gfx_read();
                     gfx_unit.vm_read();
                 }
                 return;
             case 17: // 24..31
                 if (!v_blank) {
-                    output_on_left_edge();
+                    output_on_edge();
                     gfx_unit.gfx_read();
                     gfx_unit.vm_read();
                 }
@@ -336,6 +341,7 @@ public:
                 if (!v_blank) {
                     output();
                     gfx_unit.gfx_read();
+                    gfx_unit.gfx_pad_right();
                     gfx_unit.ba_end();
                 }
                 mob_unit.check_mdc_base_upd();
@@ -343,7 +349,7 @@ public:
                 mob_unit.pre_dma(0);
                 return;
             case 55: // 328
-                if (!v_blank) output_on_right_edge();
+                if (!v_blank) output_on_edge();
                 mob_unit.check_dma();
                 mob_unit.pre_dma(0);
                 return;
@@ -353,21 +359,30 @@ public:
                 return;
             case 57: // 344
                 if (!v_blank) {
-                    output_on_right_edge();
+                    output_on_edge();
                     gfx_unit.row_end();
                 }
                 mob_unit.load_mdc();
                 return;
             case 58: // 352
-                if (!v_blank) output();
+                if (!v_blank) {
+                    gfx_unit.gfx_border_read();
+                    output_border();
+                }
                 mob_unit.pre_dma(2);
                 return;
             case 59: // 360
-                if (!v_blank) output();
+                if (!v_blank) {
+                    gfx_unit.gfx_border_read();
+                    output_border();
+                }
                 mob_unit.do_dma(0);
                 return;
             case 60: // 368
-                if (!v_blank) output();
+                if (!v_blank) {
+                    gfx_unit.gfx_border_read();
+                    output_border();
+                }
                 mob_unit.pre_dma(3);
                 return;
             case 61: mob_unit.do_dma(1);  return;
@@ -641,17 +656,14 @@ private:
         };
 
         u8 y_scroll;
-        u8 x_scroll;
         u16 vm_base;
         u16 c_base;
 
         GFX_unit(
             Banker& bank_, const Color_RAM& col_ram_, const u8* reg_,
-            const u8& line_cycle_, const u16& raster_y_,
-            const bool& v_border_on_, BA_unit& ba_)
+            const u8& line_cycle_, const u16& raster_y_, BA_unit& ba_)
           : bank(bank_), col_ram(col_ram_), reg(reg_),
-            line_cycle(line_cycle_), raster_y(raster_y_),
-            v_border_on(v_border_on_), ba(ba_) {}
+            line_cycle(line_cycle_), raster_y(raster_y_), ba(ba_) {}
 
         void set_ecm(bool e)   { mode = e ? mode | ecm_set : mode & ~ecm_set; }
         void set_bmm(bool b)   { mode = b ? mode | bmm_set : mode & ~bmm_set; }
@@ -661,6 +673,11 @@ private:
         void set_den(bool den) {
             ba_area |= ((raster_y == VMA_TOP_RASTER_Y) && den);
             ba_check();
+        }
+
+        void set_x_scroll(u8 x_scroll_) {
+            if (x_scroll > x_scroll_) g_out_idx = g_out_idx + x_scroll - x_scroll_;
+            x_scroll = x_scroll_;
         }
 
         void set_y_scroll(u8 y_scroll_) {
@@ -712,12 +729,22 @@ private:
             }
         }
 
+        void gfx_pad_left() {
+            for (int i = 7 + x_scroll; i > 7; --i) g_out[i] = bgc;
+            g_out_idx = 0;
+        }
+
+        void gfx_pad_right() {
+            u8 start = g_out_idx + x_scroll + 16;
+            u8 end = g_out_idx + 24;
+            for (u8 i = start; i < end; ++i) g_out[i & 0x1f] = bgc;
+        }
+
         void gfx_read() {
             static const u8  MC_flag         = 0x8;
-            static const u8  BGC0            = (u8)bgc0;
             static const u16 G_ADDR_ECM_MASK = 0x39ff;
 
-            u8 vd = vm_row[vmri].vm_data & vm_mask;
+            vd = vm_row[vmri].vm_data & vm_mask;
             u8 cd = vm_row[vmri].cr_data & vm_mask;
 
             u16 addr;
@@ -725,32 +752,26 @@ private:
             u8 load_idx = g_out_idx + x_scroll + 8;
 
             switch (mode) {
-                case scm:
+                case scm: case_scm:
                     addr = c_base | (vd << 3) | rc;
                     data = bank.r(addr);
+                    bgc = reg[bgc0];
                     cd |= FG_GFX_FLAG;
-                    bgc = BGC0;
                     for (u8 p = 0x80; p; p >>= 1) {
-                        g_out[load_idx++ & 0x1f] = data & p ? cd : BGC0;
+                        g_out[load_idx++ & 0x1f] = data & p ? cd : bgc;
                     }
                     break;
                 case mccm:
+                    if (!(cd & MC_flag)) goto case_scm;
                     addr = c_base | (vd << 3) | rc;
                     data = bank.r(addr);
-                    bgc = BGC0;
-                    if (cd & MC_flag) {
-                        for (int p = 6; p >= 0; p -= 2) {
-                            auto d = (data >> p) & 0x3;
-                            u8 g = (d == 0x3) ? cd ^ MC_flag : BGC0 + d;
-                            g |= (d << 6); // sets fg-gfx flag
-                            g_out[load_idx++ & 0x1f] = g;
-                            g_out[load_idx++ & 0x1f] = g;
-                        }
-                    } else {
-                        cd |= FG_GFX_FLAG;
-                        for (u8 p = 0x80; p; p >>= 1) {
-                            g_out[load_idx++ & 0x1f] = data & p ? cd : BGC0;
-                        }
+                    bgc = reg[bgc0];
+                    for (int p = 6; p >= 0; p -= 2) {
+                        auto d = (data >> p) & 0x3;
+                        u8 g = (d == 0x3) ? cd ^ MC_flag : reg[bgc0 + d];
+                        g |= (d << 6); // sets fg-gfx flag
+                        g_out[load_idx++ & 0x1f] = g;
+                        g_out[load_idx++ & 0x1f] = g;
                     }
                     break;
                 case sbmm: {
@@ -766,12 +787,12 @@ private:
                 case mcbmm:
                     addr = (c_base & 0x2000) | (vc << 3) | rc;
                     data = bank.r(addr);
-                    bgc = BGC0;
+                    bgc = reg[bgc0];
                     for (int p = 6; p >= 0; p -= 2) {
                         auto d = (data >> p) & 0x3;
                         u8 g;
                         switch (d) {
-                            case 0x0: g = BGC0;     break;
+                            case 0x0: g = bgc;      break;
                             case 0x1: g = vd >> 4;  break;
                             case 0x2: g = vd & 0xf; break;
                             case 0x3: g = cd;       break;
@@ -785,7 +806,7 @@ private:
                     addr = (c_base | (vd << 3) | rc) & G_ADDR_ECM_MASK;
                     data = bank.r(addr);
                     u8 fgc = cd | FG_GFX_FLAG;
-                    bgc = BGC0 + (vd >> 6);
+                    bgc = reg[bgc0 + (vd >> 6)];
                     for (u8 p = 0x80; p; p >>= 1) {
                         g_out[load_idx++ & 0x1f] = data & p ? fgc : bgc;
                     }
@@ -835,17 +856,24 @@ private:
             }
         }
 
-        u8 pixel_out(bool& fg_gfx) {
-            if (v_border_on) {
-                g_out[g_out_idx++ & 0x1f] = bgc;
-                return bgc;
-            } else {
-                u8 px = g_out[g_out_idx & 0x1f];
-                g_out[g_out_idx++ & 0x1f] = bgc;
-                fg_gfx = px & FG_GFX_FLAG;
-                return px & BG_COL_FLAG ? reg[px & BG_COL_MASK] : px & 0xf;
+        void gfx_border_read() {
+            g_out_idx += 8; // ok to do here (moved from border_pixel_out())
+            switch (mode) {
+                case scm: case mccm: bgc = reg[bgc0]; break;
+                case sbmm: bgc = vd & 0xf; break;
+                case mcbmm: bgc = reg[bgc0]; break;
+                case ecm: bgc = reg[bgc0 + (vd >> 6)]; break;
+                case icm: case ibmm1: case ibmm2: bgc = 0; break;
             }
         }
+
+        u8 pixel_out(bool& fg_gfx) {
+            u8 px = g_out[g_out_idx++ & 0x1f];
+            fg_gfx = px & FG_GFX_FLAG;
+            return px & 0xf;
+        }
+
+        u8 border_pixel_out() const { return bgc; }
 
     private:
         enum VM_Mask : u8 { idle = 0x00, active = 0xff };
@@ -854,6 +882,8 @@ private:
         void activate_gfx()     { vm_mask = active; rc &= 0x7; }
         void deactivate_gfx()   { vm_mask = idle;   rc = RC_IDLE; }
         bool gfx_active() const { return vm_mask; }
+
+        u8 x_scroll;
 
         u8 ba_area; // set for each frame (at the top of disp.win)
         u8 ba_line;
@@ -873,6 +903,7 @@ private:
         u8 g_out[32];
         u8 g_out_idx;
         u8 bgc;
+        u8 vd;
 
         u8 mode = scm;
 
@@ -881,7 +912,6 @@ private:
         const u8* reg;
         const u8& line_cycle;
         const u16& raster_y;
-        const bool& v_border_on;
         BA_unit& ba;
     };
 
@@ -918,21 +948,20 @@ private:
         raster_x += 8;
     }
 
-    void output(int px_count = 8) { while (px_count--) exude_pixel(); }
-    void output_on_left_edge(int px_count = 8) {
-        while (px_count--) {
+    void output() {
+        if (vert_border_on) output_border();
+        else for (int p = 0; p < 8; ++p) exude_pixel();
+    }
+    void output_border() { for (int p = 0; p < 8; ++p) exude_border_pixel(); }
+    void output_on_edge() {
+        for (int p = 0; p < 8; ++p) {
             if (raster_x == cmp_left) {
                 if (raster_y == cmp_top && den) vert_border_on = false;
                 else if (raster_y == cmp_bottom) vert_border_on = true;
                 if (!vert_border_on) main_border_on = false;
-            }
-            exude_pixel();
-        }
-    }
-    void output_on_right_edge(int px_count = 8) {
-        while (px_count--) {
-            if (raster_x == cmp_right) main_border_on = true;
-            exude_pixel();
+            } else if (raster_x == cmp_right) main_border_on = true;
+            if (vert_border_on) exude_border_pixel();
+            else exude_pixel();
         }
     }
 
@@ -957,6 +986,17 @@ private:
         ++raster_x;
     }
 
+    void exude_border_pixel() {
+        u8 _ = 0;
+        u8 o_col = mob_unit.pixel_out(raster_x, false, _); // must call always (to keep in sync)
+
+        if (main_border_on) o_col = reg[ecol];
+        else if (o_col == TRANSPARENT_PX) o_col = gfx_unit.border_pixel_out();
+
+        out.put_pixel(o_col);
+
+        ++raster_x;
+    }
 
     IRQ_unit irq_unit;
     BA_unit ba_unit;
