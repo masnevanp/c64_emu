@@ -31,15 +31,6 @@ public:
         audio_out.put(buf, BUF_SZ / 4);
     }
 
-    void tick() {
-        int n = frame_cycle - ticked;
-        if (n) {
-            // there is always enough space in the buffer (hence the '0xffff')
-            buf_ptr += re_sid.clock(n, buf_ptr, 0xffff);
-            ticked = frame_cycle;
-        }
-    }
-
     void output() {
         tick();
         audio_out.put(buf, buf_ptr - buf);
@@ -68,6 +59,14 @@ private:
 
     Host::Audio_out audio_out;
 
+    void tick() {
+        int n = frame_cycle - ticked;
+        if (n) {
+            // there is always enough space in the buffer (hence the '0xffff')
+            buf_ptr += re_sid.clock(n, buf_ptr, 0xffff);
+            ticked = frame_cycle;
+        }
+    }
 };
 
 
