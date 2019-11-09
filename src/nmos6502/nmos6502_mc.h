@@ -50,24 +50,22 @@ namespace NMOS6502 {
     };
 
     struct MOP { // micro-op
-        u8 ar;     // addr.reg index
+        /*u8 ar;     // addr.reg index
         u8 dr;     // data reg index
         u8 rw;     // read/write
         u8 pc_inc; // pc increment
-        u8 mopc;   // micro-op code
+        u8 mopc;   // micro-op code*/
 
-        /*// 2 byte mop (vs 5 bytes) (is a bit slower)
+        // 2 byte mop (vs 5 bytes)
         unsigned char ar : 4;
         unsigned char dr : 4;
         unsigned char mopc : 6;
         unsigned char rw : 1;
-        unsigned char pc_inc : 1;*/
+        unsigned char pc_inc : 1;
 
         MOP(u8 ar_ = 0, u8 dr_ = 0, u8 rw_ = 0, u8 pc_inc_ = 0, u8 mopc_ = hlt)
-            : ar(ar_), dr(dr_), rw(rw_), pc_inc(pc_inc_), mopc(mopc_) {}
-        //MOP(unsigned char ar_ = 0, unsigned char dr_ = 0, unsigned char mopc_ = hlt,
-        //    unsigned char rw_ = 0, unsigned char pc_inc_ = 0)
-        //  : ar(ar_), dr(dr_), mopc(mopc_), rw(rw_), pc_inc(pc_inc_) {}
+        //  : ar(ar_), dr(dr_), rw(rw_), pc_inc(pc_inc_), mopc(mopc_) {}
+          : ar(ar_), dr(dr_), mopc(mopc_), rw(rw_), pc_inc(pc_inc_) {}
 
         operator std::string() const {
             return "(" + R16_str[ar] + ") " + R8_str[dr] + " " + RW_str[rw]
