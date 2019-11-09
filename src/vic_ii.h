@@ -3,7 +3,6 @@
 
 #include <iostream>
 #include "common.h"
-#include "io.h"
 
 
 namespace VIC_II {
@@ -34,8 +33,6 @@ static const u8  LINE_CYCLES       =  63;
 class Color_RAM {
 public:
     static const u16 SIZE = 0x0400;
-
-    Color_RAM() { reset(); }
 
     void reset() { for (auto& c : ram) c = 0x0; }
 
@@ -117,14 +114,13 @@ public:
 
     Core(
           const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
-          IO::Int_hub& int_hub, u16& ba_low, Out& out_)
+          u16& ba_low, Out& out_)
         : banker(ram_, charr),
-          irq_unit(reg, int_hub),
+          irq_unit(reg, out_),
           ba_unit(ba_low),
           mob_unit(banker, col_ram_, reg, raster_y, ba_unit, irq_unit),
           gfx_unit(banker, col_ram_, reg, line_cycle, raster_y, vert_border_on, ba_unit),
-          out(out_)
-    { reset_cold(); }
+          out(out_) { }
 
     Banker banker;
 
@@ -394,7 +390,7 @@ private:
             irq = 0x80,
         };
 
-        IRQ_unit(u8* reg_, IO::Int_hub& int_hub_) : reg(reg_), int_hub(int_hub_) { }
+        IRQ_unit(u8* reg_, Out& out_) : reg(reg_), out(out_) { }
 
         void w_ireg(u8 data) { reg[ireg] &= ~data; update(); }
         void ien_upd()       { update(); }
@@ -404,15 +400,15 @@ private:
         void update() {
             if (reg[ireg] & reg[ien]) {
                 reg[ireg] |= Ireg::irq;
-                int_hub.set(IO::Int_hub::Src::vic);
+                out.set_irq();
             } else {
                 reg[ireg] &= ~Ireg::irq;
-                int_hub.clr(IO::Int_hub::Src::vic);
+                out.clr_irq();
             }
         }
 
         u8* reg;
-        IO::Int_hub& int_hub;
+        Out& out;
     };
 
 

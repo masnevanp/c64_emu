@@ -89,8 +89,7 @@ public:
           bas0(rom.basic),   bas1(rom.basic + 0x1000),
           kern0(rom.kernal), kern1(rom.kernal + 0x1000),
           charr(rom.charr),
-          io_space(io_space_)
-    { reset(); }
+          io_space(io_space_) { }
 
     void reset() {
         io_port_state = 0x00;
@@ -236,18 +235,22 @@ private:
 class VIC_out {
 public:
     VIC_out(
+        IO::Int_hub& int_hub_,
         Host::Video_out& vid_out_, Host::Input& host_input_,
         TheSID& sid_, u16& frame_cycle_
     ) :
+        int_hub(int_hub_),
         vid_out(vid_out_), host_input(host_input_),
-        sid(sid_), frame_cycle(frame_cycle_)
-    { reset(); }
+        sid(sid_), frame_cycle(frame_cycle_) { }
 
     void reset() {
         px_pos = frame;
         frame_moment = 0;
         clock.reset();
     }
+
+    void set_irq() { int_hub.set(IO::Int_hub::Src::vic); }
+    void clr_irq() { int_hub.clr(IO::Int_hub::Src::vic); }
 
     void put_pixel(const u8& vic_col) { *px_pos++ = vic_col; }
 
@@ -279,6 +282,8 @@ public:
     }
 
 private:
+    IO::Int_hub& int_hub;
+
     Host::Video_out& vid_out;
     Host::Input& host_input;
 
@@ -302,9 +307,9 @@ public:
         cia1(sync_master, cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1),
         cia2(sync_master, cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
         sid(frame_cycle),
-        vic(ram, col_ram, rom.charr, int_hub, rdy_low, vic_out),
+        vic(ram, col_ram, rom.charr, rdy_low, vic_out),
         vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT),
-        vic_out(vid_out, host_input, sid, frame_cycle),
+        vic_out(int_hub, vid_out, host_input, sid, frame_cycle),
         int_hub(cpu),
         kb_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in),
         io_space(cia1, cia2, sid, vic, col_ram),

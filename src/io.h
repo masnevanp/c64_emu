@@ -41,7 +41,7 @@ public:
         irq  = 0x0f, nmi  = 0xf0, // source mask
     };
 
-    Int_hub(NMOS6502::Core& cpu_) : cpu(cpu_) { reset(); }
+    Int_hub(NMOS6502::Core& cpu_) : cpu(cpu_) { }
 
     void reset() { state = old_state = 0x00; nmi_act = irq_act = false; }
 
@@ -82,10 +82,7 @@ public:
     using PD_in  = Sig2<u8, u8>; // bits, bit_vals
     using PD_out = Sig2<u8, u8>; // bits, bit_vals
 
-    Port(const PD_out& ext_out_) : ext_out(ext_out_)
-    {
-        reset();
-    }
+    Port(const PD_out& ext_out_) : ext_out(ext_out_) { reset(); }
 
     /*  The port pins are set as inputs and port registers to
         zero (although a read of the ports will return all high
@@ -134,7 +131,7 @@ private:
 class Keyboard_matrix {
 public:
     Keyboard_matrix(Port::PD_in& port_a_in_, Port::PD_in& port_b_in_)
-        : port_a_in(port_a_in_), port_b_in(port_b_in_) { reset(); }
+        : port_a_in(port_a_in_), port_b_in(port_b_in_) { }
 
     void reset() {
         for (auto& kd : k_down) kd = 0x00;

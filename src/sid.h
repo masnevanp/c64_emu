@@ -14,7 +14,6 @@ public:
     reSID_Wrapper(const u16& frame_cycle_) : frame_cycle(frame_cycle_)
     {
         re_sid.set_sampling_parameters(CPU_FREQ, reSID::SAMPLE_RESAMPLE, OUTPUT_FREQ);
-        reset();
     }
 
     void reset() {

@@ -41,7 +41,6 @@ public:
         tod(int_ctrl)
     {
         tod_tick_freq = CPU_FREQ / (double)TOD_freq;
-        reset_cold();
     }
 
     void reset_warm() { int_ctrl.reset(); }
