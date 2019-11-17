@@ -3,6 +3,7 @@
 
 
 #include "system.h"
+#include "file_utils.h"
 
 
 // Loading/saving of raw prg files supported (i.e. no .TAP support etc.)
@@ -15,11 +16,11 @@ class Virtual {
 public:
     static void install_kernal_traps(u8* kernal, u8 trap_opc);
 
-    static bool on_trap(System::CPU& cpu, u8* ram) {
+    static bool on_trap(System::CPU& cpu, u8* ram, Loader& loader) {
         u8 tape_routine = cpu.d;
         switch (tape_routine) {
             case Routine::load:
-                load(cpu, ram);
+                load(cpu, ram, loader);
                 return true;
             case Routine::save:
                 save(cpu, ram);
@@ -31,7 +32,7 @@ public:
     }
 
 private:
-    static void load(System::CPU& cpu, u8* ram);
+    static void load(System::CPU& cpu, u8* ram, Loader& loader);
     static void save(System::CPU& cpu, u8* ram);
 
 };

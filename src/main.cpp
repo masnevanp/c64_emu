@@ -6,6 +6,7 @@
 #include "utils.h"
 #include "dbg.h"
 #include "system.h"
+#include "file_utils.h"
 #include "iec.h"
 #include "iec_devs.h"
 #include "tape.h"
@@ -25,14 +26,20 @@ void run_c64() {
     u8 kernal[0x2000];
     u8 charr[0x1000];
 
-    read_file("data/c64_roms/basic.rom", basic);
-    read_file("data/c64_roms/kernal.rom", kernal);
-    read_file("data/c64_roms/char.rom", charr);
+    auto read_roms = [&]() -> bool {
+        return (read_file("data/c64_roms/basic.rom", basic) > 0)
+                    && (read_file("data/c64_roms/kernal.rom", kernal) > 0)
+                    && (read_file("data/c64_roms/char.rom", charr) > 0);
+    };
+
+    if (!read_roms()) return;
+
+    Loader loader("data/prg");
 
     IEC::Virtual::Controller iec_ctrl;
     Volatile_disk vol_disk;
     Dummy_device dd;
-    Host_drive hd("data/prg");
+    Host_drive hd(loader);
     iec_ctrl.attach(vol_disk, 10);
     iec_ctrl.attach(dd, 30);
     iec_ctrl.attach(hd, 8);
@@ -51,7 +58,7 @@ void run_c64() {
                 handled = IEC::Virtual::on_trap(c64.cpu, c64.ram, iec_ctrl);
                 break;
             case Trap_OPC::tape_routine:
-                handled = Tape::Virtual::on_trap(c64.cpu, c64.ram);
+                handled = Tape::Virtual::on_trap(c64.cpu, c64.ram, loader);
                 break;
         }
 

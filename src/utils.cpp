@@ -65,12 +65,12 @@ void get_Colodore(u32* target_palette, double brightness, double contrast, doubl
 }
 
 
-std::vector<u8> read_file(const std::string& filename) {
-    std::ifstream f(filename, std::ios::binary | std::ios::ate);
+std::optional<std::vector<u8>> read_file(const std::string& filepath) {
+    std::ifstream f(filepath, std::ios::binary | std::ios::ate);
 
     if (!f) {
-        std::cout << "\nFailed to load '" << filename << "'";
-        return std::vector<u8>(0);
+        std::cout << "\nFailed to read file '" << filepath << "'";
+        return {};
     }
 
     auto sz = f.tellg();
@@ -78,16 +78,19 @@ std::vector<u8> read_file(const std::string& filename) {
     f.seekg(0);
     f.read((char*)bin.data(), sz);
 
-    std::cout << "\nLoaded '" << filename << "', " << sz << " bytes ";
+    std::cout << "\nRead file '" << filepath << "', " << sz << " bytes ";
 
     return bin;
 }
 
 
-size_t read_file(const std::string& filename, u8* buf) {
-    std::ifstream f(filename, std::ios::binary | std::ios::ate);
+int read_file(const std::string& filepath, u8* buf) {
+    std::ifstream f(filepath, std::ios::binary | std::ios::ate);
 
-    if (!f) return 0;
+    if (!f) {
+        std::cout << "\nFailed to read file '" << filepath << "'";
+        return -1;
+    }
 
     auto sz = f.tellg();
     f.seekg(0);
@@ -97,14 +100,15 @@ size_t read_file(const std::string& filename, u8* buf) {
 }
 
 
-// the names found in a dir
-std::vector<std::string> dir_listing(const std::string& dir) {
-    std::vector<std::string> names;
+std::pair<std::vector<std::string>, std::vector<std::string>> list_dir(const std::string& dir) {
+    std::vector<std::string> dirs;
+    std::vector<std::string> files;
     for (const auto& entry : std::filesystem::directory_iterator(dir)) {
         std::string name = as_upper(entry.path().filename().string());
-        names.push_back(name);
+        if (entry.is_directory()) dirs.push_back(name);
+        else if (entry.is_regular_file()) files.push_back(name);
     }
-    return names;
+    return {dirs, files};
 }
 
 

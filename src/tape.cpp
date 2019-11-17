@@ -24,13 +24,10 @@ void load(const std::vector<u8>& bin, System::CPU& cpu, u8* ram) {
     ram[0xc4] = cpu.y;
 
     u8 scnd_addr = ram[0xb9];
+    u16 addr = (scnd_addr == 0) ? cpu.y * 0x100 + cpu.x : bin[1] * 0x100 + bin[0];
 
-    u16 addr = (scnd_addr == 0)
-        ? cpu.y * 0x100 + cpu.x
-        : bin[1] * 0x100 + bin[0];
-
-    for (u16 b = 2; b < sz; ++b)
-        ram[addr++] = bin[b];
+    // 'load'
+    for (u32 b = 2; b < sz; ++b) ram[addr++] = bin[b];
 
     // end pointer
     ram[0xae] = cpu.x = addr;
@@ -65,31 +62,11 @@ void Tape::Virtual::install_kernal_traps(u8* kernal, u8 trap_opc) {
 }
 
 
-void Tape::Virtual::load(System::CPU& cpu, u8* ram) {
-    // IDEAs:
-    //   - 'LOAD' or 'LOAD""' loads the directory listing (auto-list somehow?)
-    //   - listing has entries for sub/parent directories (parent = '..')
-    //        LOAD".." --> cd up
-    //        LOAD"some-sub-dir" --> cd some-sub-dir
-    //   - or 'LOAD' loads & autostart a loader program (native, but can interact with host)
-    static const std::string dir = "data/prg"; // TODO...
-
+void Tape::Virtual::load(System::CPU& cpu, u8* ram, Loader& loader) {
     std::string filename = get_filename(ram);
-
-    if (filename == "") {
-        ::load(dir_basic_listing(dir), cpu, ram);
-        return;
-    }
-
-    auto bin = read_file(dir, filename);
-    auto sz = bin.size();
-    if (sz > 2) { // min: load addr + 1 byte
-        ::load(bin, cpu, ram);
-    } else {
-        cpu.pc = 0xf704; // jmp to 'file not found'
-    }
-
-    return;
+    auto bin = loader(filename);
+    if (bin && ((*bin).size() > 2)) return ::load(*bin, cpu, ram);
+    else cpu.pc = 0xf704; // jmp to 'file not found'
 }
 
 

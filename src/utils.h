@@ -5,7 +5,8 @@
 #include <string>
 #include <chrono>
 #include <thread>
-#include <iostream>
+#include <utility>
+#include <optional>
 #ifdef __MINGW32__
 #include <windows.h>
 #endif
@@ -53,12 +54,12 @@ private:
 // Colodore by pepto - http://www.pepto.de/projects/colorvic/
 void get_Colodore(u32* target_palette, double brightness = 50, double contrast = 100, double saturation = 50);
 
-std::vector<u8> read_file(const std::string& filename);
+std::optional<std::vector<u8>> read_file(const std::string& filepath);
 
-size_t read_file(const std::string& filename, u8* buf);
+int read_file(const std::string& filepath, u8* buf);
 
-// the names found in a dir
-std::vector<std::string> dir_listing(const std::string& dir);
+// [dirs, files] found in a dir
+std::pair<std::vector<std::string>, std::vector<std::string>> list_dir(const std::string& dir);
 
 std::string as_lower(const std::string& src);
 

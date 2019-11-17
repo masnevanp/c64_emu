@@ -28,10 +28,7 @@ private:
 
 class Host_drive : public IEC::Virtual::Device  {
 public:
-    // TODO:
-    //   - host dir navigation using entries in dir listing (see 'insta_load')
-    //     (current dir is drive-global..?)
-    Host_drive(const std::string& host_dir_) : host_dir(host_dir_) {}
+    Host_drive(Loader& load_) : load(load_) {}
 
     virtual IEC::IO_ST talk(u8 sa) {
         cur_ch = &ch[sa & IEC::ch_mask];
@@ -50,7 +47,7 @@ public:
         return IEC::IO_ST::ok;
     }
 
-    virtual void sleep() { cur_ch->check_opening(host_dir /*bruh...*/); }
+    virtual void sleep() { cur_ch->check_opening(load /*bruh...*/); }
 
     virtual IEC::IO_ST read(u8& d)        { return cur_ch->read(d); }
     virtual IEC::IO_ST write(const u8& d) { return cur_ch->write(d); }
@@ -69,14 +66,12 @@ private:
             // now waiting to receive the filename before opening...
         }
 
-        void check_opening(const std::string& host_dir) {
+        void check_opening(Loader& load) {
             if (status == Status::opening && name.size() > 0) {
                 if (mode == Mode::r) {
                     std::string name_str(name.begin(), name.end());
-                    data = (name_str == "$")
-                        ? dir_basic_listing(host_dir)
-                        : read_file(host_dir, name_str);
-                    if (data.size() < 2) return close(); // TODO: 'sz < 2' ok for non-prg files...
+                    if (auto bin = load(name_str)) data = std::move(*bin);
+                    else return close();
                 } else {
                     data.clear(); // TODO: write/append, open/create actual file here?
                 }
@@ -119,7 +114,7 @@ private:
     Ch ch[16];
     Ch* cur_ch = &ch[0];
 
-    const std::string host_dir; // TODO
+    Loader& load;
 };
 
 

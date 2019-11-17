@@ -7,12 +7,10 @@ namespace Test {
 
 void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) {
     auto mem_ = read_file("data/6502_functional_test/6502_functional_test.bin");
-    if (mem_.size() != 0x10000) {
-        std::cerr << "Failed to read test.bin" << "\n";
-        return;
-    }
 
-    u8* mem = (u8*)mem_.data();
+    if (!mem_ || (*mem_).size() != 0x10000) return;
+
+    u8* mem = (u8*)(*mem_).data();
 
     mem[0xfffc] = 0x00; mem[0xfffd] = 0x04;
 
@@ -88,17 +86,12 @@ void run_test_suite()
 
     auto load = [&](const std::string& filename) {
         const std::string fn = "data/testsuite-2.15/bin/" + as_lower(filename);
-        auto bin = read_file(fn);
-        auto sz = bin.size();
-        //std::cout << "\nLoading: " << fn;
-        if (sz > 2) {
-            // std::cout << "\nLoaded " << sz << " bytes\n";
-        } else {
-            std::cout << "\nFailed to load: " << fn << "\n";
-            exit(1);
-        }
+        auto file = read_file(fn);
+        auto sz = file ? (int)(*file).size() : -1;
+        if (sz < 2) exit(1);
+        u8* bin = (*file).data();
         auto addr = bin[1] * 0x100 + bin[0];
-        for (unsigned int b = 2; b < sz; ++b)
+        for (int b = 2; b < sz; ++b)
             mem[addr++] = bin[b];
         init();
     };
