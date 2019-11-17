@@ -335,6 +335,7 @@ public:
 
         get_Colodore(palette_1, 65, 100, 70);
         //get_Colodore(palette_2, 40, 80, 50);
+        palette_1[0] = 0x020202; // black is black...
 
         u32 pal[16];
         get_Colodore(pal, 38, 80, 45);
