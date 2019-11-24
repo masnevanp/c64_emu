@@ -321,7 +321,7 @@ public:
                 return;
             case 17: // 24..31
                 if (!v_blank) {
-                    output_on_edge();
+                    output_on_left_edge();
                     gfx_unit.gfx_read();
                     gfx_unit.vm_read();
                 }
@@ -349,7 +349,7 @@ public:
                 mob_unit.pre_dma(0);
                 return;
             case 55: // 328
-                if (!v_blank) output_on_edge();
+                if (!v_blank) output_on_right_edge();
                 mob_unit.check_dma();
                 mob_unit.pre_dma(0);
                 return;
@@ -359,7 +359,7 @@ public:
                 return;
             case 57: // 344
                 if (!v_blank) {
-                    output_on_edge();
+                    output_on_right_edge();
                     gfx_unit.row_end();
                 }
                 mob_unit.load_mdc();
@@ -953,13 +953,26 @@ private:
         else for (int p = 0; p < 8; ++p) exude_pixel();
     }
     void output_border() { for (int p = 0; p < 8; ++p) exude_border_pixel(); }
-    void output_on_edge() {
+    void output_on_left_edge() {
+        if (raster_y == cmp_top && den) {
+            for (int p = 0; p < 8; ++p) {
+                if (raster_x == cmp_left) main_border_on = vert_border_on = false;
+                exude_pixel(); // must 'consume' pixels (even if vert_border_on)
+            }
+        } else {
+            for (int p = 0; p < 8; ++p) {
+                if (raster_x == cmp_left) {
+                    if (raster_y == cmp_bottom) vert_border_on = true;
+                    else if (!vert_border_on) main_border_on = false;
+                }
+                if (vert_border_on) exude_border_pixel();
+                else exude_pixel();
+            }
+        }
+    }
+    void output_on_right_edge() {
         for (int p = 0; p < 8; ++p) {
-            if (raster_x == cmp_left) {
-                if (raster_y == cmp_top && den) vert_border_on = false;
-                else if (raster_y == cmp_bottom) vert_border_on = true;
-                if (!vert_border_on) main_border_on = false;
-            } else if (raster_x == cmp_right) main_border_on = true;
+            if (raster_x == cmp_right) main_border_on = true;
             if (vert_border_on) exude_border_pixel();
             else exude_pixel();
         }
