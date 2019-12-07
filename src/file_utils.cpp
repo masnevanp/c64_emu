@@ -16,7 +16,7 @@ namespace petscii {
     static constexpr char arrow_up   = 0x5e;
     static constexpr char arrow_left = 0x5f;
     static constexpr char underscore = (char)0xa4;
-};
+}
 
 
 const char* win_drive_list_entry = "?:/";
