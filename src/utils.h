@@ -58,9 +58,6 @@ std::optional<std::vector<u8>> read_file(const std::string& filepath);
 
 int read_file(const std::string& filepath, u8* buf);
 
-// [dirs, files] found in a dir
-std::pair<std::vector<std::string>, std::vector<std::string>> list_dir(const std::string& dir);
-
 std::string as_lower(const std::string& src);
 
 std::string as_upper(const std::string& src);

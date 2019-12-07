@@ -62,9 +62,9 @@ void Tape::Virtual::install_kernal_traps(u8* kernal, u8 trap_opc) {
 }
 
 
-void Tape::Virtual::load(System::CPU& cpu, u8* ram, Loader& loader) {
+void Tape::Virtual::load(System::CPU& cpu, u8* ram, loader& load_file) {
     std::string filename = get_filename(ram);
-    auto bin = loader(filename);
+    auto bin = load_file(filename);
     if (bin && ((*bin).size() > 2)) return ::load(*bin, cpu, ram);
     else cpu.pc = 0xf704; // jmp to 'file not found'
 }

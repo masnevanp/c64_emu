@@ -28,7 +28,7 @@ private:
 
 class Host_drive : public IEC::Virtual::Device  {
 public:
-    Host_drive(Loader& load_) : load(load_) {}
+    Host_drive(loader& load_file_) : load_file(load_file_) {}
 
     virtual IEC::IO_ST talk(u8 sa) {
         cur_ch = &ch[sa & IEC::ch_mask];
@@ -47,7 +47,7 @@ public:
         return IEC::IO_ST::ok;
     }
 
-    virtual void sleep() { cur_ch->check_opening(load /*bruh...*/); }
+    virtual void sleep() { cur_ch->check_opening(load_file /*bruh...*/); }
 
     virtual IEC::IO_ST read(u8& d)        { return cur_ch->read(d); }
     virtual IEC::IO_ST write(const u8& d) { return cur_ch->write(d); }
@@ -66,11 +66,11 @@ private:
             // now waiting to receive the filename before opening...
         }
 
-        void check_opening(Loader& load) {
+        void check_opening(loader& load_file) {
             if (status == Status::opening && name.size() > 0) {
                 if (mode == Mode::r) {
                     std::string name_str(name.begin(), name.end());
-                    if (auto bin = load(name_str)) data = std::move(*bin);
+                    if (auto bin = load_file(name_str)) data = std::move(*bin);
                     else return close();
                 } else {
                     data.clear(); // TODO: write/append, open/create actual file here?
@@ -114,7 +114,7 @@ private:
     Ch ch[16];
     Ch* cur_ch = &ch[0];
 
-    Loader& load;
+    loader& load_file;
 };
 
 

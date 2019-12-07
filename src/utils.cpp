@@ -69,7 +69,7 @@ std::optional<std::vector<u8>> read_file(const std::string& filepath) {
     std::ifstream f(filepath, std::ios::binary | std::ios::ate);
 
     if (!f) {
-        std::cout << "\nFailed to read file '" << filepath << "'";
+        std::cout << "Failed to read file '" << filepath << "'" << std::endl;
         return {};
     }
 
@@ -78,7 +78,7 @@ std::optional<std::vector<u8>> read_file(const std::string& filepath) {
     f.seekg(0);
     f.read((char*)bin.data(), sz);
 
-    std::cout << "\nRead file '" << filepath << "', " << sz << " bytes ";
+    std::cout << "Read file '" << filepath << "', " << sz << " bytes " << std::endl;
 
     return bin;
 }
@@ -88,7 +88,7 @@ int read_file(const std::string& filepath, u8* buf) {
     std::ifstream f(filepath, std::ios::binary | std::ios::ate);
 
     if (!f) {
-        std::cout << "\nFailed to read file '" << filepath << "'";
+        std::cout << "Failed to read file '" << filepath << "'" << std::endl;
         return -1;
     }
 
@@ -97,18 +97,6 @@ int read_file(const std::string& filepath, u8* buf) {
     f.read((char*)buf, sz);
 
     return sz;
-}
-
-
-std::pair<std::vector<std::string>, std::vector<std::string>> list_dir(const std::string& dir) {
-    std::vector<std::string> dirs;
-    std::vector<std::string> files;
-    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-        std::string name = as_upper(entry.path().filename().string());
-        if (entry.is_directory()) dirs.push_back(name);
-        else if (entry.is_regular_file()) files.push_back(name);
-    }
-    return {dirs, files};
 }
 
 

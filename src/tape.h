@@ -16,11 +16,11 @@ class Virtual {
 public:
     static void install_kernal_traps(u8* kernal, u8 trap_opc);
 
-    static bool on_trap(System::CPU& cpu, u8* ram, Loader& loader) {
+    static bool on_trap(System::CPU& cpu, u8* ram, loader& load_file) {
         u8 tape_routine = cpu.d;
         switch (tape_routine) {
             case Routine::load:
-                load(cpu, ram, loader);
+                load(cpu, ram, load_file);
                 return true;
             case Routine::save:
                 save(cpu, ram);
@@ -32,7 +32,7 @@ public:
     }
 
 private:
-    static void load(System::CPU& cpu, u8* ram, Loader& loader);
+    static void load(System::CPU& cpu, u8* ram, loader& load_file);
     static void save(System::CPU& cpu, u8* ram);
 
 };

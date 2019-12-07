@@ -34,12 +34,12 @@ void run_c64() {
 
     if (!read_roms()) return;
 
-    Loader loader("data/prg");
+    auto load_file = Loader("data/prg");
 
     IEC::Virtual::Controller iec_ctrl;
     Volatile_disk vol_disk;
     Dummy_device dd;
-    Host_drive hd(loader);
+    Host_drive hd(load_file);
     iec_ctrl.attach(vol_disk, 10);
     iec_ctrl.attach(dd, 30);
     iec_ctrl.attach(hd, 8);
@@ -58,7 +58,7 @@ void run_c64() {
                 handled = IEC::Virtual::on_trap(c64.cpu, c64.ram, iec_ctrl);
                 break;
             case Trap_OPC::tape_routine:
-                handled = Tape::Virtual::on_trap(c64.cpu, c64.ram, loader);
+                handled = Tape::Virtual::on_trap(c64.cpu, c64.ram, load_file);
                 break;
         }
 
