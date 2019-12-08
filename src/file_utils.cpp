@@ -101,21 +101,21 @@ std::vector<u8> dir_basic_listing(
     };
 
     if (drives_entry) {
-        static auto de = petscii::arrow_up + std::string(": \"")
-                            + win_drive_list_entry + std::string("\"");
+        static auto de = std::string(" ") + petscii::arrow_up + " \""
+                            + win_drive_list_entry + "\"";
         bl.push_back({ 0x02,  de });
     }
     if (root_entry) {
-        static auto re = petscii::arrow_up + std::string(": \"/\"");
+        static auto re = std::string(" ") + petscii::arrow_up + " \"/\"";
         bl.push_back({ 0x02, re });
     }
     if (parent_entry) {
-        static auto pe = petscii::arrow_left + std::string(": \"..\"");
+        static auto pe = std::string(" ") + petscii::arrow_left + " \"..\"";
         bl.push_back({ 0x02, pe });
     }
 
     for (const auto& d : sub_dirs) {
-        bl.push_back({ 0x03, std::string("/: \"") + _to_client(d) + "\"" });
+        bl.push_back({ 0x03, std::string(" / \"") + _to_client(d) + "\"" });
     }
     for (const auto& f : files) {
         bl.push_back({ 0x04, std::string(" : \"") + _to_client(f) + '"' });
@@ -164,7 +164,7 @@ private:
 
         bool drives_entry = false;
         #ifdef _WIN32
-        drives_entry = true;
+        drives_entry = cd.parent_path() == cd.root_path();
         #endif
         bool root_entry = cd.parent_path() != cd.root_path();
         bool parent_entry = cd.parent_path() != cd;
