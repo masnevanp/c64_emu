@@ -473,8 +473,8 @@ load_result d64_dir_basic_listing(const D64& d64) {
 
     auto header = petscii::rvs_on + std::string(" $ ")
         + quoted(extract_string(d64.bam().disk_name, 0x00)) + "  "
-        + extract_string(d64.bam().disk_id, 0x00, 2) + " "
-        + extract_string(d64.bam().dos_type, 0x00, 2) + "    ";
+        + extract_string(d64.bam().disk_id, petscii::nbsp, 2) + " "
+        + extract_string(d64.bam().dos_type, petscii::nbsp, 2) + "    ";
 
     Basic_listing bl{
         { 0x00, std::string((char*)dir_list_first_line) },
