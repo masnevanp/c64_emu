@@ -243,8 +243,9 @@ public:
             scan_2 = scan_1 + frame_width;
             for (int x = 0; x < frame_width; ++x) {
                 u8 vic_col = *vic_frame++;
-                *scan_1++ = palette_1[vic_col];
-                *scan_2++ = palette_2[vic_col][x % 8];
+                auto p = (x /*>> 1*/) & 0x1;
+                *scan_1++ = palette[vic_col][0 + p];
+                *scan_2++ = palette[vic_col][2 + (1 - p)];
             }
             scan_1 = scan_2;
         }
@@ -304,7 +305,7 @@ public:
     {
         window = SDL_CreateWindow("The display...",
             400, 100,
-            aspect_ratio * frame_width, frame_height, 0
+            aspect_ratio * frame_width, frame_height, SDL_WINDOW_RESIZABLE
         );
         if (!window) {
             SDL_Log("Failed to SDL_CreateWindow: %s", SDL_GetError());
@@ -333,23 +334,17 @@ public:
             SDL_Log("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
         }
 
-        get_Colodore(palette_1, 65, 100, 70);
-        //get_Colodore(palette_2, 40, 80, 50);
-        palette_1[0] = 0x020202; // black is black...
-
-        u32 pal[16];
-        get_Colodore(pal, 38, 80, 45);
-        for (int c = 0; c < 16; ++c)
-            palette_2[c][0] = pal[c];
-        get_Colodore(pal, 39, 80, 45);
-        for (int c = 0; c < 16; ++c)
-            palette_2[c][1] = palette_2[c][7] = pal[c];
-        get_Colodore(pal, 40, 80, 45);
-        for (int c = 0; c < 16; ++c)
-            palette_2[c][2] = palette_2[c][3] = palette_2[c][5] = palette_2[c][6] = pal[c];
-        get_Colodore(pal, 41, 80, 45);
-        for (int c = 0; c < 16; ++c)
-            palette_2[c][4] = pal[c];
+        for (int p = 0; p < 4; ++p) {
+            static constexpr double palette_conf[][3] = {
+                {65, 100, 70}, {63, 100, 70},
+                {42, 80,  45}, {39, 80,  45},
+            };
+            u32 colodore[16];
+            get_Colodore(colodore, palette_conf[p][0], palette_conf[p][1], palette_conf[p][2]);
+            colodore[0] = 0x020202; // black is black...
+            for (int c = 0; c < 16; ++c)
+                palette[c][p] = colodore[c];
+        }
     }
 
     ~Video_out() {
@@ -373,11 +368,10 @@ private:
 
     u32* frame;
 
-    u32 palette_1[16];
-    u32 palette_2[16][8];
+    u32 palette[16][4];
 
     // TODO: tweakable?
-    const double aspect_ratio = 0.936;
+    const double aspect_ratio = 0.9; // 0.936
     i8 scale;
     const i8 min_scale = 5;
     const i8 max_scale = 80;

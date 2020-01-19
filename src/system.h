@@ -316,7 +316,7 @@ public:
         sys_banker(ram, rom, io_space),
         host_input(host_input_handlers)
     {
-        vid_out.set_scale(30);
+        vid_out.set_scale(35);
         reset_cold();
     }
 
