@@ -240,17 +240,34 @@ public:
         u32* scan_2;
 
         for (int y = 0; y < frame_height; ++y) {
-            scan_2 = scan_1 + frame_width;
+            scan_2 = scan_1 + frame_width + frame_width;
+            u32 s1c1; // 'scan_1_color_1'...
+            u32 s1c2 = 0;
+            u32 s2c1;
+            u32 s2c2 = 0;
             for (int x = 0; x < frame_width; ++x) {
                 u8 vic_col = *vic_frame++;
                 auto p = (x /*>> 1*/) & 0x1;
-                *scan_1++ = palette[vic_col][0 + p];
-                *scan_2++ = palette[vic_col][2 + (1 - p)];
+
+                // some averaging for a simple blur effect....
+                s1c1 = palette[vic_col][0 + p];
+                s1c2 = (((s1c1 & 0xfefefe) + (s1c2 & 0xfefefe)) / 2) & 0xfefefe;
+                *scan_1++ = s1c2 | 0xaa000000; // set alpha
+                s1c2 = (((s1c1 & 0xfefefe) + (s1c2 & 0xfefefe)) / 2) & 0xfefefe;
+                *scan_1++ = s1c2 | 0x99000000; // set alpha
+                s1c2 = s1c1;
+
+                s2c1 = palette[vic_col][2 + (1 - p)];
+                s2c2 = (((s2c1 & 0xfefefe) + (s2c2 & 0xfefefe)) / 2) & 0xfefefe;
+                *scan_2++ = s2c2 | 0x99000000; // set alpha
+                s2c2 = (((s2c1 & 0xfefefe) + (s2c2 & 0xfefefe)) / 2) & 0xfefefe;
+                *scan_2++ = s2c2 | 0xaa000000; // set alpha
+                s2c2 = s2c1;
             }
             scan_1 = scan_2;
         }
 
-        SDL_UpdateTexture(texture, 0, (void*)frame, 4 * frame_width);
+        SDL_UpdateTexture(texture, 0, (void*)frame, 2 * (4 * frame_width));
         SDL_RenderCopy(renderer, texture, nullptr, render_dstrect);
         SDL_RenderPresent(renderer);
     }
@@ -322,21 +339,21 @@ public:
         SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
         texture = SDL_CreateTexture(renderer,
                         SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
-                        frame_width, 2 * frame_height);
+                        2 * frame_width, 2 * frame_height);
         if (!texture) {
             SDL_Log("Failed to SDL_CreateTexture: %s", SDL_GetError());
             exit(1);
         }
 
-        frame = new u32[frame_width * (2 * frame_height)];
+        frame = new u32[(2 * frame_width) * (2 * frame_height)];
 
-        if (SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE) != 0) {
+        if (SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND) != 0) {
             SDL_Log("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
         }
 
         for (int p = 0; p < 4; ++p) {
             static constexpr double palette_conf[][3] = {
-                {65, 100, 70}, {63, 100, 70},
+                {68, 100, 75}, {65, 100, 73},
                 {42, 80,  45}, {39, 80,  45},
             };
             u32 colodore[16];
@@ -371,7 +388,7 @@ private:
     u32 palette[16][4];
 
     // TODO: tweakable?
-    const double aspect_ratio = 0.9; // 0.936
+    const double aspect_ratio = 0.936;
     i8 scale;
     const i8 min_scale = 5;
     const i8 max_scale = 80;

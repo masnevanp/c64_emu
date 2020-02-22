@@ -23,8 +23,11 @@ static const double FRAME_MS       = 1000.0 / (CPU_FREQ / (312.0 * 63));
 
 
 // TODO: parameterize view/border size (all fixed for now)
-static const u16 VIEW_WIDTH        = 384; // lef/right borders: 32 px
-static const u16 VIEW_HEIGHT       = 264; // top/bottom borders: 32 px
+static const u16 BORDER_SZ_V       = 32;
+static const u16 BORDER_SZ_H       = 20;
+
+static const u16 VIEW_WIDTH        = 320 + 2 * BORDER_SZ_V;
+static const u16 VIEW_HEIGHT       = 200 + 2 * BORDER_SZ_H;
 
 static const u16 RASTER_LINE_COUNT = 312;
 static const u8  LINE_CYCLES       =  63;
@@ -241,7 +244,7 @@ public:
 
                 if ((raster_y % 2) == 0) {
                     // TODO: reveal the magic numbers....
-                    if (raster_y == 18) {
+                    if (raster_y == (50 - BORDER_SZ_H)) {
                         v_blank = false;
                         frame_lp = 0;
                         set_lp(lp_p1_p6_low || lp_pb_b4_low);
@@ -249,7 +252,7 @@ public:
                         gfx_unit.vma_start(den);
                     } else if (raster_y == 248) {
                         gfx_unit.vma_end();
-                    } else if (raster_y == 282) {
+                    } else if (raster_y == (250 + BORDER_SZ_H)) {
                         v_blank = true;
                     }
                 }

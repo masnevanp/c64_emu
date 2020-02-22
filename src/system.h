@@ -262,8 +262,8 @@ public:
 
     void frame_done() {
         if (skip_frames ^ 0x1) { // if skipping, output still every other frame
-            vid_out.put_frame(frame);
             sid.output();
+            vid_out.put_frame(frame);
         }
 
         px_pos = frame;
