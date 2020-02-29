@@ -316,7 +316,6 @@ public:
         sys_banker(ram, rom, io_space),
         host_input(host_input_handlers)
     {
-        vid_out.set_scale(35);
         reset_cold();
     }
 
@@ -434,7 +433,8 @@ private:
                 case kc::rst_w: reset_warm();                       break;
                 case kc::rst_c: reset_cold();                       break;
                 case kc::swp_j: host_input.swap_joysticks();        break;
-                case kc::f_scr: vid_out.toggle_fullscreen();        break;
+                case kc::m_win: vid_out.toggle_windowed();          break;
+                case kc::m_fsc: vid_out.toggle_fullscreen();        break;
                 case kc::scl_u: vid_out.adjust_scale(+5);           break;
                 case kc::scl_d: vid_out.adjust_scale(-5);           break;
                 case kc::quit:  exit(0);                            break;

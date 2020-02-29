@@ -48,8 +48,8 @@ public:
 private:
     reSID::SID re_sid;
 
-    // once per frame (312*63 = 19656 cycles) => ~879.8 samples
-    static const u32 BUF_SZ = 880;
+    // output once per frame  => ~882.0 samples
+    static const u32 BUF_SZ = 888;
 
     i16 buf[BUF_SZ];
     i16* buf_ptr;

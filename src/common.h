@@ -11,8 +11,9 @@ using u32 = uint32_t;
 using i32 = int32_t;
 
 
-static const double COLOR_CLOCK_FREQ = 17734472.0;
-static const double CPU_FREQ = COLOR_CLOCK_FREQ / 18.0; // PAL
+//static const double COLOR_CLOCK_FREQ = 17734472.0; // ~50.125 fps (real PAL C64)
+static const double COLOR_CLOCK_FREQ = 17690400.0; // 50 fps
+static const double CPU_FREQ = COLOR_CLOCK_FREQ / 18.0;
 
 
 using Sig = NMOS6502::Sig;
@@ -66,7 +67,7 @@ namespace Key_code {
     };
 
     enum System : u8 {
-        rst_w = GS, rst_c, rstre, swp_j, f_scr, scl_u, scl_d, quit, nop,
+        rst_w = GS, rst_c, rstre, swp_j, m_win, m_fsc, scl_u, scl_d, quit, nop,
     };
 
 } // namespace Key_code
