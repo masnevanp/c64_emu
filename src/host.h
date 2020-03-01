@@ -311,9 +311,6 @@ public:
         }
 
         SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
-        if (SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE) != 0) {
-            SDL_Log("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
-        }
 
         texture = SDL_CreateTexture(renderer,
                         SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
@@ -321,6 +318,10 @@ public:
         if (!texture) {
             SDL_Log("Failed to SDL_CreateTexture: %s", SDL_GetError());
             exit(1);
+        }
+
+        if (SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE) != 0) {
+            SDL_Log("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
         }
 
         frame = new u32[(2 * frame_width) * (2 * frame_height)];
