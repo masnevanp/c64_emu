@@ -237,15 +237,17 @@ public:
     VIC_out(
         IO::Int_hub& int_hub_,
         Host::Video_out& vid_out_, Host::Input& host_input_,
-        TheSID& sid_, u16& frame_cycle_
+        TheSID& sid_
     ) :
         int_hub(int_hub_),
         vid_out(vid_out_), host_input(host_input_),
-        sid(sid_), frame_cycle(frame_cycle_) { }
+        sid(sid_) { }
 
     void reset() {
         px_pos = frame;
-        frame_moment = 0;
+        // bootstrap frame syncing...
+        vid_out.put_frame(frame);
+        sid.flush();
         clock.reset();
     }
 
@@ -254,32 +256,41 @@ public:
 
     void put_pixel(const u8& vic_col) { *px_pos++ = vic_col; }
 
-    void line_done(u16 line) {
-        if (line % (VIC_II::RASTER_LINE_COUNT / 8) == 0) { // freq: 8 per frame ==> ~2.5ms
+    void sync_line(u16 line, bool frame_done) {
+        if (line % 52 == 26 && !frame_skip) { // ~3.3ms
+            auto frame_progress = double(line) / double(VIC_II::RASTER_LINE_COUNT);
+            auto sync_moment = frame_moment + (frame_progress * VIC_II::FRAME_MS);
+            clock.sync(std::round(sync_moment));
             host_input.poll();
-        }
-    }
+        } else if (frame_done) {
+            px_pos = frame;
 
-    void frame_done() {
-        if (skip_frames ^ 0x1) { // if skipping, output still every other frame
+            frame_moment += VIC_II::FRAME_MS;
+            auto sync_moment = std::round(frame_moment);
+            bool reset = sync_moment == 6318000; // since '316687 * FRAME_MS = 6318000'
+            frame_moment = reset ? 0 : frame_moment;
+
+            int diff_ms;
+            if (vid_out.v_synced()) {
+                if ((frame_skip & 0x3) == 0x0) vid_out.put_frame(frame);
+                diff_ms = clock.diff(sync_moment, reset);
+            } else {
+                diff_ms = clock.sync(sync_moment, reset);
+                if ((frame_skip & 0x3) == 0x0) vid_out.put_frame(frame);
+            }
+
+            if (diff_ms <= -VIC_II::FRAME_MS) {
+                ++frame_skip;
+                host_input.poll(); // since it is skipped above
+            } else if (frame_skip) {
+                frame_skip = 0;
+                sid.flush();
+            }
+
             sid.output();
-            vid_out.put_frame(frame);
-        }
-
-        px_pos = frame;
-        frame_cycle = 0;
-
-        frame_moment += VIC_II::FRAME_MS;
-        auto wait_target = std::round(frame_moment);
-        bool reset = wait_target == 6318000; // since '316687 * FRAME_MS = 6318000'
-        auto waited_ms = clock.wait_until(wait_target, reset);
-
-        if (waited_ms < 0) ++skip_frames;
-        else if (skip_frames) {
-            skip_frames = 0;
-            sid.flush();
         }
     }
+
 
 private:
     IO::Int_hub& int_hub;
@@ -291,11 +302,9 @@ private:
 
     Clock clock;
     double frame_moment = 0;
-    int skip_frames = 0;
+    int frame_skip = 0;
 
-    u16& frame_cycle;
-
-    u8 frame[VIC_II::VIEW_WIDTH * VIC_II::VIEW_HEIGHT];
+    u8 frame[VIC_II::VIEW_WIDTH * VIC_II::VIEW_HEIGHT] = {};
     u8* px_pos;
 
 };
@@ -309,15 +318,12 @@ public:
         sid(frame_cycle),
         vic(ram, col_ram, rom.charr, rdy_low, vic_out),
         vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT),
-        vic_out(int_hub, vid_out, host_input, sid, frame_cycle),
+        vic_out(int_hub, vid_out, host_input, sid),
         int_hub(cpu),
         kb_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in),
         io_space(cia1, cia2, sid, vic, col_ram),
         sys_banker(ram, rom, io_space),
-        host_input(host_input_handlers)
-    {
-        reset_cold();
-    }
+        host_input(host_input_handlers) { }
 
     void reset_warm() {
         cia1.reset_warm(); // need to reset for correct irq handling
@@ -331,20 +337,22 @@ public:
         cia1.reset_cold();
         cia2.reset_cold();
         sid.reset();
-        vic.reset_cold();
-        vic_out.reset();
+        vic.reset();
         kb_matrix.reset();
-        col_ram.reset();
         sys_banker.reset();
         cpu.reset_cold();
         int_hub.reset();
 
-        frame_cycle = 0;
         rdy_low = false;
     }
 
     void run() {
-        for (;;++frame_cycle) {
+        reset_cold();
+        // get video 'rolling', no need to ever reset it after this
+        // (as it would mess with the syncing/timing...)
+        vic_out.reset();
+
+        for (frame_cycle = 1;;++frame_cycle) {
             sync_master.tick();
             vic.tick(frame_cycle);
             if (!rdy_low || cpu.mrw() == NMOS6502::RW::w) {

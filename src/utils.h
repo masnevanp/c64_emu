@@ -28,21 +28,24 @@ public:
         return std::chrono::duration_cast<ms>(clock::now() - t1).count();
     }
 
-    int wait_until(int target_elapsed_ms, bool reset = false) { // since last reset()
+    int diff(int target_elapsed_ms, bool reset = false) { // since last reset()
         auto t2 = clock::now();
         auto elapsed_ms = std::chrono::duration_cast<ms>(t2 - t1).count();
-        auto wait_period_ms = target_elapsed_ms - elapsed_ms;
-        if (wait_period_ms > 0) {
+        auto diff_ms = target_elapsed_ms - elapsed_ms;
+        if (reset) t1 = t2;
+        return diff_ms;
+    }
+
+    int sync(int target_elapsed_ms, bool reset = false) { // since last reset()
+        auto diff_ms = diff(target_elapsed_ms, reset);
+        if (diff_ms > 0) {
             #ifdef __MINGW32__
-                Sleep(wait_period_ms);
+                Sleep(diff_ms);
             #else
-                std::this_thread::sleep_for(ms(wait_period_ms));
+                std::this_thread::sleep_for(ms(diff_ms));
             #endif
         }
-        if (reset) {
-            t1 = t2;
-        }
-        return wait_period_ms;
+        return diff_ms;
     }
 
 private:

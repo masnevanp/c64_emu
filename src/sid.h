@@ -16,10 +16,7 @@ public:
         re_sid.set_sampling_parameters(CPU_FREQ, reSID::SAMPLE_RESAMPLE, OUTPUT_FREQ);
     }
 
-    void reset() {
-        re_sid.reset();
-        flush();
-    }
+    void reset() { re_sid.reset(); }
 
     void flush() {
         audio_out.flush();
@@ -27,8 +24,7 @@ public:
         ticked = 0;
 
         // queue something (whatever happens to be there) for some breathing room
-        audio_out.put(buf, BUF_SZ);
-        audio_out.put(buf, BUF_SZ / 4);
+        audio_out.put(buf, BUF_SZ / 2);
     }
 
     void output() {

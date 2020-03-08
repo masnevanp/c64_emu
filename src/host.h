@@ -291,6 +291,8 @@ public:
         else set_mode(Mode::fullscreen_window);
     }
 
+    bool v_synced() const { return mode == Mode::fullscreen; }
+
     Video_out(u16 frame_width_, u16 frame_height_) // TODO: error handling
             : frame_width(frame_width_), frame_height(frame_height_)
     {
@@ -301,27 +303,6 @@ public:
         if (!window) {
             SDL_Log("Failed to SDL_CreateWindow: %s", SDL_GetError());
             exit(1);
-        }
-
-        renderer = SDL_CreateRenderer(window, -1,
-                        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-        if (!renderer) {
-            SDL_Log("Failed to SDL_CreateRenderer: %s", SDL_GetError());
-            exit(1);
-        }
-
-        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
-
-        texture = SDL_CreateTexture(renderer,
-                        SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
-                        2 * frame_width, 2 * frame_height);
-        if (!texture) {
-            SDL_Log("Failed to SDL_CreateTexture: %s", SDL_GetError());
-            exit(1);
-        }
-
-        if (SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE) != 0) {
-            SDL_Log("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
         }
 
         frame = new u32[(2 * frame_width) * (2 * frame_height)];
@@ -351,14 +332,34 @@ public:
     };
 
 private:
-    enum class Mode { window, fullscreen_window, fullscreen };
+    enum class Mode { window, fullscreen_window, fullscreen, none };
 
     void set_mode(Mode new_mode) {
         if (new_mode == mode) return;
 
-        auto windowed_config = [&]() { render_dstrect = nullptr; };
+        auto re_config = [&](int flags = 0) {
+            if (texture) SDL_DestroyTexture(texture);
+            if (renderer) SDL_DestroyRenderer(renderer);
 
-        auto fullscreen_config = [&]() {
+            renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | flags);
+            if (!renderer) {
+                SDL_Log("Failed to SDL_CreateRenderer: %s", SDL_GetError());
+                exit(1);
+            }
+            SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
+            texture = SDL_CreateTexture(renderer,
+                        SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
+                        2 * frame_width, 2 * frame_height);
+            if (!texture) {
+                SDL_Log("Failed to SDL_CreateTexture: %s", SDL_GetError());
+                exit(1);
+            }
+            if (SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE) != 0) {
+                SDL_Log("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
+            }
+        };
+
+        auto fullscreen_dstrect = [&]() {
             int win_w;
             int win_h;
             SDL_GetWindowSize(window, &win_w, &win_h);
@@ -384,18 +385,20 @@ private:
                     SDL_Log("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
                     return;
                 }
-                windowed_config();
+                if (mode >= Mode::fullscreen) re_config();
+                render_dstrect = nullptr;
                 break;
             case Mode::fullscreen_window:
                 if (SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP) != 0) {
                     SDL_Log("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
                     return;
                 }
-                fullscreen_config();
+                if (mode >= Mode::fullscreen) re_config();
+                fullscreen_dstrect();
                 break;
-            case Mode::fullscreen: // TODO: cycle through supported modes?
-                SDL_DisplayMode mode = { SDL_PIXELFORMAT_ARGB8888, 1920, 1080, 50, 0 };
-                if (SDL_SetWindowDisplayMode(window, &mode) != 0) {
+            case Mode::fullscreen: { // TODO: cycle through supported modes?
+                SDL_DisplayMode sdm = { SDL_PIXELFORMAT_ARGB8888, 1920, 1080, 50, 0 };
+                if (SDL_SetWindowDisplayMode(window, &sdm) != 0) {
                     SDL_Log("Failed to SDL_SetWindowDisplayMode: %s", SDL_GetError());
                     return;
                 }
@@ -403,14 +406,19 @@ private:
                     SDL_Log("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
                     return;
                 }
-                fullscreen_config();
+                re_config(SDL_RENDERER_PRESENTVSYNC);
+                fullscreen_dstrect();
                 break;
+            }
+            case Mode::none: exit(1); return;
         }
+
+        SDL_ShowCursor(new_mode == Mode::window);
 
         mode = new_mode;
     }
 
-    Mode mode;
+    Mode mode = Mode::none;
 
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
@@ -440,6 +448,8 @@ class Audio_out {
 public:
     void put(const i16* chunk, u32 sz) { SDL_QueueAudio(dev, chunk, 2 * sz); }
 
+    // u32 queued() const { return SDL_GetQueuedAudioSize(dev) * 2; }
+
     void flush() { SDL_ClearQueuedAudio(dev); }
 
     Audio_out() {
@@ -450,6 +460,7 @@ public:
         want.freq = 44100;
         want.format = AUDIO_S16LSB;
         want.channels = 1;
+        want.samples = 1024;
 
         dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
         if (dev == 0) {

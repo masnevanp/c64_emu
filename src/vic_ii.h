@@ -37,13 +37,11 @@ class Color_RAM {
 public:
     static const u16 SIZE = 0x0400;
 
-    void reset() { for (auto& c : ram) c = 0x0; }
-
     void r(const u16& addr, u8& data) const { data = ram[addr]; }
     void w(const u16& addr, const u8& data) { ram[addr] = data & 0xf; } // masking the write is enough
 
 private:
-    u8 ram[SIZE]; // just the lower nibble is actually used
+    u8 ram[SIZE] = {}; // just the lower nibble is actually used
 
 };
 
@@ -127,14 +125,7 @@ public:
 
     Banker banker;
 
-    void reset_cold() {
-        for (int r = 0; r < REG_COUNT; ++r) w(r, 0);
-        raster_y = RASTER_LINE_COUNT - 1;
-        v_blank = true;
-        line_cycle = lp_p1_p6_low = lp_pb_b4_low = 0;
-        gfx_unit.vma_end();
-        gfx_unit.ba_end();
-    }
+    void reset() { for (int r = 0; r < REG_COUNT; ++r) w(r, 0); }
 
     // TODO: set lp x/y (mouse event)
     void set_lp_ctrl_p1_p6(u8 low) { set_lp(lp_p1_p6_low = low); }
@@ -221,8 +212,7 @@ public:
         a 'safe' way since VIC has/uses the bus for both phases, right?
         Anyway, the current MOB access would not be 100% cycle/memory accurate
         in those cases. */
-    void tick(const u16& frame_cycle) {
-        static const u16 LAST_RASTER_Y = RASTER_LINE_COUNT - 1;
+    void tick(u16& frame_cycle) {
 
         line_cycle = frame_cycle % LINE_CYCLES;
 
@@ -230,15 +220,15 @@ public:
             case  0:
                 mob_unit.do_dma(2);
 
-                out.line_done(raster_y);
+                raster_y++;
 
-                if (raster_y == LAST_RASTER_Y) {
-                    out.frame_done();
-                    raster_y = 0;
+                if (raster_y == RASTER_LINE_COUNT) {
+                    out.sync_line(0, true);
+                    raster_y = frame_cycle = 0;
                     return;
                 }
 
-                ++raster_y;
+                out.sync_line(raster_y, false);
 
                 if (raster_y == cmp_raster) irq_unit.req(IRQ_unit::rst);
 
@@ -262,9 +252,7 @@ public:
                 return;
             case  1:
                 mob_unit.pre_dma(5);
-                if (raster_y == 0) {
-                    if (cmp_raster == 0) irq_unit.req(IRQ_unit::rst);
-                }
+                if (raster_y == 0 && cmp_raster == 0) irq_unit.req(IRQ_unit::rst);
                 return;
             case  2: mob_unit.do_dma(3);  return;
             case  3: mob_unit.pre_dma(6); return;
@@ -888,8 +876,8 @@ private:
 
         u8 x_scroll;
 
-        u8 ba_area; // set for each frame (at the top of disp.win)
-        u8 ba_line;
+        u8 ba_area = false; // set for each frame (at the top of disp.win)
+        u8 ba_line = false;
 
         struct VM_data { // video-matrix data
             u8 vm_data;
@@ -1021,13 +1009,13 @@ private:
 
     u8 reg[REG_COUNT];
 
-    u8 line_cycle;
+    u8 line_cycle = 0;
     u8 frame_lp;
-    u8 lp_p1_p6_low;
-    u8 lp_pb_b4_low;
+    u8 lp_p1_p6_low = 0;
+    u8 lp_pb_b4_low = 0;
     u16 raster_x;
-    u16 raster_y;
-    u8 v_blank;
+    u16 raster_y = 0;
+    u8 v_blank = true;
 
     bool den;
     u16 cmp_left;
