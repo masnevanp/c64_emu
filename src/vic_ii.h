@@ -223,12 +223,12 @@ public:
                 raster_y++;
 
                 if (raster_y == RASTER_LINE_COUNT) {
-                    out.sync_line(0, true);
+                    out.sync_line(0);
                     raster_y = frame_cycle = 0;
                     return;
                 }
 
-                out.sync_line(raster_y, false);
+                out.sync_line(raster_y);
 
                 if (raster_y == cmp_raster) irq_unit.req(IRQ_unit::rst);
 

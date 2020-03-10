@@ -25,6 +25,9 @@ using VIC = VIC_II::Core<VIC_out>;
 using Color_RAM = VIC_II::Color_RAM;
 
 
+// sync.freq. in raster lines (must divide into total line count 312)
+static const int SYNC_FREQ = 52;  // ==> ~3.3 ms
+
 
 struct ROM {
     const u8* basic;
@@ -248,6 +251,7 @@ public:
         // bootstrap frame syncing...
         vid_out.put_frame(frame);
         sid.flush();
+        // sid.output(true); ??
         clock.reset();
     }
 
@@ -256,13 +260,12 @@ public:
 
     void put_pixel(const u8& vic_col) { *px_pos++ = vic_col; }
 
-    void sync_line(u16 line, bool frame_done) {
-        if (line % 52 == 26 && !frame_skip) { // ~3.3ms
-            auto frame_progress = double(line) / double(VIC_II::RASTER_LINE_COUNT);
-            auto sync_moment = frame_moment + (frame_progress * VIC_II::FRAME_MS);
-            clock.sync(std::round(sync_moment));
+    void sync_line(u16 line) {
+        if (line % SYNC_FREQ != 0) return;
+
+        if (line == 0) { // frame done?
             host_input.poll();
-        } else if (frame_done) {
+
             px_pos = frame;
 
             frame_moment += VIC_II::FRAME_MS;
@@ -281,12 +284,19 @@ public:
 
             if (diff_ms <= -VIC_II::FRAME_MS) {
                 ++frame_skip;
-                host_input.poll(); // since it is skipped above
             } else if (frame_skip) {
                 frame_skip = 0;
                 sid.flush();
             }
 
+            sid.output(true);
+        } else {
+            if (!frame_skip) {
+                host_input.poll();
+                auto frame_progress = double(line) / double(VIC_II::RASTER_LINE_COUNT);
+                auto sync_moment = frame_moment + (frame_progress * VIC_II::FRAME_MS);
+                clock.sync(std::round(sync_moment));
+            }
             sid.output();
         }
     }

@@ -20,18 +20,14 @@ public:
 
     void flush() {
         audio_out.flush();
-        buf_ptr = buf;
-        ticked = 0;
-
-        // queue something (whatever happens to be there) for some breathing room
-        audio_out.put(buf, BUF_SZ / 2);
+        audio_out.put(buf, BUF_SZ / 2); // some breathing room
     }
 
-    void output() {
+    void output(bool frame_done = false) {
         tick();
         audio_out.put(buf, buf_ptr - buf);
         buf_ptr = buf;
-        ticked = 0; // 'cycle' will also get reset (elsewhere)
+        if (frame_done) ticked = 0; // 'frame_cycle' will also get reset (elsewhere)
     }
 
     void r(const u8& ri, u8& data) { data = re_sid.read(ri); }
@@ -44,13 +40,14 @@ public:
 private:
     reSID::SID re_sid;
 
-    // output once per frame  => ~882.0 samples
-    static const u32 BUF_SZ = 888;
+    // TODO: non-hard coding
+    // output 6 times per frame  => ~147.0 samples
+    static const u32 BUF_SZ = 152;
 
     i16 buf[BUF_SZ];
-    i16* buf_ptr;
+    i16* buf_ptr = buf;
 
-    u16 ticked; // how many times has re-sid been ticked (for upcoming burst)
+    u16 ticked = 0; // how many times has re-sid been ticked (for upcoming burst)
     const u16& frame_cycle;
 
     Host::Audio_out audio_out;

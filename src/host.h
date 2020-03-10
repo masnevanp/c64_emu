@@ -460,7 +460,7 @@ public:
         want.freq = 44100;
         want.format = AUDIO_S16LSB;
         want.channels = 1;
-        want.samples = 1024;
+        want.samples = 256;
 
         dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
         if (dev == 0) {
