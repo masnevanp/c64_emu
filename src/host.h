@@ -272,18 +272,9 @@ public:
         SDL_RenderPresent(renderer);
     }
 
-    void adjust_scale(i8 amount) { set_scale(scale + amount); }
-
-    void set_scale(i8 new_scale) { // TODO: fullscreen scaling
-        if (mode != Mode::window) return;
-
-        if (new_scale >= min_scale && new_scale <= max_scale) {
-            scale = new_scale;
-            int w = aspect_ratio * (scale / 10.0) * frame_width;
-            int h = (scale / 10.0) * frame_height;
-            SDL_SetWindowSize(window, w, h);
-        }
-    }
+    // TODO: fullscreen scaling
+    void adjust_scale(i8 amount) { do_set_scale(scale + amount); }
+    void set_scale(i8 new_scale) { if (mode == Mode::window) do_set_scale(new_scale); }
 
     void toggle_fullscreen() { set_mode(Mode::fullscreen); }
     void toggle_windowed() {
@@ -291,7 +282,7 @@ public:
         else set_mode(Mode::fullscreen_window);
     }
 
-    bool v_synced() const { return mode == Mode::fullscreen; }
+    bool v_synced() const { return sdl_mode.refresh_rate == FRAME_RATE; }
 
     Video_out(u16 frame_width_, u16 frame_height_) // TODO: error handling
             : frame_width(frame_width_), frame_height(frame_height_)
@@ -337,16 +328,23 @@ private:
     void set_mode(Mode new_mode) {
         if (new_mode == mode) return;
 
-        auto re_config = [&](int flags = 0) {
+        auto configure_renderer = [&]() {
+            if (SDL_GetCurrentDisplayMode(disp_idx(), &sdl_mode) != 0) {
+                SDL_Log("Failed to SDL_GetCurrentDisplayMode: %s", SDL_GetError());
+                exit(1);
+            }
+
             if (texture) SDL_DestroyTexture(texture);
             if (renderer) SDL_DestroyRenderer(renderer);
 
-            renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | flags);
+            u32 v_sync_flag = sdl_mode.refresh_rate == FRAME_RATE ? SDL_RENDERER_PRESENTVSYNC : 0;
+            renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | v_sync_flag);
             if (!renderer) {
                 SDL_Log("Failed to SDL_CreateRenderer: %s", SDL_GetError());
                 exit(1);
             }
             SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
+
             texture = SDL_CreateTexture(renderer,
                         SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
                         2 * frame_width, 2 * frame_height);
@@ -359,7 +357,15 @@ private:
             }
         };
 
-        auto fullscreen_dstrect = [&]() {
+        auto windowed = [&]() {
+            configure_renderer();
+            render_dstrect = nullptr;
+            SDL_ShowCursor(true);
+        };
+
+        auto fullscreen = [&]() {
+            configure_renderer();
+
             int win_w;
             int win_h;
             SDL_GetWindowSize(window, &win_w, &win_h);
@@ -377,6 +383,8 @@ private:
                 render_dstrect_fullscreen.h = h;
             }
             render_dstrect = &render_dstrect_fullscreen;
+
+            SDL_ShowCursor(false);
         };
 
         switch (new_mode) {
@@ -384,20 +392,19 @@ private:
                 if (SDL_SetWindowFullscreen(window, 0) != 0) {
                     SDL_Log("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
                     return;
-                }
-                if (mode >= Mode::fullscreen) re_config();
-                render_dstrect = nullptr;
+                }                
+                windowed();
                 break;
             case Mode::fullscreen_window:
                 if (SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP) != 0) {
                     SDL_Log("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
                     return;
                 }
-                if (mode >= Mode::fullscreen) re_config();
-                fullscreen_dstrect();
+                fullscreen();
                 break;
             case Mode::fullscreen: { // TODO: cycle through supported modes?
-                SDL_DisplayMode sdm = { SDL_PIXELFORMAT_ARGB8888, 1920, 1080, 50, 0 };
+                auto fr = int(FRAME_RATE);
+                SDL_DisplayMode sdm = { SDL_PIXELFORMAT_ARGB8888, 1920, 1080, fr, 0 };
                 if (SDL_SetWindowDisplayMode(window, &sdm) != 0) {
                     SDL_Log("Failed to SDL_SetWindowDisplayMode: %s", SDL_GetError());
                     return;
@@ -406,19 +413,28 @@ private:
                     SDL_Log("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
                     return;
                 }
-                re_config(SDL_RENDERER_PRESENTVSYNC);
-                fullscreen_dstrect();
+                fullscreen();
                 break;
             }
             case Mode::none: exit(1); return;
         }
 
-        SDL_ShowCursor(new_mode == Mode::window);
-
         mode = new_mode;
     }
 
+    void do_set_scale(i8 new_scale) {
+        if (new_scale >= min_scale && new_scale <= max_scale) {
+            scale = new_scale;
+            int w = aspect_ratio * (scale / 10.0) * frame_width;
+            int h = (scale / 10.0) * frame_height;
+            SDL_SetWindowSize(window, w, h);
+        }
+    }
+
+    int disp_idx() const { return SDL_GetWindowDisplayIndex(window); }
+
     Mode mode = Mode::none;
+    SDL_DisplayMode sdl_mode = { 0, 0, 0, 0, 0 };
 
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;

@@ -246,19 +246,17 @@ public:
         vid_out(vid_out_), host_input(host_input_),
         sid(sid_) { }
 
-    void reset() {
-        px_pos = frame;
-        // bootstrap frame syncing...
+    void set_irq() { int_hub.set(IO::Int_hub::Src::vic); }
+    void clr_irq() { int_hub.clr(IO::Int_hub::Src::vic); }
+
+    void put_pixel(const u8& vic_col) { *px_pos++ = vic_col; }
+
+    void init_sync() { // call if system has been 'paused'
         vid_out.put_frame(frame);
         sid.flush();
         // sid.output(true); ??
         clock.reset();
     }
-
-    void set_irq() { int_hub.set(IO::Int_hub::Src::vic); }
-    void clr_irq() { int_hub.clr(IO::Int_hub::Src::vic); }
-
-    void put_pixel(const u8& vic_col) { *px_pos++ = vic_col; }
 
     void sync_line(u16 line) {
         if (line % SYNC_FREQ != 0) return;
@@ -315,7 +313,7 @@ private:
     int frame_skip = 0;
 
     u8 frame[VIC_II::VIEW_WIDTH * VIC_II::VIEW_HEIGHT] = {};
-    u8* px_pos;
+    u8* px_pos = frame;
 
 };
 
@@ -358,9 +356,7 @@ public:
 
     void run() {
         reset_cold();
-        // get video 'rolling', no need to ever reset it after this
-        // (as it would mess with the syncing/timing...)
-        vic_out.reset();
+        vic_out.init_sync();
 
         for (frame_cycle = 1;;++frame_cycle) {
             sync_master.tick();

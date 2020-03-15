@@ -11,9 +11,11 @@ using u32 = uint32_t;
 using i32 = int32_t;
 
 
-//static const double COLOR_CLOCK_FREQ = 17734472.0; // ~50.125 fps (real PAL C64)
-static const double COLOR_CLOCK_FREQ = 17690400.0; // 50 fps
-static const double CPU_FREQ = COLOR_CLOCK_FREQ / 18.0;
+// Real PAL C64 COLOR_CLOCK_FREQ: 17734472.0 --> ~50.125 fps
+
+static const double FRAME_RATE = 50.0;
+static const double CPU_FREQ = FRAME_RATE * (312.0 * 63.0);
+static const double COLOR_CLOCK_FREQ = 18.0 * CPU_FREQ;
 
 
 using Sig = NMOS6502::Sig;
