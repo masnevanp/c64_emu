@@ -234,20 +234,20 @@ public:
 
                 if ((raster_y % 2) == 0) {
                     // TODO: reveal the magic numbers....
-                    if (raster_y == (50 - BORDER_SZ_H)) {
+                    if (!v_blank) {
+                        if (raster_y == 48) {
+                            gfx_unit.vma_start(den);
+                        } else if (raster_y == 248) {
+                            gfx_unit.vma_end();
+                        } else if (raster_y == (250 + BORDER_SZ_H)) {
+                            v_blank = true;
+                        }
+                    } else if (raster_y == (50 - BORDER_SZ_H)) {
                         v_blank = false;
                         frame_lp = 0;
                         set_lp(lp_p1_p6_low || lp_pb_b4_low);
-                    } else if (raster_y == 48) {
-                        gfx_unit.vma_start(den);
-                    } else if (raster_y == 248) {
-                        gfx_unit.vma_end();
-                    } else if (raster_y == (250 + BORDER_SZ_H)) {
-                        v_blank = true;
                     }
                 }
-
-                gfx_unit.ba_check();
 
                 return;
             case  1:
@@ -274,7 +274,12 @@ public:
                 if (!v_blank) update_mobs();
                 mob_unit.do_dma(7);
                 return;
-            case 11: gfx_unit.ba_check(); // fall through
+            case 11:
+                if (!v_blank) {
+                    gfx_unit.ba_check();
+                    update_mobs();
+                }
+                return;
             case 12: if (!v_blank) update_mobs(); return;
             case 13: // 496..503
                 if (!v_blank) {
