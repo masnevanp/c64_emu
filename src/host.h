@@ -235,7 +235,8 @@ private:
 
 class Video_out {
 public:
-    void put_frame(u8* vic_frame) {
+    void put_frame() {
+        u8* vic_frame_pos = vic_frame;
         u32* scan_1 = frame;
         u32* scan_2;
 
@@ -246,7 +247,7 @@ public:
             u32 s2c1;
             u32 s2c2 = 0;
             for (int x = 0; x < frame_width; ++x) {
-                u8 vic_col = *vic_frame++;
+                u8 vic_col = (*vic_frame_pos++) & 0xf; // TODO: do '&' here?
                 auto p = (x /*>> 1*/) & 0x1;
 
                 // some averaging for a simple blur effect....
@@ -284,8 +285,9 @@ public:
 
     bool v_synced() const { return sdl_mode.refresh_rate == FRAME_RATE; }
 
-    Video_out(u16 frame_width_, u16 frame_height_) // TODO: error handling
-            : frame_width(frame_width_), frame_height(frame_height_)
+    Video_out(u16 frame_width_, u16 frame_height_, u8* vic_frame_) // TODO: error handling
+            : frame_width(frame_width_), frame_height(frame_height_),
+              vic_frame(vic_frame_)
     {
         window = SDL_CreateWindow("The display...",
             400, 100,
@@ -446,7 +448,8 @@ private:
     const u16 frame_width;
     const u16 frame_height;
 
-    u32* frame;
+    u8* vic_frame;
+    u32* frame; // TODO: VIC outputs directly to this?
 
     u32 palette[16][4];
 

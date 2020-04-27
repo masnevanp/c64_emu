@@ -249,10 +249,8 @@ public:
     void set_irq() { int_hub.set(IO::Int_hub::Src::vic); }
     void clr_irq() { int_hub.clr(IO::Int_hub::Src::vic); }
 
-    void put_pixel(const u8& vic_col) { *px_pos++ = vic_col; }
-
     void init_sync() { // call if system has been 'paused'
-        vid_out.put_frame(frame);
+        vid_out.put_frame();
         sid.flush();
         // sid.output(true); ??
         clock.reset();
@@ -264,8 +262,6 @@ public:
         if (line == 0) { // frame done?
             host_input.poll();
 
-            px_pos = frame;
-
             frame_moment += VIC_II::FRAME_MS;
             auto sync_moment = std::round(frame_moment);
             bool reset = sync_moment == 6318000; // since '316687 * FRAME_MS = 6318000'
@@ -273,11 +269,11 @@ public:
 
             int diff_ms;
             if (vid_out.v_synced()) {
-                if ((frame_skip & 0x3) == 0x0) vid_out.put_frame(frame);
+                if ((frame_skip & 0x3) == 0x0) vid_out.put_frame();
                 diff_ms = clock.diff(sync_moment, reset);
             } else {
                 diff_ms = clock.sync(sync_moment, reset);
-                if ((frame_skip & 0x3) == 0x0) vid_out.put_frame(frame);
+                if ((frame_skip & 0x3) == 0x0) vid_out.put_frame();
             }
 
             if (diff_ms <= -VIC_II::FRAME_MS) {
@@ -312,9 +308,6 @@ private:
     double frame_moment = 0;
     int frame_skip = 0;
 
-    u8 frame[VIC_II::VIEW_WIDTH * VIC_II::VIEW_HEIGHT] = {};
-    u8* px_pos = frame;
-
 };
 
 
@@ -325,7 +318,7 @@ public:
         cia2(sync_master, cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
         sid(frame_cycle),
         vic(ram, col_ram, rom.charr, rdy_low, vic_out),
-        vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT),
+        vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT, vic.frame),
         vic_out(int_hub, vid_out, host_input, sid),
         int_hub(cpu),
         kb_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in),
