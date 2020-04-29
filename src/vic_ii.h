@@ -686,10 +686,10 @@ private:
                 if (ba_line) {
                     if (line_cycle > 10 && line_cycle < 54) {
                         ba.gfx_set(line_cycle | 0x80); // store cycle for AEC checking later
-                        if (line_cycle < 14) activate_gfx();
-                        // else activate_gfx() delayed (called from read_vm())
+                        if (line_cycle < 14) activate();
+                        // else activate() delayed (called from read_vm())
                     } else {
-                        activate_gfx();
+                        activate();
                     }
                 }
             }
@@ -698,33 +698,33 @@ private:
 
         void row_start() {
             vc = vc_base;
-            vmri = 1;
-            // (always all zeroes for 'idle' state anyway)
-            vm_row[State::active][0] = vm_row[State::active][40];
+            vmri = 1 + (active() * 41); // select idle/active portion
+            vm_row[41] = vm_row[81]; // make last one linger to next line...
             if (ba_line) rc = 0;
         }
         void row_end() {
             if (rc == 7) {
                 vc_base = vc;
                 if (!ba_line) {
-                    deactivate_gfx();
+                    deactivate();
                     return;
                 }
 			}
-            if (state == State::active) rc = (rc + 1) & 0x7;
+            if (active()) rc = (rc + 1) & 0x7;
         }
 
         void read_vm() {
             if (ba_line) {
-                activate_gfx(); // delayed (see ba_check())
-                col_ram.r(vc, vm_row[State::active][vmri].cr_data); // TODO: mask upper bits if 'noise' is implemented
-                vm_row[State::active][vmri].vm_data = bank.r(vm_base | vc);
+                activate(); // delayed (see ba_check())
+                col_ram.r(vc, vm_row[vmri].cr_data); // TODO: mask upper bits if 'noise' is implemented
+                vm_row[vmri].vm_data = bank.r(vm_base | vc);
             }
         }
 
         void read_gd() {
             gdi = bank.r(gfx_addr);
-            if (state == State::active) {
+
+            if (active()) {
                 vc = (vc + 1) & 0x3ff;
                 ++vmri;
             }
@@ -734,7 +734,7 @@ private:
 
         void output(u8* to) {
             const auto put_px = [&to](const u8 px) { *to++ = px; };
-            const auto bump = [this]() { gdo = gdi; vmd = vm_row[state][vmri-1]; };
+            const auto bump = [this]() { gdo = gdi; vmd = vm_row[vmri-1]; };
 
             switch (mode) {
                 case scm: {
@@ -748,7 +748,7 @@ private:
                         gdo <<= 1;
                     }
 
-                    const auto& vd = vm_row[state][vmri].vm_data;
+                    const auto& vd = vm_row[vmri].vm_data;
                     gfx_addr = c_base | (vd << 3) | rc;
 
                     return;
@@ -791,7 +791,7 @@ private:
                         }
                     }
 
-                    const auto& vd = vm_row[state][vmri].vm_data;
+                    const auto& vd = vm_row[vmri].vm_data;
                     gfx_addr = c_base | (vd << 3) | rc;
 
                     return;
@@ -866,7 +866,7 @@ private:
                         gdo <<= 1;
                     }
 
-                    const auto& vd = vm_row[state][vmri].vm_data;
+                    const auto& vd = vm_row[vmri].vm_data;
                     gfx_addr = (c_base | (vd << 3) | rc) & G_ADDR_ECM_MASK;
 
                     return;
@@ -901,7 +901,7 @@ private:
                         }
                     }
 
-                    const auto& vd = vm_row[state][vmri].vm_data;
+                    const auto& vd = vm_row[vmri].vm_data;
                     gfx_addr = (c_base | (vd << 3) | rc) & G_ADDR_ECM_MASK;
 
                     return;
@@ -945,6 +945,8 @@ private:
             }
         }
 
+        // Technically, this is not needed. output() would work just fine...
+        // TODO: measure the difference...?
         void output_border(u8* to) {
             const auto put = [&to](const u8 px) {
                 *to++ = px; *to++ = px; *to++ = px; *to++ = px;
@@ -964,22 +966,20 @@ private:
         }
 
     private:
-        enum State : u8 { idle = 0x0, active = 0x1 };
         static const u16 RC_IDLE = 0x3fff;
 
-        void activate_gfx()   { state = active; rc &= 0x7; }
-        void deactivate_gfx() { state = idle;   rc = RC_IDLE; }
+        void activate()     { rc &= 0x7; }
+        void deactivate()   { rc = RC_IDLE; }
+        bool active() const { return rc != RC_IDLE; }
 
         u8 ba_area = false; // set for each frame (at the top of disp.win)
         u8 ba_line = false;
-
-        u8 state = State::idle;
 
         struct VM_data { // video-matrix data
             u8 vm_data = 0;
             u8 cr_data = 0; // color-ram data
         };
-        VM_data vm_row[2][41]; // vm row buffer (idle/active states)
+        VM_data vm_row[82]; // vm row buffer (idle/active states, 41 each)
 
         u16 vc_base;
         u16 vc;
@@ -1000,6 +1000,7 @@ private:
         const u16& raster_y;
         BA& ba;
     };
+
 
     class Border {
     public:
