@@ -206,11 +206,6 @@ public:
         Anyway, the current MOB access would not be 100% cycle/memory accurate
         in those cases. */
 
-    #if defined(__GNUC__) && (__GNUC__ >= 7)
-        #pragma GCC diagnostic push
-        #pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
-    #endif
-
     void tick(u16& frame_cycle) {
 
         line_cycle = frame_cycle % LINE_CYCLES;
@@ -235,9 +230,9 @@ public:
 
                 // TODO: reveal the magic numbers....
                 if (!v_blank) {
-                    if (raster_y == 48) {
+                    if (raster_y == GFX::vma_top_raster_y) {
                         gfx.vma_start(den);
-                    } else if (raster_y == 248) {
+                    } else if (raster_y == GFX::vma_bottom_raster_y) {
                         gfx.vma_done();
                     } else if (raster_y == (250 + BORDER_SZ_H)) {
                         v_blank = true;
@@ -253,16 +248,12 @@ public:
                 mobs.prep_dma(5);
                 if (raster_y == 0 && cmp_raster == 0) irq.req(IRQ::rst);
                 return;
-            case  2: mobs.do_dma(3);  return;
+            case  2: mobs.do_dma(3);   return;
             case  3: mobs.prep_dma(6); return;
-            case  4: mobs.do_dma(4);  return;
+            case  4: mobs.do_dma(4);   return;
             case  5: mobs.prep_dma(7); return;
-            case  6: mobs.do_dma(5);  return;
-            case  7: // 448..
-                if (!v_blank) {
-                    //update_mobs(); // needed??
-                }
-                return;
+            case  6: mobs.do_dma(5);   return;
+            case  7:                   return;
             case  8: // 452
                 if (!v_blank) {
                     raster_x = 452;
@@ -391,10 +382,6 @@ public:
                 return;
         }
     }
-
-    #if defined(__GNUC__) && (__GNUC__ >= 7)
-        #pragma GCC diagnostic pop
-    #endif
 
 private:
     class IRQ {
@@ -646,7 +633,9 @@ private:
 
     class GFX {
     public:
-        static const u8 foreground = 0x80;
+        static const u16 vma_top_raster_y    = 48;
+        static const u16 vma_bottom_raster_y = 248;
+        static const u8  foreground          = 0x80;
 
         enum Mode_bit : u8 {
             ecm_set = 0x8, bmm_set = 0x4, mcm_set = 0x2, act_set = 0x1,
@@ -676,12 +665,6 @@ private:
         u8 y_scroll;
         u16 vm_base;
         u16 c_base;
-
-        GFX(
-            Banker& bank_, const Color_RAM& col_ram_, const u8* reg_,
-            const u8& line_cycle_, const u16& raster_y_, BA& ba_)
-          : bank(bank_), col_ram(col_ram_), reg(reg_),
-            line_cycle(line_cycle_), raster_y(raster_y_), ba(ba_) {}
 
         void set_ecm(bool e)   { mode = e ? mode | ecm_set : mode & ~ecm_set; }
         void set_bmm(bool b)   { mode = b ? mode | bmm_set : mode & ~bmm_set; }
@@ -724,7 +707,7 @@ private:
             vc = vc_base;
             vmri = 1 + active();
             vmoi = vmri - 1; // if idle, we stay at index zero (with zeroed data)
-            vm_row[1] = vm_row[41]; // wrap around (make last one linger...)
+            vm[1] = vm[41]; // wrap around (make last one linger...)
             if (ba_line) rc = 0;
         }
 
@@ -742,8 +725,8 @@ private:
         void read_vm() {
             if (ba_line) {
                 activate(); // delayed (see ba_check())
-                col_ram.r(vc, vm_row[vmri].cr_data); // TODO: mask upper bits if 'noise' is implemented
-                vm_row[vmri].vm_data = bank.r(vm_base | vc);
+                col_ram.r(vc, vm[vmri].col); // TODO: mask upper bits if 'noise' is implemented
+                vm[vmri].data = bank.r(vm_base | vc);
             }
         }
 
@@ -776,10 +759,10 @@ private:
 
                 case scm:
                     do put(gd & 0x80000000
-                            ? vm_row[vmoi].cr_data | foreground
-                            : reg[bgc0]);
+                                ? vm[vmoi].col | foreground
+                                : reg[bgc0]);
                     while (bump());
-                    gfx_addr = c_base | (vm_row[vmri].vm_data << 3) | rc;
+                    gfx_addr = c_base | (vm[vmri].data << 3) | rc;
                     return;
 
                 case mccm_i:
@@ -789,21 +772,21 @@ private:
 
                 case mccm: {
                     u8 aligned;
-                    if (vm_row[vmoi].cr_data & multicolor) {
+                    if (vm[vmoi].col & multicolor) {
                         aligned = (x_scroll ^ 0x1) & 0x1;
                         do {
                             if (aligned) {
                                 u8 g = (gd >> 24) & 0xc0;
                                 u8 c = (g == 0xc0)
-                                    ? vm_row[vmoi].cr_data & 0x7
-                                    : reg[bgc0 + (g >> 6)];
+                                            ? vm[vmoi].col & 0x7
+                                            : reg[bgc0 + (g >> 6)];
                                 col = (c | g); // sets also fg-gfx flag
                             }
                             put(col);
                             gd <<= 1; vb >>= 1;
                             if (vb & 0x1) {
                                 ++vmoi;
-                                if (!(vm_row[vmoi].cr_data & multicolor)) goto _scm;
+                                if (!(vm[vmoi].col & multicolor)) goto _scm;
                             }
                             aligned ^= 0x1;
                             _mccm:
@@ -812,12 +795,12 @@ private:
                     } else {
                         do {
                             put(gd & 0x80000000
-                                ? vm_row[vmoi].cr_data | foreground
-                                : reg[bgc0]);
+                                        ? vm[vmoi].col | foreground
+                                        : reg[bgc0]);
                             gd <<= 1; vb >>= 1;
                             if (vb & 0x1) {
                                 ++vmoi;
-                                if (vm_row[vmoi].cr_data & multicolor) {
+                                if (vm[vmoi].col & multicolor) {
                                     aligned = 0x1;
                                     goto _mccm;
                                 }
@@ -826,7 +809,7 @@ private:
                             --bumps;
                         } while (bumps);
                     }
-                    gfx_addr = c_base | (vm_row[vmri].vm_data << 3) | rc;
+                    gfx_addr = c_base | (vm[vmri].data << 3) | rc;
                     return;
                 }
 
@@ -837,8 +820,8 @@ private:
 
                 case sbmm:
                     do put(gd & 0x80000000
-                            ? (vm_row[vmoi].vm_data >> 4) | foreground
-                            : (vm_row[vmoi].vm_data & 0xf));
+                                ? (vm[vmoi].data >> 4) | foreground
+                                : (vm[vmoi].data & 0xf));
                     while (bump());
                     gfx_addr = (c_base & 0x2000) | (vc << 3) | rc;
                     return;
@@ -865,12 +848,11 @@ private:
                     u8 aligned = (x_scroll ^ 0x1) & 0x1;
                     do {
                         if (aligned) {
-                            const auto& vr = vm_row[vmoi];
                             switch (gd >> 30) {
-                                case 0x0: col = reg[bgc0];                       break;
-                                case 0x1: col = (vr.vm_data >> 4);               break;
-                                case 0x2: col = (vr.vm_data & 0xf) | foreground; break;
-                                case 0x3: col = (vr.cr_data) | foreground;       break;
+                                case 0x0: col = reg[bgc0];                          break;
+                                case 0x1: col = (vm[vmoi].data >> 4);               break;
+                                case 0x2: col = (vm[vmoi].data & 0xf) | foreground; break;
+                                case 0x3: col = (vm[vmoi].col) | foreground;        break;
                             }
                         }
                         put(col);
@@ -887,15 +869,15 @@ private:
 
                 case ecm:
                     do put(gd & 0x80000000
-                            ? vm_row[vmoi].cr_data | foreground
-                            : reg[bgc0 + (vm_row[vmoi].vm_data >> 6)]);
+                                ? vm[vmoi].col | foreground
+                                : reg[bgc0 + (vm[vmoi].data >> 6)]);
                     while (bump());
-                    gfx_addr = (c_base | (vm_row[vmri].vm_data << 3) | rc) & addr_ecm_mask;
+                    gfx_addr = (c_base | (vm[vmri].data << 3) | rc) & addr_ecm_mask;
                     return;
 
                 case icm_i: case icm: {
                     u8 aligned;
-                    if (vm_row[vmoi].cr_data & multicolor) {
+                    if (vm[vmoi].col & multicolor) {
                         aligned = (x_scroll ^ 0x1) & 0x1;
                         do {
                             // sets col.0 & fg-gfx flag
@@ -904,7 +886,7 @@ private:
                             gd <<= 1; vb >>= 1;
                             if (vb & 0x1) {
                                 ++vmoi;
-                                if (!(vm_row[vmoi].cr_data & multicolor)) goto _icm_scm;
+                                if (!(vm[vmoi].col & multicolor)) goto _icm_scm;
                             }
                             aligned ^= 0x1;
                             _icm_mccm:
@@ -916,7 +898,7 @@ private:
                             gd <<= 1; vb >>= 1;
                             if (vb & 0x1) {
                                 ++vmoi;
-                                if (vm_row[vmoi].cr_data & multicolor) {
+                                if (vm[vmoi].col & multicolor) {
                                     aligned = 0x1;
                                     goto _icm_mccm;
                                 }
@@ -927,7 +909,7 @@ private:
                     }
                     gfx_addr = (mode == icm_i
                                     ? addr_idle
-                                    : (c_base | (vm_row[vmri].vm_data << 3) | rc))
+                                    : (c_base | (vm[vmri].data << 3) | rc))
                                             & addr_ecm_mask;
                     return;
                 }
@@ -965,13 +947,13 @@ private:
                     put(reg[bgc0]);
                     return;
                 case sbmm_i: case sbmm:
-                    put(vm_row[vmoi].vm_data & 0xf);
+                    put(vm[vmoi].data & 0xf);
                     return;
                 case mcbmm_i: case mcbmm:
                     put(reg[bgc0]);
                     return;
                 case ecm_i: case ecm:
-                    put(reg[bgc0 + (vm_row[vmoi].vm_data >> 6)]);
+                    put(reg[bgc0 + (vm[vmoi].data >> 6)]);
                     return;
                 case icm_i: case icm: case ibmm1_i: case ibmm1: case ibmm2_i: case ibmm2:
                     put(0x0);
@@ -979,8 +961,13 @@ private:
             }
         }
 
+        GFX(
+            Banker& bank_, const Color_RAM& col_ram_, const u8* reg_,
+            const u8& line_cycle_, const u16& raster_y_, BA& ba_)
+          : bank(bank_), col_ram(col_ram_), reg(reg_),
+            line_cycle(line_cycle_), raster_y(raster_y_), ba(ba_) {}
+
     private:
-        static const u16 vma_top_raster_y = 48;
         static const u8  multicolor       = 0x8;
         static const u16 addr_idle        = 0x3fff;
         static const u16 addr_ecm_mask    = 0x39ff;
@@ -993,10 +980,10 @@ private:
         u8 ba_line = false;
 
         struct VM_data { // video-matrix data
-            u8 vm_data = 0;
-            u8 cr_data = 0; // color-ram data
+            u8 data = 0; // 'screen memory' data
+            u8 col = 0;  // color-ram data
         };
-        VM_data vm_row[42]; // vm row buffer
+        VM_data vm[42]; // vm row buffer
 
         u16 vc_base;
         u16 vc;
@@ -1006,8 +993,8 @@ private:
         u8  gdr;
 
         u16 vb;   // vmoi bump timer
-        u8  vmri; // vm_row read index
-        u8  vmoi; // vm_row output index
+        u8  vmri; // vm read index
+        u8  vmoi; // vm output index
         u8  col;
 
         u8 mode = scm_i;
@@ -1024,27 +1011,12 @@ private:
     // TODO: timing might be off by ~4px (see sprsync.prg)
     class Border {
     public:
-        Border(
-            u8*& beam_pos_, const u16& raster_y_, const u8& den_, const u8& ecol_)
-         :  beam_pos(beam_pos_), raster_y(raster_y_), den(den_), ecol(ecol_) {}
-
         void set_rsel(u8 rs) {
             cmp_top = 55 - (rs >> 1);
             cmp_bottom = 247 + (rs >> 1);
         }
 
         void set_csel(bool cs) { csel = cs; }
-
-        void output(u8* to) {
-            if (on_at) {
-                if (off_at) {
-                    while (on_at < off_at) *on_at++ = ecol;
-                    on_at = nullptr;
-                } else {
-                    while (on_at < to) *on_at++ = ecol;
-                }
-            }
-        }
 
         void check_left(u8 cmp_csel) {
             if (csel == cmp_csel) {
@@ -1068,6 +1040,21 @@ private:
         }
 
         void frame_start() { if (on_at) on_at = beam_pos; }
+
+        void output(u8* to) {
+            if (on_at) {
+                if (off_at) {
+                    while (on_at < off_at) *on_at++ = ecol;
+                    on_at = nullptr;
+                } else {
+                    while (on_at < to) *on_at++ = ecol;
+                }
+            }
+        }
+
+        Border(
+            u8*& beam_pos_, const u16& raster_y_, const u8& den_, const u8& ecol_)
+         :  beam_pos(beam_pos_), raster_y(raster_y_), den(den_), ecol(ecol_) {}
 
     private:
         u8*& beam_pos;
@@ -1098,6 +1085,8 @@ private:
         }
     }
 
+    // for updating the off-screen MOBs so that they are displayed
+    // properly on the left screen edge
     void update_mobs() {
         mobs.update(raster_x, raster_x + 8);
         raster_x += 8;
