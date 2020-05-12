@@ -253,45 +253,46 @@ public:
             case  4: mobs.do_dma(4);   return;
             case  5: mobs.prep_dma(7); return;
             case  6: mobs.do_dma(5);   return;
-            case  7:                   return;
-            case  8: // 452
+            case  7: // 452
                 if (!v_blank) {
                     raster_x = 452;
                     update_mobs();
                 }
+                return;
+            case  8: // 460
+                if (!v_blank) update_mobs();
                 mobs.do_dma(6);
                 return;
-            case  9: // 460
+            case  9: // 468
                 if (!v_blank) update_mobs();
                 return;
-            case 10: // 468
+            case 10: // 476
                 if (!v_blank) update_mobs();
                 mobs.do_dma(7);
                 return;
-            case 11: // 476
+            case 11: // 484
                 if (!v_blank) {
                     gfx.ba_check();
                     update_mobs();
                 }
                 return;
-            case 12: // 484
+            case 12: // 492
                 if (!v_blank) update_mobs();
                 return;
-            case 13: // 492
+            case 13: // 500
                 if (!v_blank) {
-                    update_mobs();
-                    output_start_1();
+                    output_start();
                     gfx.row_start();
                 }
                 return;
-            case 14: // 500
+            case 14: // 4
                 if (!v_blank) {
-                    output_start_2();
+                    output_border();
                     gfx.read_vm();
                 }
                 mobs.inc_mdc_base_2();
                 return;
-            case 15: // 4
+            case 15: // 12
                 if (!v_blank) {
                     output();
                     gfx.read_gd();
@@ -299,29 +300,29 @@ public:
                 }
                 mobs.inc_mdc_base_1();
                 return;
-            case 16: // 12
+            case 16: // 20
                 if (!v_blank) {
                     gfx.feed_gd();
-                    output();
                     border.check_left(1);
+                    output();
                     gfx.read_gd();
                     gfx.read_vm();
                 }
                 return;
-            case 17: // 20
+            case 17: // 28
                 if (!v_blank) {
                     gfx.feed_gd();
-                    output();
                     border.check_left(0);
+                    output();
                     gfx.read_gd();
                     gfx.read_vm();
                 }
                 return;
-            case 18: case 19: // 28..
+            case 18: case 19: // 36..
             case 20: case 21: case 22: case 23: case 24: case 25: case 26: case 27: case 28: case 29:
             case 30: case 31: case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39:
             case 40: case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: case 49:
-            case 50: case 51: case 52: case 53: // ..315
+            case 50: case 51: case 52: case 53: // ..323
                 if (!v_blank) {
                     gfx.feed_gd();
                     output();
@@ -329,7 +330,7 @@ public:
                     gfx.read_vm();
                 }
                 return;
-            case 54: // 316
+            case 54: // 324
                 if (!v_blank) {
                     gfx.feed_gd();
                     output();
@@ -340,39 +341,39 @@ public:
                 mobs.check_dma();
                 mobs.prep_dma(0);
                 return;
-            case 55: // 324
+            case 55: // 332
                 if (!v_blank) {
                     gfx.feed_gd();
-                    output();
                     border.check_right(0);
+                    output();
                 }
                 mobs.check_dma();
                 mobs.prep_dma(0);
                 return;
-            case 56: // 332
+            case 56: // 340
                 if (!v_blank) {
-                    output();
                     border.check_right(1);
+                    output();
                 }
                 mobs.prep_dma(1);
                 return;
-            case 57: // 340
+            case 57: // 348
                 if (!v_blank) {
                     output();
                     gfx.row_done();
                 }
                 mobs.load_mdc();
                 return;
-            case 58: // 348
-                if (!v_blank) output_end_1();
+            case 58: // 356
+                if (!v_blank) output_border();
                 mobs.prep_dma(2);
                 return;
-            case 59: // 356
-                if (!v_blank) output_end_1();
+            case 59: // 364
+                if (!v_blank) output_border();
                 mobs.do_dma(0);
                 return;
-            case 60: // 364
-                if (!v_blank) output_end_2();
+            case 60: // 372
+                if (!v_blank) output_end();
                 mobs.prep_dma(3);
                 return;
             case 61: mobs.do_dma(1); return;
@@ -1008,7 +1009,6 @@ private:
     };
 
 
-    // TODO: timing might be off by ~4px (see sprsync.prg)
     class Border {
     public:
         void set_rsel(u8 rs) {
@@ -1020,23 +1020,22 @@ private:
 
         void check_left(u8 cmp_csel) {
             if (csel == cmp_csel) {
-                if (raster_y == cmp_bottom) locked = true;
-                else if (raster_y == cmp_top && den) locked = false;
-                if (!locked && on_at) off_at = beam_pos + (3 + csel);
+                if (raster_y == cmp_bottom) locked_on = true;
+                else if (raster_y == cmp_top && den) locked_on = false;
+                if (!locked_on && on_at) off_at = beam_pos + (3 + csel);
             }
         }
 
         void check_right(u8 cmp_csel) {
-            if (on_at) return;
-            if (csel == cmp_csel) {
+            if (!on_at && csel == cmp_csel) {
                 on_at = beam_pos + (3 + csel);
                 off_at = nullptr;
             }
         }
 
         void line_done() {
-            if (raster_y == cmp_bottom) locked = true;
-            else if (raster_y == cmp_top && den) locked = false;
+            if (raster_y == cmp_bottom) locked_on = true;
+            else if (raster_y == cmp_top && den) locked_on = false;
         }
 
         void frame_start() { if (on_at) on_at = beam_pos; }
@@ -1066,7 +1065,7 @@ private:
         u8* on_at = nullptr;
         u8* off_at = nullptr;
 
-        u8 locked; // can be turned off if true
+        u8 locked_on;
 
         u8 csel; // cr2.csel (0|1 ==> left: 31|24 - right: 335|344)
 
@@ -1085,48 +1084,39 @@ private:
         }
     }
 
-    // for updating the off-screen MOBs so that they are displayed
+    // for updating the partially off-screen MOBs so that they are displayed
     // properly on the left screen edge
     void update_mobs() {
         mobs.update(raster_x, raster_x + 8);
         raster_x += 8;
     }
 
-    void output_start_1() {
-        gfx.output_border(beam_pos);
-    }
-
-    void output_start_2() {
+    void output_start() {
+        gfx.output_border(beam_pos); // gfx.output(beam_pos);
         mobs.output(500, 504, beam_pos);
         mobs.output(0, 4, beam_pos + 4);
+        border.output(beam_pos + 4);
         beam_pos += 8;
         raster_x = 4;
-        border.output(beam_pos);
+    }
+
+    void output_border() {
         gfx.output_border(beam_pos); // gfx.output(beam_pos);
+        mobs.output(raster_x, raster_x + 8, beam_pos);
+        border.output(beam_pos + 4);
+        beam_pos += 8;
+        raster_x += 8;
     }
 
     void output() {
-        mobs.output(raster_x, raster_x + 8, beam_pos);
-        beam_pos += 8;
-        raster_x += 8;
-        border.output(beam_pos);
         gfx.output(beam_pos);
-    }
-
-    void output_end_1() {
         mobs.output(raster_x, raster_x + 8, beam_pos);
+        border.output(beam_pos + 4);
         beam_pos += 8;
         raster_x += 8;
-        border.output(beam_pos);
-        gfx.output_border(beam_pos);
     }
 
-    void output_end_2() {
-        mobs.output(raster_x, raster_x + 8, beam_pos);
-        beam_pos += 8;
-        raster_x += 8;
-        border.output(beam_pos);
-    }
+    void output_end() { border.output(beam_pos); }
 
     IRQ irq;
     BA ba;
