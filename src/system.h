@@ -318,7 +318,7 @@ public:
         cia2(sync_master, cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
         sid(frame_cycle),
         vic(ram, col_ram, rom.charr, rdy_low, vic_out),
-        vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT, vic.frame),
+        vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT, vic.s.frame),
         vic_out(int_hub, vid_out, host_input, sid),
         int_hub(cpu),
         kb_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in),
@@ -407,7 +407,7 @@ private:
     IO::Port::PD_out cia1_port_b_out {
         [this](u8 bits, u8 bit_vals) {
             kb_matrix.port_b_out(bits, bit_vals);
-            vic.set_lp_cia1_pb_b4((bits & LP_BIT) & ~bit_vals);
+            vic.lp.set_cia1_pb_b4((bits & LP_BIT) & ~bit_vals);
         }
     };
     IO::Port::PD_out cia2_port_a_out {
@@ -454,7 +454,7 @@ private:
             const u8 bit_val = down ? 0x0 : bit_pos;
             cia1.port_b.ext_in(bit_pos, bit_val);
             if (bit_pos == LP_BIT) {
-                vic.set_lp_ctrl_p1_p6(down);
+                vic.lp.set_ctrl_p1_p6(down);
             }
         },
 
