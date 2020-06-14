@@ -173,6 +173,7 @@ private:
        - a separate IO port component...?
        - cassette (datasette) emulation?
        - exrom|game bits (harcoded for now)
+            - update also to VIC banker
     */
     enum IO_bits : u8 {
         loram_hiram_charen_bits = 0x07,
@@ -311,19 +312,28 @@ private:
 };
 
 
+struct State {
+    u8 ram[0x10000];
+    u8 color_ram[Color_RAM::size] = {};
+
+    VIC::State vic;
+};
+
+
 class C64 {
 public:
     C64(const ROM& rom) :
         cia1(sync_master, cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1),
         cia2(sync_master, cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
         sid(frame_cycle),
-        vic(ram, col_ram, rom.charr, rdy_low, vic_out),
-        vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT, vic.s.frame),
+        col_ram(s.color_ram),
+        vic(s.vic, s.ram, col_ram, rom.charr, rdy_low, vic_out),
+        vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT, s.vic.frame),
         vic_out(int_hub, vid_out, host_input, sid),
         int_hub(cpu),
         kb_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in),
         io_space(cia1, cia2, sid, vic, col_ram),
-        sys_banker(ram, rom, io_space),
+        sys_banker(s.ram, rom, io_space),
         host_input(host_input_handlers) { }
 
     void reset_warm() {
@@ -364,7 +374,7 @@ public:
         }
     }
 
-    u8 ram[0x10000];
+    State s;
 
     CPU cpu;
 
@@ -407,13 +417,13 @@ private:
     IO::Port::PD_out cia1_port_b_out {
         [this](u8 bits, u8 bit_vals) {
             kb_matrix.port_b_out(bits, bit_vals);
-            vic.lp.set_cia1_pb_b4((bits & LP_BIT) & ~bit_vals);
+            u8 lp_low = (bits & LP_BIT) & ~bit_vals;
+            vic.set_lp(VIC::LP_src::cia, lp_low);
         }
     };
     IO::Port::PD_out cia2_port_a_out {
         [this](u8 bits, u8 bit_vals) {
-            u8 va14_va15 = ((bit_vals & bits) | ~bits) & 0x3;
-            vic.banker.set_bank(va14_va15);
+            vic.set_va14_va15(((bit_vals & bits) | ~bits) & 0x3);
         }
     };
     IO::Port::PD_out cia2_port_b_out {
@@ -453,9 +463,7 @@ private:
             const u8 bit_pos = 0x1 << code;
             const u8 bit_val = down ? 0x0 : bit_pos;
             cia1.port_b.ext_in(bit_pos, bit_val);
-            if (bit_pos == LP_BIT) {
-                vic.lp.set_ctrl_p1_p6(down);
-            }
+            if (bit_pos == LP_BIT) vic.set_lp(VIC::LP_src::ctrl_port, down);
         },
 
         // joy2

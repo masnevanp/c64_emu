@@ -67,5 +67,21 @@ std::string as_upper(const std::string& src);
 
 std::string replace(std::string s, const std::string& what, const std::string& with);
 
+/*
+template<typename T>
+constexpr int count_leading_zero_bits(T x) {
+    int n = 0;
+    for (; (n < (sizeof(x) * 8)); ++n) {
+        if ((x & (1 << n))) break;
+    }
+    return n;
+}
+
+
+template<typename T>
+constexpr T bit_field(T of, T field_mask) {
+    return (of & field_mask) >> count_leading_zero_bits(field_mask);
+}
+*/
 
 #endif // UTILS_H_INCLUDED

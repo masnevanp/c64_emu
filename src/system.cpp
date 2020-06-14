@@ -134,6 +134,6 @@ const u8 System::Banker::Mode_to_PLA_idx[32] = {
 
 
 void System::C64::init_ram() { // TODO: parameterize pattern (+ add 'randomness'?)
-    for (int addr = 0; addr < 0x10000; ++addr)
-        ram[addr] = (addr & 0x80) ? 0xff : 0x00;
+    for (int addr = 0x0000; addr <= 0xffff; ++addr)
+        s.ram[addr] = (addr & 0x80) ? 0xff : 0x00;
 }

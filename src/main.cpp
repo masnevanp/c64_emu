@@ -55,10 +55,10 @@ void run_c64() {
         bool handled = false;
         switch (c64.cpu.ir) {
             case Trap_OPC::IEC_routine:
-                handled = IEC::Virtual::on_trap(c64.cpu, c64.ram, iec_ctrl);
+                handled = IEC::Virtual::on_trap(c64.cpu, c64.s.ram, iec_ctrl);
                 break;
             case Trap_OPC::tape_routine:
-                handled = Tape::Virtual::on_trap(c64.cpu, c64.ram, load_file);
+                handled = Tape::Virtual::on_trap(c64.cpu, c64.s.ram, load_file);
                 break;
         }
 
@@ -66,7 +66,7 @@ void run_c64() {
             ++c64.cpu.mcp; // halted --> bump forward
         } else {
             std::cout << "\n****** CPU halted! ******\n";
-            Dbg::print_status(c64.cpu, c64.ram);
+            Dbg::print_status(c64.cpu, c64.s.ram);
         }
     };
 
