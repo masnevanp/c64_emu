@@ -94,9 +94,6 @@ private:
             u8 va14_va15 = 0b11; // NOTE: bits inverted (0b11 --> bank 0)
         };
 
-        Banker(State& s_, const u8* ram_, const u8* charr)
-            : s(s_), ram(ram_), chr(charr) {}
-
         u8 r(const u16& addr) const { // addr is 14bits
             switch (bank[s.va14_va15][addr >> 12]) {
                 case ram_0: return ram[0x0000 | addr];
@@ -111,6 +108,9 @@ private:
         }
 
         void set_va14_va15(u8 v) { s.va14_va15 = v; }
+
+        Banker(State& s_, const u8* ram_, const u8* charr)
+            : s(s_), ram(ram_), chr(charr) {}
 
     private:
         enum Mapping : u8 {
@@ -141,12 +141,12 @@ private:
             irq = 0x80,
         };
 
-        IRQ(State& s, Out& out_)
-            : r_ireg(s.reg[R::ireg]), r_ien(s.reg[R::ien]), out(out_) { }
-
         void w_ireg(u8 data) { r_ireg &= ~data; update(); }
         void ien_upd()       { update(); }
         void req(u8 kind)    { r_ireg |= kind;  update(); }
+
+        IRQ(State& s, Out& out_)
+            : r_ireg(s.reg[R::ireg]), r_ien(s.reg[R::ien]), out(out_) { }
 
     private:
         void update() {
@@ -160,19 +160,19 @@ private:
         }
 
         u8& r_ireg;
-        u8& r_ien;
+        const u8& r_ien;
         Out& out;
     };
 
 
     class BA {
     public:
-        BA(u16& ba_low_) : ba_low(ba_low_) {}
-
         void mob_start(u8 mn)  { ba_low |=  (0x100 << mn); }
         void mob_done(u8 mn)   { ba_low &= ~(0x100 << mn); }
         void gfx_set(u8 b)     { ba_low = (ba_low & 0xff00) | b; }
         void gfx_rel()         { gfx_set(0); }
+
+        BA(u16& ba_low_) : ba_low(ba_low_) {}
     private:
         u16& ba_low; // 8 MSBs for MOBs, 8 LSBs for GFX
     };
@@ -230,14 +230,6 @@ private:
                 pixel_mask_mc  = 0xc0000000,
             };
 
-            // flags (TODO: these 4 into one u8...?)
-            u8 ye;
-            u8 dma_on = false;
-            u8 mdc_base_upd;
-
-            u8 mdc_base;
-            u8 mdc;
-
             void set_x_hi(u8 hi)  { x = hi ? x | 0x100 : x & 0x0ff; }
             void set_x_lo(u8 lo)  { x = (x & 0x100) | lo; }
             void set_ye(bool ye_) { ye = ye_; if (!ye) mdc_base_upd = true; }
@@ -272,6 +264,13 @@ private:
 
                 return p_col;
             }
+
+            u8 ye;
+            u8 dma_on = false;
+            u8 mdc_base_upd;
+
+            u8 mdc_base;
+            u8 mdc;
 
             u16 x;
 
@@ -410,7 +409,7 @@ private:
             }
         }
 
-        Banker& bank;
+        const Banker& bank;
         u8* reg;
         const u16& raster_y;
         BA& ba;
@@ -420,6 +419,10 @@ private:
 
     class GFX {
     public:
+        static const u16 vma_top_raster_y    = 48;
+        static const u16 vma_bottom_raster_y = 248;
+        static const u8  foreground          = 0x80;
+
         struct State {
             u8 mode = scm_i;
 
@@ -437,19 +440,14 @@ private:
             u16 vc_base;
             u16 vc;
             u16 rc;
+            u16 vb;   // vmoi bump timer
             u16 gfx_addr;
             u32 gd;
             u8  gdr;
-
-            u16 vb;   // vmoi bump timer
             u8  vmri; // vm read index
             u8  vmoi; // vm output index
             u8  col;
         };
-
-        static const u16 vma_top_raster_y    = 48;
-        static const u16 vma_bottom_raster_y = 248;
-        static const u8  foreground          = 0x80;
 
         void cr1_upd(const u8& cr1) {
             u8 ecm_bmm = (cr1 & (CR1::ecm | CR1::bmm)) >> 3;
@@ -792,9 +790,9 @@ private:
         void deactivate()   { gs.mode &= ~Mode_bit::act_set; }
         bool active() const { return gs.mode & Mode_bit::act_set; }
 
-        Core::State& cs;
+        const Core::State& cs;
         State& gs;
-        Banker& bank;
+        const Banker& bank;
         const Color_RAM& col_ram;
         const u8* reg;
         const u8& line_cycle;
@@ -807,55 +805,60 @@ private:
     public:
         static constexpr u32 not_set = 0xffffffff;
 
+        struct State {
+            // indicate beam_pos at which border should start/end
+            u32 on_at = not_set;
+            u32 off_at = not_set;
+
+            u8 locked_on;
+        };
+
         void check_left(u8 cmp_csel) {
-            if (s.cr2(CR2::csel) == cmp_csel) {
-                if (bottom()) locked_on = true;
-                else if (top() && s.cr1(CR1::den)) locked_on = false;
-                if (!locked_on && is_on()) off_at = s.beam_pos + (3 + (cmp_csel >> 3));
-            }
-        }
-
-        void check_right(u8 cmp_csel) {
-            if (!is_on() && s.cr2(CR2::csel) == cmp_csel) {
-                on_at = s.beam_pos + (3 + (cmp_csel >> 3));
-                off_at = not_set;
-            }
-        }
-
-        void line_done() {
-            if (bottom()) locked_on = true;
-            else if (top() && s.cr1(CR1::den)) locked_on = false;
-        }
-
-        void frame_start() { if (is_on()) on_at = 0; }
-
-        void output(u32 upto_pos) {
-            if (is_on()) {
-                if (going_off()) {
-                    while (on_at < off_at) s.frame[on_at++] = s.reg[R::ecol];
-                    on_at = not_set;
-                } else {
-                    while (on_at < upto_pos) s.frame[on_at++] = s.reg[R::ecol];
+            if (cs.cr2(CR2::csel) == cmp_csel) {
+                if (bottom()) b.locked_on = true;
+                else if (top() && cs.cr1(CR1::den)) b.locked_on = false;
+                if (!b.locked_on && is_on()) {
+                    b.off_at = cs.beam_pos + (3 + (cmp_csel >> 3));
                 }
             }
         }
 
-        Border(State& s_) : s(s_) {}
+        void check_right(u8 cmp_csel) {
+            if (!is_on() && cs.cr2(CR2::csel) == cmp_csel) {
+                b.on_at = cs.beam_pos + (3 + (cmp_csel >> 3));
+                b.off_at = not_set;
+            }
+        }
+
+        void line_done() {
+            if (bottom()) b.locked_on = true;
+            else if (top() && cs.cr1(CR1::den)) b.locked_on = false;
+        }
+
+        void frame_start() { if (is_on()) b.on_at = 0; }
+
+        void output(u32 upto_pos) {
+            if (is_on()) {
+                if (going_off()) {
+                    while (b.on_at < b.off_at) cs.frame[b.on_at++] = cs.reg[R::ecol];
+                    b.on_at = not_set;
+                } else {
+                    while (b.on_at < upto_pos) cs.frame[b.on_at++] = cs.reg[R::ecol];
+                }
+            }
+        }
+
+        Border(Core::State& cs_) : cs(cs_), b(cs_.border) {}
 
     private:
-        bool is_on()      const { return  on_at != not_set; }
-        bool going_off()  const { return off_at != not_set; }
+        bool is_on()      const { return  b.on_at != not_set; }
+        bool going_off()  const { return b.off_at != not_set; }
 
-        bool top()    const { return s.raster_y == ( 55 - (s.cr1(CR1::rsel) >> 1)); }
-        bool bottom() const { return s.raster_y == (247 + (s.cr1(CR1::rsel) >> 1)); }
+        bool top()    const { return cs.raster_y == ( 55 - (cs.cr1(CR1::rsel) >> 1)); }
+        bool bottom() const { return cs.raster_y == (247 + (cs.cr1(CR1::rsel) >> 1)); }
 
-        State& s;
-
-        // indicate beam_pos at which border should start/end
-        u32 on_at = not_set;
-        u32 off_at = not_set;
-
-        u8 locked_on;
+        Core::State& cs;
+        State& b;
     };
 
 
@@ -910,21 +913,6 @@ private:
 public:
     enum LP_src { cia = 0x1, ctrl_port = 0x2, };
 
-    Core(
-          State& s_,
-          const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
-          u16& ba_low, Out& out_)
-        : s(s_),
-          banker(s_.banker, ram_, charr),
-          irq(s, out_),
-          ba(ba_low),
-          lp(s, irq),
-          mobs(s, banker, ba, irq),
-          gfx(s, banker, col_ram_, ba),
-          border(s),
-          out(out_) { }
-
-
     struct State {
         u8 reg[REG_COUNT];
 
@@ -937,7 +925,7 @@ public:
         typename Light_pen::State lp;
         typename MOBs::MOB mob[MOBs::mob_count];
         typename GFX::State gfx;
-        //typename Border::State border;
+        typename Border::State border;
 
         u32 beam_pos = 0;
         u8 frame[VIEW_WIDTH * VIEW_HEIGHT] = {};
@@ -946,7 +934,6 @@ public:
         u8 cr1(u8 field) const { return reg[R::cr1] & field; }
         u8 cr2(u8 field) const { return reg[R::cr2] & field; }
     };
-
 
     void reset() { for (int r = 0; r < REG_COUNT; ++r) w(r, 0); }
 
@@ -1188,6 +1175,15 @@ public:
                 return;
         }
     }
+
+    Core(
+          State& s_,
+          const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
+          u16& ba_low, Out& out_)
+        : s(s_),
+          banker(s_.banker, ram_, charr), irq(s, out_), ba(ba_low), lp(s, irq),
+          mobs(s, banker, ba, irq), gfx(s, banker, col_ram_, ba), border(s),
+          out(out_) { }
 };
 
 
