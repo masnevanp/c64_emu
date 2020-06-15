@@ -55,9 +55,7 @@ public:
             case 0x0: case 0x1: case 0x2: case 0x3: vic.r(addr & 0x003f, data);     return;
             case 0x4: case 0x5: case 0x6: case 0x7: sid.r(addr & 0x001f, data);     return;
             case 0x8: case 0x9: case 0xa: case 0xb: col_ram.r(addr & 0x03ff, data); return;
-            case 0xc:                               cia1.r(addr & 0x000f, data);
-                //if (data == 0x9) std::cout << "\nr: " << ((int)addr & 0x000f) << " " << " " << (int)data;
-                return;
+            case 0xc:                               cia1.r(addr & 0x000f, data);    return;
             case 0xd:                               cia2.r(addr & 0x000f, data);    return;
             case 0xe: case 0xf:                     /*TODO: IO areas 1&2*/          return;
         }
@@ -116,7 +114,6 @@ public:
 
 
     void access(const u16& addr, u8& data, u8 rw) {
-        // if (addr <= 1) std::cout << "a: " << (int)addr << " d: " << (int)data << " rw: " << (int)rw << "\n";
         switch (pla->pl[rw][addr >> 12]) {
             case ram0_r:
                 data = (addr > 0x0001)
