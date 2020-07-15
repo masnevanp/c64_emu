@@ -10,6 +10,3 @@ const std::string NMOS6502::R8_str[] = {
     "pcl", "pch", "sp", "sph", "p", "a", "x", "y",
     "d", "ir", "zpa", "zpah", "a1l", "a1h", "a2l", "a2h"
 };
-
-
-const std::string NMOS6502::RW_str[] = { "w", "r" };

@@ -5,6 +5,9 @@
 #include <iomanip>
 
 
+using namespace NMOS6502;
+
+
 std::string Dbg::flag_str(u8 r) {
     std::string s = "";
     s = s
@@ -50,7 +53,7 @@ void Dbg::print_mem(u8* mem, u16 page) {
 }
 
 
-void Dbg::print_status(const NMOS6502::Core& cpu, u8* mem) {
+void Dbg::print_status(const Core& cpu, u8* mem) {
     std::cout << "\npc: " << print_u16(cpu.pc);
     std::cout << " [ " << print_u8(mem[cpu.pc]);
     std::cout << " " << print_u8(mem[(cpu.pc+1) & 0xffff]) << " " << print_u8(mem[(cpu.pc+2) & 0xffff]);
@@ -75,10 +78,10 @@ void Dbg::print_status(const NMOS6502::Core& cpu, u8* mem) {
     std::cout << " d: " << print_u8(cpu.d);
     std::cout << " ir: " << print_u8(cpu.ir);
     std::cout << "\n";
-    std::cout << "\n==> mar: " << print_u16(cpu.mar()) << " (" << NMOS6502::R16_str[cpu.mcp->ar] << ")";
-    std::cout << "   mdr: " << (cpu.mrw() == NMOS6502::RW::w ? print_u8(cpu.mdr()) : "??");
-    std::cout << " (" << NMOS6502::R8_str[cpu.mcp->dr] << ")";
-    std::cout << "   r/w: " << NMOS6502::RW_str[cpu.mrw()];
+    std::cout << "\n==> mar: " << print_u16(cpu.mar()) << " (" << R16_str[cpu.mcp->ar] << ")";
+    std::cout << "   mdr: " << (cpu.mrw() == MC::RW::w ? print_u8(cpu.mdr()) : "??");
+    std::cout << " (" << R8_str[cpu.mcp->dr] << ")";
+    std::cout << "   r/w: " << MC::RW_str[cpu.mrw()];
     std::cout << "\n";
     /*
     operator std::string() const {
@@ -88,22 +91,22 @@ void Dbg::print_status(const NMOS6502::Core& cpu, u8* mem) {
 }
 
 
-void Dbg::reg_diff(const NMOS6502::Core& cpu) { // TODO: support for multiple cores
-    static NMOS6502::Reg16 r16_snap[NMOS6502::Core::REG_CNT];
-    static NMOS6502::Reg8 r8_snap[NMOS6502::Core::REG_CNT * 2];
+void Dbg::reg_diff(const Core& cpu) { // TODO: support for multiple cores
+    static Reg16 r16_snap[Core::REG_CNT];
+    static Reg8 r8_snap[Core::REG_CNT * 2];
 
     std::cout << "\n\n";
-    for (int r = 0; r < NMOS6502::Core::REG_CNT; ++r) {
-        if (r == NMOS6502::R16::pc || r == NMOS6502::R16::spf || r >= NMOS6502::R16::a1) {
+    for (int r = 0; r < Core::REG_CNT; ++r) {
+        if (r == R16::pc || r == R16::spf || r >= R16::a1) {
             if (r16_snap[r] != cpu.r16[r]) {
-                std::cout << NMOS6502::R16_str[r] << ": ";
+                std::cout << R16_str[r] << ": ";
                 std::cout << print_u16(r16_snap[r]) << " --> " << print_u16(cpu.r16[r]) << ", ";
                 r16_snap[r] = cpu.r16[r];
             }
-        } else if (r <= NMOS6502::R16::zpaf) {
+        } else if (r <= R16::zpaf) {
             int r8 = r * 2;
             if (r8_snap[r8] != cpu.r8[r8]) {
-                std::cout << NMOS6502::R8_str[r8] << ": ";
+                std::cout << R8_str[r8] << ": ";
                 std::cout << print_u8(r8_snap[r8]) << " --> " << print_u8(cpu.r8[r8]) << ", ";
                 r8_snap[r8] = cpu.r8[r8];
             }
@@ -131,7 +134,7 @@ void Dbg::step(System& sys, u16 until_pc)
         reg_diff(sys.cpu);
         print_status(sys.cpu, sys.mem);
 
-        if (sys.cpu.is_halted()) { std::cout << "\n[HALTED]"; break; }
+        if (sys.cpu.halted()) { std::cout << "\n[HALTED]"; break; }
     }
     std::cout << "\n\n=================== DONE (" << sys.cn << " cycles) ======================";
     print_status(sys.cpu, sys.mem);

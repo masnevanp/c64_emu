@@ -4,6 +4,7 @@
 
 namespace Test {
 
+using namespace NMOS6502;
 
 void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) {
     auto mem_ = read_file("data/6502_functional_test/6502_functional_test.bin");
@@ -14,10 +15,10 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
 
     mem[0xfffc] = 0x00; mem[0xfffd] = 0x04;
 
-    NMOS6502::Core cpu;
+    Core cpu;
 
     for (int i = 0; i < 7; ++i) { // do reset...
-        if (cpu.mrw() == NMOS6502::RW::r) cpu.mdr() = mem[cpu.mar()];
+        if (cpu.mrw() == MC::RW::r) cpu.mdr() = mem[cpu.mar()];
         else mem[cpu.mar()] = cpu.mdr();
         cpu.tick();
     }
@@ -27,7 +28,7 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     Clock c;
     for (int prev_pc = cpu.pc, psc = 0, step = false, output = false; psc < 15; ++psc) {
         // BEWARE
-        if (cpu.mcp->mopc >= NMOS6502::MOPC::dispatch && cpu.mcp->mopc <= NMOS6502::MOPC::dispatch_sei) {
+        if (cpu.mcp->mopc >= MC::MOPC::dispatch && cpu.mcp->mopc <= MC::MOPC::dispatch_sei) {
             if (cpu.pc == step_from_pc) step = true;
             if (cpu.pc == output_from_pc) output = true;
             if (step || output) {
@@ -44,7 +45,7 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
             ++op_cnt;
         }
 
-        if (cpu.mrw() == NMOS6502::RW::r) cpu.mdr() = mem[cpu.mar()];
+        if (cpu.mrw() == MC::RW::r) cpu.mdr() = mem[cpu.mar()];
         else mem[cpu.mar()] = cpu.mdr();
         cpu.tick();
     }
@@ -134,7 +135,7 @@ void run_test_suite()
 
     Clock c;
     for (;;) {
-        //if (sys.cpu.is_halted()) { std::cout << "\n[HALTED]"; goto exit; }
+        //if (sys.cpu.halted()) { std::cout << "\n[HALTED]"; goto exit; }
         if (sys.tn == 0) {
             //print_status(sys.cpu, sys.mem);
             switch (sys.cpu.pc) {

@@ -9,9 +9,6 @@ NMOS6502::Core::Core() :
     pcl(r8[R8::pcl]), pch(r8[R8::pch]), sp(r8[R8::sp]), p(r8[R8::p]), a(r8[R8::a]), x(r8[R8::x]), y(r8[R8::y]),
     d(r8[R8::d]), ir(r8[R8::ir]), zpa(r8[R8::zpa]), a1l(r8[R8::a1l]), a1h(r8[R8::a1h])
 {
-    //MC = MC::get_mc();
-    //OPC_MC_PTR = MC::get_opc_mc_ptr();
-    OPC_MC = MC::get_opc_mc_ptr();
     reset_cold();
 }
 
@@ -20,8 +17,7 @@ void NMOS6502::Core::reset_warm() {
     brk_src = 0x00;
     nmi_req = irq_req = 0x00;
     nmi_bit = irq_bit = 0x00;
-    //mcp = &MC[0]; //MC::FC::reset;
-    mcp = MC::get_reset_mc();
+    mcp = MC::OPC_MC[0x100];
     a1 = spf; --sp; a2 = spf; --sp; a3 = spf; --sp;
     a4 = Vec::rst;
 }
@@ -35,6 +31,8 @@ void NMOS6502::Core::reset_cold() {
 
 
 void NMOS6502::Core::exec_cycle() {
+    using namespace NMOS6502::MC;
+
     pc += mcp->pc_inc;
 
     switch (mcp->mopc) {
@@ -68,8 +66,7 @@ void NMOS6502::Core::exec_cycle() {
                 a4 = spf; --sp;
             }
 
-            //mcp = &MC[OPC_MC_PTR[ir]];
-            mcp = OPC_MC[ir];
+            mcp = MC::OPC_MC[ir];
 
             return;
 
@@ -143,7 +140,7 @@ void NMOS6502::Core::exec_cycle() {
         case pha: a1 = spf; --sp; break;
         case pla: set_nz(a); break;
         case jsr: a2 = pc; pc = a1; a3 = spf; --sp; a4 = spf; --sp; break;
-        case brk1:
+        case brk:
             // brk_src |= (irq_bit & ~p); // no effect (the same vector used anyway)
             if (nmi_req & 0x3) { // Potential hijacking by nmi
                 brk_src |= NMI_BIT;
@@ -154,7 +151,6 @@ void NMOS6502::Core::exec_cycle() {
             brk_src = 0x00;
             set(Flag::I);
             break;
-        case reset: a1 = Vec::rst + 1; set(Flag::I); break;
         case rti: ++sp; a1 = spf; ++sp; a2 = spf; ++sp; break;
         case jmp_abs: pc = a1; break;
         case jmp_ind: ++a1l; break;
@@ -166,7 +162,8 @@ void NMOS6502::Core::exec_cycle() {
             break;
         case abs_y_rmw: a2 = a1 + y; a1l += y; break;
         case sig_hlt: sig_halt(); break;
-        case hlt: return; // stuck on same mop, resume() bumps forward
+        case hlt: return; // stuck
+        case reset: a1 = Vec::rst + 1; set(Flag::I); break;
     }
     ++mcp;
 }

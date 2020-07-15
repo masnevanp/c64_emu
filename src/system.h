@@ -361,7 +361,7 @@ public:
         for (frame_cycle = 1;;++frame_cycle) {
             sync_master.tick();
             vic.tick(frame_cycle);
-            if (!rdy_low || cpu.mrw() == NMOS6502::RW::w) {
+            if (!rdy_low || cpu.mrw() == NMOS6502::MC::RW::w) {
                 sys_banker.access(cpu.mar(), cpu.mdr(), cpu.mrw());
                 cpu.tick();
             }

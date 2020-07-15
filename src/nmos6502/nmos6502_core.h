@@ -19,10 +19,7 @@ public:
     Reg8& pcl; Reg8& pch; Reg8& sp; Reg8& p; Reg8& a; Reg8& x; Reg8& y;
     Reg8& d; Reg8& ir; Reg8& zpa; Reg8& a1l; Reg8& a1h;
 
-    //const MOP* MC; // full micro-code
-    //const u8*  OPC_MC_PTR; // index to MC for each OPC (reset is at 0)
-    const MOP** OPC_MC; // opc -> micro-code mapping
-    const MOP* mcp; // micro-code pointer ('mc pc')
+    const MC::MOP* mcp; // micro-code pointer ('mc pc')
 
     Sig sig_halt = [](){};
 
@@ -32,7 +29,7 @@ public:
     void reset_warm();
     void reset_cold();
 
-    bool is_halted() const { return mcp->mopc == hlt; }
+    bool halted() const { return mcp->mopc == MC::hlt; }
 
     void set(Flag f, bool set = true) { p = set ? p | f : p & ~f; }
     void set_nz(const u8& res) { set(Flag::N, res & 0x80); set(Flag::Z, res == 0x00); }
@@ -138,8 +135,10 @@ private:
 
     void st_reg_sel() {
         switch (ir & 0x03) {
-            case 0x0: d = y; return; case 0x1: d = a; return;
-            case 0x2: d = x; return; case 0x3: d = a & x; return;
+            case 0x0: d = y; return;
+            case 0x1: d = a; return;
+            case 0x2: d = x; return;
+            case 0x3: d = a & x; return;
         }
     }
 
@@ -159,7 +158,7 @@ private:
         u16 vec;    // int.vec. addr.
         u8  p_mask; // for reseting b (if not a sw brk)
     };
-    const BrkCtrl brk_ctrl[8] = {
+    static constexpr BrkCtrl brk_ctrl[8] = {
         { 0, 0, 0,        0,           }, // unused
         { 0, 1, Vec::irq, Flag::all,   }, // sw brk
         { 1, 0, Vec::nmi, (u8)~Flag::B }, // nmi
