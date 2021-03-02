@@ -7,23 +7,13 @@
 // Micro-code
 
 namespace NMOS6502 {
-
     namespace MC {
         enum MOPC : u8 { // micro-op code
-            // General
-            nmop = 0, dispatch, dispatch_brk, dispatch_cli, dispatch_sei, do_op,
-            // Reg-Mem (RM)
-            idx_ind, abs_x, abs_y, zp_x, zp_y, inc_zpa, ind_idx,
-            // Store (ST)
-            st_reg, st_abs_x, st_abs_y, st_idx_ind, st_zp_x, st_zp_y, st_ind_y,
-            // Read-Modify-Write (RMW)
-            abs_x_rmw,
-            // Flow Control (FC)
-            inc_sp, php, pha, pla, jsr, brk, rti, jmp_abs, jmp_ind, rts, bra, hold_ints,
-            // Undoc/Undef (UD)
-            abs_y_rmw, sig_hlt, hlt,
-            //
-            reset,
+            nmop = 0, abs_x, inc_zpa, abs_y, rm_zp_x, rm_zp_y, rm_x, rm_y,
+            rm_idx_ind, do_and, a_nz, do_op, st_zp_x, st_zp_y, st_idx_ind, st_reg,
+            jmp_ind, bra, hold_ints, php, pha, jsr, jmp_abs, rti,
+            rts, inc_sp, brk, dispatch_cli, dispatch_sei, dispatch, dispatch_brk, sig_hlt,
+            hlt, reset
         };
         extern const std::string MOPC_str[];
 
@@ -41,8 +31,6 @@ namespace NMOS6502 {
             // undocumented
             ud_ahx, ud_alr, ud_anc, ud_arr, ud_axs, ud_dcp, ud_isc, ud_las, ud_lax, ud_lxa,
             ud_rla, ud_rra, ud_shx, ud_shy, ud_slo, ud_sre, ud_tas, ud_xaa,
-            // error
-            err,
         };
 
         struct PC_inc { // due to a clash with R8....
@@ -71,7 +59,7 @@ namespace NMOS6502 {
         };
 
         extern const MOP** OPC_MC;   // map: opc -> micro-code (reset @ OPC_MC[0x100])
-        extern const u8* OPC_MSOPC;  // map: opc -> micro-code sub-op
+        //extern const u8* OPC_MSOPC;  // map: opc -> micro-code sub-op
     } // namespace MC
 
 } // namespace NMOS6502

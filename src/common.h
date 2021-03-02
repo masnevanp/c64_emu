@@ -13,9 +13,9 @@ using i32 = int32_t;
 
 // Real PAL C64 COLOR_CLOCK_FREQ: 17734472.0 --> ~50.125 fps
 
-static const double FRAME_RATE = 50.0;
-static const double CPU_FREQ = FRAME_RATE * (312.0 * 63.0);
-static const double COLOR_CLOCK_FREQ = 18.0 * CPU_FREQ;
+static constexpr double FRAME_RATE = 50.0;
+static constexpr double CPU_FREQ = FRAME_RATE * (312.0 * 63.0);
+static constexpr double COLOR_CLOCK_FREQ = 18.0 * CPU_FREQ;
 
 
 using Sig = NMOS6502::Sig;
@@ -30,10 +30,10 @@ using Sig2 = std::function<void (T1, T2)>;
 namespace Key_code {
     enum Group { keyboard, keyboard_ext, joystick, system };
 
-    static const u8 GK = Group::keyboard << 6;
-    static const u8 GE = Group::keyboard_ext << 6;
-    static const u8 GJ = Group::joystick << 6;
-    static const u8 GS = Group::system << 6;
+    static constexpr u8 GK = Group::keyboard << 6;
+    static constexpr u8 GE = Group::keyboard_ext << 6;
+    static constexpr u8 GJ = Group::joystick << 6;
+    static constexpr u8 GS = Group::system << 6;
 
     /*       PB7   PB6   PB5   PB4   PB3   PB2   PB1   PB0
         PA7  STOP  Q     C=    SPACE 2     CTRL  <-    1
