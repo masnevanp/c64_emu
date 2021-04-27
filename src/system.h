@@ -3,6 +3,7 @@
 
 
 #include <cmath>
+#include <vector>
 #include "common.h"
 #include "utils.h"
 #include "dbg.h"
@@ -12,6 +13,8 @@
 #include "cia.h"
 #include "io.h"
 #include "host.h"
+#include "menu.h"
+
 
 
 namespace System {
@@ -317,6 +320,35 @@ struct State {
 };
 
 
+class Menu {
+public:
+    Menu(std::vector<::Menu::Item*> video_items)
+      : video_menu("Video", video_items),
+        menu_hide{"Hide",
+            /*select*/ [&](){ return &menu_hide; }, // eventually also: vid.menu_box.hide();
+            /*enter */ [&](){ return &main_menu; }  // eventually also: vid.menu_box.show();
+        },
+        main_menu("Main Menu", {&video_menu, &menu_hide}),
+        ctrl{&menu_hide}
+    {}
+
+    void key_enter() { ctrl.key_enter(); update(); }
+    void key_plus()  { ctrl.key_plus();  update(); }
+    void key_minus() { ctrl.key_minus(); update(); }
+
+private:
+    ::Menu::Group video_menu;
+    ::Menu::Kludge menu_hide;
+    ::Menu::Group main_menu;
+
+    ::Menu::Controller ctrl;
+
+    void update() const { // eventually: vid.menu_box.set_text(...);
+        std::cout << ctrl.active()->name << " -> " << ctrl.active()->state() << std::endl;
+    }
+};
+
+
 class C64 {
 public:
     C64(const ROM& rom) :
@@ -325,13 +357,15 @@ public:
         sid(frame_cycle),
         col_ram(s.color_ram),
         vic(s.vic, s.ram, col_ram, rom.charr, rdy_low, vic_out),
-        vid_out(VIC_II::VIEW_WIDTH, VIC_II::VIEW_HEIGHT, s.vic.frame),
+        vid_out(s.vic.frame),
         vic_out(int_hub, vid_out, host_input, sid),
         int_hub(cpu),
         kb_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in),
         io_space(cia1, cia2, sid, vic, col_ram),
         sys_banker(s.ram, rom, io_space),
-        host_input(host_input_handlers) { }
+        host_input(host_input_handlers),
+        menu(vid_out.settings_menu())
+    {}
 
     void reset_warm() {
         cia1.reset_warm(); // need to reset for correct irq handling
@@ -444,14 +478,14 @@ private:
             }
 
             switch (code) {
-                case kc::rst_w: reset_warm();                       break;
-                case kc::rst_c: reset_cold();                       break;
-                case kc::swp_j: host_input.swap_joysticks();        break;
-                case kc::m_win: vid_out.toggle_windowed();          break;
-                case kc::m_fsc: vid_out.toggle_fullscreen();        break;
-                case kc::scl_u: vid_out.adjust_scale(+5);           break;
-                case kc::scl_d: vid_out.adjust_scale(-5);           break;
-                case kc::quit:  exit(0);                            break;
+                case kc::rst_w:    reset_warm();                 break;
+                case kc::rst_c:    reset_cold();                 break;
+                case kc::swp_j:    host_input.swap_joysticks();  break;
+                case kc::menu_ent: menu.key_enter();             break;
+                case kc::vo_fsc:   vid_out.toggle_fullscr_win(); break;
+                case kc::menu_pl:  menu.key_plus();              break;
+                case kc::menu_mi:  menu.key_minus();             break;
+                case kc::quit:     exit(0);                      break;
             }
         },
 
@@ -470,6 +504,8 @@ private:
             cia1.port_a.ext_in(bit_pos, bit_val);
         }
     };
+
+    Menu menu;
 
     void init_ram();
 

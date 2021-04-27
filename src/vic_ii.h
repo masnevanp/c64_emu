@@ -8,7 +8,7 @@
 namespace VIC_II {
 
 
-static const u8 REG_COUNT = 64;
+static const int REG_COUNT = 64;
 
 /*
     http://www.commodore.ca/manuals/c64_programmers_reference/c64-programmers_reference_guide-08-schematics.pdf
@@ -24,15 +24,16 @@ static const u8 REG_COUNT = 64;
 static const double FRAME_MS       = 1000.0 / (CPU_FREQ / (312.0 * 63));
 
 
-// TODO: parameterize view/border size (all fixed for now)
-static const u16 BORDER_SZ_V       = 28;
-static const u16 BORDER_SZ_H       = 20;
+// TODO: parameterize frame/border size (all fixed for now)
+static const int BORDER_SZ_V       = 28;
+static const int BORDER_SZ_H       = 20;
 
-static const u16 VIEW_WIDTH        = 320 + 2 * BORDER_SZ_V;
-static const u16 VIEW_HEIGHT       = 200 + 2 * BORDER_SZ_H;
+static const int FRAME_WIDTH        = 320 + 2 * BORDER_SZ_V;
+static const int FRAME_HEIGHT       = 200 + 2 * BORDER_SZ_H;
+static const int FRAME_SIZE         = FRAME_WIDTH * FRAME_HEIGHT;
 
-static const u16 RASTER_LINE_COUNT = 312;
-static const u8  LINE_CYCLES       =  63;
+static const int RASTER_LINE_COUNT = 312;
+static const int LINE_CYCLES       =  63;
 
 
 class Color_RAM {
@@ -928,7 +929,7 @@ public:
         typename Border::State border;
 
         u32 beam_pos = 0;
-        u8 frame[VIEW_WIDTH * VIEW_HEIGHT] = {};
+        u8 frame[FRAME_SIZE] = {};
 
         // TODO: move out..?
         u8 cr1(u8 field) const { return reg[R::cr1] & field; }

@@ -69,7 +69,7 @@ namespace Key_code {
     };
 
     enum System : u8 {
-        rst_w = GS, rst_c, rstre, swp_j, m_win, m_fsc, scl_u, scl_d, quit, nop,
+        rst_w = GS, rst_c, rstre, swp_j, menu_ent, menu_pl, menu_mi, vo_fsc, quit, nop,
     };
 
 } // namespace Key_code

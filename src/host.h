@@ -1,16 +1,16 @@
 #ifndef HOST_H_INCLUDED
 #define HOST_H_INCLUDED
 
+#include <functional>
 #include <SDL.h>
 #include "common.h"
 #include "utils.h"
+#include "vic_ii.h"
+#include "menu.h"
+
 
 
 namespace Host {
-
-
-extern u8 KC_LU_TBL[];
-extern const u8 SC_LU_TBL[];
 
 
 // TODO: paddles/lightpen
@@ -71,6 +71,9 @@ public:
     }
 
 private:
+    static u8 KC_LU_TBL[];
+    static const u8 SC_LU_TBL[];
+
     SDL_Event sdl_ev;
 
     Handlers& handlers;
@@ -235,264 +238,162 @@ private:
 
 class Video_out {
 public:
-    void put_frame() {
-        u8* vic_frame_pos = vic_frame;
-        u32* scan_1 = frame;
-        u32* scan_2;
+    static constexpr auto pixel_format = SDL_PIXELFORMAT_ARGB8888;
+    static constexpr int bytes_per_pixel = 4; // BytesPerPixel
 
-        for (int y = 0; y < frame_height; ++y) {
-            scan_2 = scan_1 + (2 * frame_width);
-            u32 s1c1; // 'scan_1_color_1'...
-            u32 s1c2 = 0;
-            u32 s2c1;
-            u32 s2c2 = 0;
-            for (int x = 0; x < frame_width; ++x) {
-                u8 vic_col = (*vic_frame_pos++) & 0xf; // TODO: do '&' here?
-                auto p = (x /*>> 1*/) & 0x1;
+    enum Mode : u8 { win, fullscr_win, fullscr };
 
-                // some averaging for a simple blur effect....
-                s1c1 = palette[vic_col][0 + p];
-                s1c2 = (((s1c1 & 0xfefefe) + (s1c2 & 0xfefefe)) / 2) & 0xfefefe;
-                *scan_1++ = s1c2;
-                s1c2 = (((s1c1 & 0xfefefe) + (s1c2 & 0xfefefe)) / 2) & 0xfefefe;
-                *scan_1++ = s1c2;
-                s1c2 = s1c1;
+    struct Settings {
+        u8 mode = Mode::win;
 
-                s2c1 = palette[vic_col][2 + (1 - p)];
-                s2c2 = (((s2c1 & 0xfefefe) + (s2c2 & 0xfefefe)) / 2) & 0xfefefe;
-                *scan_2++ = s2c2;
-                s2c2 = (((s2c1 & 0xfefefe) + (s2c2 & 0xfefefe)) / 2) & 0xfefefe;
-                *scan_2++ = s2c2;
-                s2c2 = s2c1;
-            }
-            scan_1 = scan_2;
+        u8 window_scale = 40;
+        //u8 fullscreen_scale = 100;
+
+        u8 aspect_ratio = 178; // aspect_ratio / 200
+
+        u8 sharpness = 0;
+
+        u8 brightness = 78;
+        u8 contrast = 100;
+        u8 saturation = 68;
+
+        u8 filter_pattern = 9;
+        u8 filter_level = 11; // 0..15,  0 --> all pass
+    };
+
+    Video_out(const u8* vic_frame_)
+      : frame(set, vic_frame_), filter(set),
+        _settings_menu{
+        //   name              connected setting  min  max step live  notify
+            {"mode",           set.mode,            0,   2, 1, false, std::bind(&upd_mode, this)},
+            {"window scale",   set.window_scale,    5,  95, 1,  true, std::bind(&upd_dimensions, this)},
+            {"aspect ratio",   set.aspect_ratio,    1, 255, 1,  true, std::bind(&upd_dimensions, this)},
+            {"sharpness",      set.sharpness,       0,   3, 1,  true, std::bind(&Frame::upd_sharpness, &frame)},
+            {"brightness",     set.brightness,      0, 100, 1,  true, std::bind(&Frame::upd_palette, &frame)},
+            {"contrast",       set.contrast,        0, 100, 1,  true, std::bind(&Frame::upd_palette, &frame)},
+            {"saturation",     set.saturation,      0, 100, 1,  true, std::bind(&Frame::upd_palette, &frame)},
+            {"filter pattern", set.filter_pattern,  0, 255, 1,  true, std::bind(&Filter::upd, &filter)},
+            {"filter level",   set.filter_level,    0,  15, 1,  true, std::bind(&Filter::upd, &filter)},
         }
+    {
+        for (auto& s : _settings_menu) s.notify(); // update with initial values
+    }
 
-        SDL_UpdateTexture(texture, 0, (void*)frame, 2 * (4 * frame_width));
-        SDL_RenderCopy(renderer, texture, nullptr, render_dstrect);
+    ~Video_out();
+
+    void put_frame() {
+        //SDL_RenderClear(renderer);
+        frame.draw();
+        frame.frame.copy(renderer, dstrect);
+        filter.frame.copy(renderer, dstrect);
         SDL_RenderPresent(renderer);
     }
 
-    // TODO: fullscreen scaling
-    void adjust_scale(i8 amount) { do_set_scale(scale + amount); }
-    void set_scale(i8 new_scale) { if (mode == Mode::window) do_set_scale(new_scale); }
-
-    void toggle_fullscreen() { set_mode(Mode::fullscreen); }
-    void toggle_windowed() {
-        if (mode != Mode::window) set_mode(Mode::window);
-        else set_mode(Mode::fullscreen_window);
+    void toggle_fullscr_win() { // TODO: cycle through presets instead --> TODO: presets...
+        set.mode = (set.mode == Mode::win) ? Mode::fullscr_win : Mode::win;
+        upd_mode();
     }
 
     bool v_synced() const { return sdl_mode.refresh_rate == FRAME_RATE; }
 
-    Video_out(u16 frame_width_, u16 frame_height_, u8* vic_frame_) // TODO: error handling
-            : frame_width(frame_width_), frame_height(frame_height_),
-              vic_frame(vic_frame_)
-    {
-        window = SDL_CreateWindow("The display...",
-            400, 100,
-            aspect_ratio * frame_width, frame_height, 0
-        );
-        if (!window) {
-            SDL_Log("Failed to SDL_CreateWindow: %s", SDL_GetError());
-            exit(1);
-        }
+    std::vector<Menu::Item*> settings_menu();
 
-        frame = new u32[(2 * frame_width) * (2 * frame_height)];
-
-        for (int p = 0; p < 4; ++p) {
-            static constexpr double palette_conf[][3] = {
-                {68, 100, 75}, {65, 100, 73},
-                {42, 80,  45}, {39, 80,  45},
-            };
-            u32 colodore[16];
-            get_Colodore(colodore, palette_conf[p][0], palette_conf[p][1], palette_conf[p][2]);
-            colodore[0] = 0x020202; // black is black...
-            for (int c = 0; c < 16; ++c)
-                palette[c][p] = colodore[c];
-        }
-
-        set_mode(Mode::window);
-        set_scale(35);
-    }
-
-    ~Video_out() {
-        SDL_DestroyTexture(texture);
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-
-        delete[] frame;
-    };
+    static SDL_Texture* create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SDL_BlendMode bm,
+                                            int w, int h);
 
 private:
-    enum class Mode { window, fullscreen_window, fullscreen, none };
+    struct SDL_frame {
+        const int max_w;
+        const int max_h;
+        const SDL_TextureAccess ta;
+        const SDL_BlendMode bm;
 
-    void set_mode(Mode new_mode) {
-        if (new_mode == mode) return;
+        SDL_Texture* texture = nullptr;
+        SDL_Rect srcrect = {0, 0, 0, 0};
+        u32* pixels = nullptr;
 
-        auto configure_renderer = [&]() {
-            if (SDL_GetCurrentDisplayMode(disp_idx(), &sdl_mode) != 0) {
-                SDL_Log("Failed to SDL_GetCurrentDisplayMode: %s", SDL_GetError());
-                exit(1);
-            }
+        SDL_frame(int max_w_, int max_h_, SDL_TextureAccess ta_, SDL_BlendMode bm_);
+        ~SDL_frame();
 
-            if (texture) SDL_DestroyTexture(texture);
-            if (renderer) SDL_DestroyRenderer(renderer);
-
-            u32 v_sync_flag = sdl_mode.refresh_rate == FRAME_RATE ? SDL_RENDERER_PRESENTVSYNC : 0;
-            renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | v_sync_flag);
-            if (!renderer) {
-                SDL_Log("Failed to SDL_CreateRenderer: %s", SDL_GetError());
-                exit(1);
-            }
-            SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
-
-            texture = SDL_CreateTexture(renderer,
-                        SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
-                        2 * frame_width, 2 * frame_height);
-            if (!texture) {
-                SDL_Log("Failed to SDL_CreateTexture: %s", SDL_GetError());
-                exit(1);
-            }
-            if (SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE) != 0) {
-                SDL_Log("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
-            }
-        };
-
-        auto windowed = [&]() {
-            configure_renderer();
-            render_dstrect = nullptr;
-            SDL_ShowCursor(true);
-        };
-
-        auto fullscreen = [&]() {
-            configure_renderer();
-
-            int win_w;
-            int win_h;
-            SDL_GetWindowSize(window, &win_w, &win_h);
-            int w = aspect_ratio * (((double)win_h / frame_height) * frame_width);
-            if (w < win_w) {
-                render_dstrect_fullscreen.x = (win_w - w) / 2;
-                render_dstrect_fullscreen.y = 0;
-                render_dstrect_fullscreen.w = w;
-                render_dstrect_fullscreen.h = win_h;
-            } else {
-                int h =  (((double)win_w / frame_width) * frame_height) / aspect_ratio;
-                render_dstrect_fullscreen.x = 0;
-                render_dstrect_fullscreen.y = (win_h - h) / 2;
-                render_dstrect_fullscreen.w = win_w;
-                render_dstrect_fullscreen.h = h;
-            }
-            render_dstrect = &render_dstrect_fullscreen;
-
-            SDL_ShowCursor(false);
-        };
-
-        switch (new_mode) {
-            case Mode::window:
-                if (SDL_SetWindowFullscreen(window, 0) != 0) {
-                    SDL_Log("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
-                    return;
-                }                
-                windowed();
-                break;
-            case Mode::fullscreen_window:
-                if (SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP) != 0) {
-                    SDL_Log("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
-                    return;
-                }
-                fullscreen();
-                break;
-            case Mode::fullscreen: { // TODO: cycle through supported modes?
-                auto fr = int(FRAME_RATE);
-                SDL_DisplayMode sdm = { SDL_PIXELFORMAT_ARGB8888, 1920, 1080, fr, 0 };
-                if (SDL_SetWindowDisplayMode(window, &sdm) != 0) {
-                    SDL_Log("Failed to SDL_SetWindowDisplayMode: %s", SDL_GetError());
-                    return;
-                }
-                if (SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN) != 0) {
-                    SDL_Log("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
-                    return;
-                }
-                fullscreen();
-                break;
-            }
-            case Mode::none: exit(1); return;
+        void connect(SDL_Renderer* renderer);
+        void copy(SDL_Renderer* r, const SDL_Rect* dstrect) {
+            SDL_RenderCopy(r, texture, &srcrect, dstrect);
         }
+    };
 
-        mode = new_mode;
-    }
+    struct Frame {
+        static constexpr int max_w = VIC_II::FRAME_WIDTH * 3; // TODO: non-hardcoded
+        static constexpr int max_h = VIC_II::FRAME_HEIGHT * 3; // TODO: non-hardcoded
 
-    void do_set_scale(i8 new_scale) {
-        if (new_scale >= min_scale && new_scale <= max_scale) {
-            scale = new_scale;
-            int w = aspect_ratio * (scale / 10.0) * frame_width;
-            int h = (scale / 10.0) * frame_height;
-            SDL_SetWindowSize(window, w, h);
-        }
-    }
+        Frame(const Settings& set_, const u8* vic_frame_) : set(set_), vic_frame(vic_frame_) {}
 
-    int disp_idx() const { return SDL_GetWindowDisplayIndex(window); }
+        void upd_palette();
+        void upd_sharpness();
 
-    Mode mode = Mode::none;
+        u32 col(const u8 vic_pixel) { return palette[vic_pixel & 0xf]; } // TODO: do '&' here? (or in VIC?)}
+
+        std::function<void (void)> draw;
+
+        const Settings& set;
+        u32 palette[16];
+        const u8* vic_frame;
+        SDL_frame frame{max_w, max_h, SDL_TEXTUREACCESS_STREAMING, SDL_BLENDMODE_NONE};
+    };
+
+    struct Filter {
+        static constexpr int max_w = VIC_II::FRAME_WIDTH * 4; // TODO: non-hardcoded
+        static constexpr int max_h = VIC_II::FRAME_HEIGHT * 3; // TODO: non-hardcoded
+
+        struct Pattern {
+            using Shape = std::vector<std::vector<u32>>;
+
+            const u8 px_w;
+            const u8 px_h;
+
+            const Shape shape;
+        };
+
+        static const std::vector<Pattern> patterns;
+
+        Filter(const Settings& set_) : set(set_) {}
+
+        void upd();
+
+        const Settings& set;
+        SDL_frame frame{max_w, max_h, SDL_TEXTUREACCESS_STATIC, SDL_BLENDMODE_MOD};
+    };
+
+    void upd_mode();
+    void upd_dimensions();
+
+    Settings set;
+
     SDL_DisplayMode sdl_mode = { 0, 0, 0, 0, 0 };
 
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
-    SDL_Texture* texture = nullptr;
 
-    SDL_Rect* render_dstrect = nullptr;
-    SDL_Rect render_dstrect_fullscreen;
+    Frame frame;
+    Filter filter;
 
-    const u16 frame_width;
-    const u16 frame_height;
+    SDL_Rect fullscreen_dstrect = {0, 0, 0, 0};
+    SDL_Rect* dstrect = nullptr;
 
-    u8* vic_frame;
-    u32* frame; // TODO: VIC outputs directly to this?
-
-    u32 palette[16][4];
-
-    // TODO: tweakable?
-    const double aspect_ratio = 0.936;
-    i8 scale;
-    const i8 min_scale = 5;
-    const i8 max_scale = 80;
-
+    std::vector<Menu::Dial<u8>> _settings_menu;
 };
 
 
 // TODO: error handling (e.g. on error just run without audio?)
 class Audio_out {
 public:
+    Audio_out();
+    ~Audio_out();
+
     void put(const i16* chunk, u32 sz) { SDL_QueueAudio(dev, chunk, 2 * sz); }
 
     // u32 queued() const { return SDL_GetQueuedAudioSize(dev) * 2; }
 
     void flush() { SDL_ClearQueuedAudio(dev); }
-
-    Audio_out() {
-        SDL_AudioSpec want;
-        SDL_AudioSpec have;
-
-        SDL_memset(&want, 0, sizeof(want));
-        want.freq = 44100;
-        want.format = AUDIO_S16LSB;
-        want.channels = 1;
-        want.samples = 256;
-
-        dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
-        if (dev == 0) {
-            SDL_Log("Unable to SDL_OpenAudioDevice: %s", SDL_GetError());
-            exit(1);
-        }
-        //std::cout << (int)have.freq << " " << (int)have.channels << " ";
-        //std::cout << (int)want.format << " " << (int)have.format;
-
-        SDL_PauseAudioDevice(dev, 0);
-    }
-
-    ~Audio_out() { if (dev) SDL_CloseAudioDevice(dev); }
 
 private:
     SDL_AudioDeviceID dev;
