@@ -265,9 +265,9 @@ public:
       : frame(set, vic_frame_), filter(set),
         _settings_menu{
         //   name              connected setting  min  max step live  notify
-            {"mode",           set.mode,            0,   2, 1, false, std::bind(&upd_mode, this)},
-            {"window scale",   set.window_scale,    5,  95, 1,  true, std::bind(&upd_dimensions, this)},
-            {"aspect ratio",   set.aspect_ratio,    1, 255, 1,  true, std::bind(&upd_dimensions, this)},
+            {"mode",           set.mode,            0,   2, 1, false, std::bind(&Video_out::upd_mode, this)},
+            {"window scale",   set.window_scale,    5,  95, 1,  true, std::bind(&Video_out::upd_dimensions, this)},
+            {"aspect ratio",   set.aspect_ratio,    1, 255, 1,  true, std::bind(&Video_out::upd_dimensions, this)},
             {"sharpness",      set.sharpness,       0,   3, 1,  true, std::bind(&Frame::upd_sharpness, &frame)},
             {"brightness",     set.brightness,      0, 100, 1,  true, std::bind(&Frame::upd_palette, &frame)},
             {"contrast",       set.contrast,        0, 100, 1,  true, std::bind(&Frame::upd_palette, &frame)},

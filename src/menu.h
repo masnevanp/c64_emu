@@ -19,6 +19,7 @@ namespace Menu {
 class Item {
 public:
     Item(const char* name_) : name(name_) {}
+    virtual ~Item() {}
 
     virtual Item* select() { return this; }
 
@@ -36,6 +37,7 @@ public:
 class Controller {
 public:
     Controller(Item* act_) : act(act_) {}
+    virtual ~Controller() {}
 
     void key_enter() {
         Item* next = act->key_enter();
@@ -65,6 +67,7 @@ public:
             if (g) g->add(this); // add link to parent
         }
     }
+    virtual ~Group() {}
 
     virtual Item* key_enter() {
         auto item = selected()->select();
@@ -93,6 +96,7 @@ public:
         std::function<void ()> pl_=[](){},
         std::function<void ()> mi_=[](){}
     ) : Item(name), sel(sel_), ent(ent_), pl(pl_), mi(mi_) {}
+    virtual ~Kludge() {}
 
     virtual Item* select()    { return sel(); }
     virtual Item* key_enter() { return ent(); }
@@ -126,6 +130,7 @@ public:
       : Item(name), connected_t(connected_t_), pos(connected_t_),
         min(min_), max(max_), step(step_),
         live_notify(live_notify_), _notify(notify) {}
+    virtual ~Dial() {}
 
     //virtual void done()      { if (!live_notify) notify(); }
 
