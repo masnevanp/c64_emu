@@ -32,8 +32,9 @@ static const int FRAME_WIDTH        = 320 + 2 * BORDER_SZ_V;
 static const int FRAME_HEIGHT       = 200 + 2 * BORDER_SZ_H;
 static const int FRAME_SIZE         = FRAME_WIDTH * FRAME_HEIGHT;
 
-static const int RASTER_LINE_COUNT = 312;
-static const int LINE_CYCLES       =  63;
+static const int FRAME_LINE_COUNT  = 312;
+static const int LINE_CYCLE_COUNT  =  63;
+static const int FRAME_CYCLE_COUNT = FRAME_LINE_COUNT * LINE_CYCLE_COUNT;
 
 
 class Color_RAM {
@@ -475,6 +476,7 @@ private:
             if (gs.ba_area) {
                 gs.ba_line = (raster_y & CR1::y_scroll) == gs.y_scroll;
                 if (gs.ba_line) {
+                    u8 line_cycle = cs.frame_cycle % LINE_CYCLE_COUNT;
                     if (line_cycle < 14) activate(); // else delayed (see read_vm())
                     if (line_cycle > 10 && line_cycle < 54) ba.gfx_set(line_cycle | 0x80); // store cycle for AEC checking later
                 }
@@ -756,7 +758,7 @@ private:
             Core::State& cs_, Banker& bank_,
             const Color_RAM& col_ram_, BA& ba_)
           : cs(cs_), gs(cs_.gfx), bank(bank_), col_ram(col_ram_), reg(cs.reg),
-            line_cycle(cs.line_cycle), raster_y(cs.raster_y), ba(ba_) {}
+            raster_y(cs.raster_y), ba(ba_) {}
 
     private:
         enum Mode_bit : u8 {
@@ -796,7 +798,6 @@ private:
         const Banker& bank;
         const Color_RAM& col_ram;
         const u8* reg;
-        const u8& line_cycle;
         const u16& raster_y;
         BA& ba;
     };
@@ -917,9 +918,9 @@ public:
     struct State {
         u8 reg[REG_COUNT];
 
-        u8 line_cycle = 0;
+        u16 frame_cycle = 0;
         u16 raster_x;
-        u16 raster_y = 0;
+        u16 raster_y = FRAME_LINE_COUNT - 1;
         u8 v_blank = true;
 
         typename Banker::State banker;
@@ -998,25 +999,26 @@ public:
         Anyway, the current MOB access would not be 100% cycle/memory accurate
         in those cases. */
 
-    void tick(u16& frame_cycle) {
+    void tick() {
         auto raster_cmp = [this](u16 r) {
             if (((s.cr1(CR1::rst8) << 1) | s.reg[R::rast]) == r) irq.req(IRQ::rst);
         };
 
-        s.line_cycle = frame_cycle % LINE_CYCLES;
+        ++s.frame_cycle;
+        auto line_cycle = s.frame_cycle % LINE_CYCLE_COUNT;
 
-        switch (s.line_cycle) {
+        switch (line_cycle) {
             case  0:
                 mobs.do_dma(2);
 
-                s.raster_y++;
-
-                if (s.raster_y == RASTER_LINE_COUNT) {
+                if (s.frame_cycle == FRAME_CYCLE_COUNT) {
                     out.sync_line(0);
-                    s.raster_y = frame_cycle = s.beam_pos = 0;
+                    s.raster_y = s.frame_cycle = s.beam_pos = 0;
                     border.frame_start();
                     return;
                 }
+
+                ++s.raster_y;
 
                 out.sync_line(s.raster_y);
 
@@ -1039,7 +1041,7 @@ public:
                 return;
             case  1:
                 mobs.prep_dma(5);
-                if (s.raster_y == 0) raster_cmp(0);
+                if (s.frame_cycle == 1) raster_cmp(0);
                 return;
             case  2: mobs.do_dma(3);   return;
             case  3: mobs.prep_dma(6); return;

@@ -253,7 +253,6 @@ public:
     void init_sync() { // call if system has been 'paused'
         vid_out.put_frame();
         sid.flush();
-        // sid.output(true); ??
         clock.reset();
     }
 
@@ -288,7 +287,7 @@ public:
         } else {
             if (!frame_skip) {
                 host_input.poll();
-                auto frame_progress = double(line) / double(VIC_II::RASTER_LINE_COUNT);
+                auto frame_progress = double(line) / double(VIC_II::FRAME_LINE_COUNT);
                 auto sync_moment = frame_moment + (frame_progress * VIC_II::FRAME_MS);
                 clock.sync(std::round(sync_moment));
             }
@@ -354,7 +353,7 @@ public:
     C64(const ROM& rom) :
         cia1(sync_master, cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1),
         cia2(sync_master, cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
-        sid(frame_cycle),
+        sid(s.vic.frame_cycle),
         col_ram(s.color_ram),
         vic(s.vic, s.ram, col_ram, rom.charr, rdy_low, vic_out),
         vid_out(s.vic.frame),
@@ -392,9 +391,9 @@ public:
         reset_cold();
         vic_out.init_sync();
 
-        for (frame_cycle = 1;;++frame_cycle) {
+        for (;;) {
             sync_master.tick();
-            vic.tick(frame_cycle);
+            vic.tick();
             if (!rdy_low || cpu.mrw() == NMOS6502::MC::RW::w) {
                 sys_banker.access(cpu.mar(), cpu.mdr(), cpu.mrw());
                 cpu.tick();
@@ -431,8 +430,6 @@ private:
 
     IO_space io_space;
     Banker sys_banker;
-
-    u16 frame_cycle;
 
     u16 rdy_low;
 

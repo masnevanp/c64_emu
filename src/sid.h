@@ -20,7 +20,7 @@ public:
 
     void flush() {
         audio_out.flush();
-        audio_out.put(buf, BUF_SZ / 2); // some breathing room
+        //audio_out.put(buf, BUF_SZ / 2); // some breathing room
     }
 
     void output(bool frame_done = false) {

@@ -257,7 +257,7 @@ public:
         u8 contrast = 100;
         u8 saturation = 68;
 
-        u8 filter_pattern = 9;
+        u8 filter_pattern = 7;
         u8 filter_level = 11; // 0..15,  0 --> all pass
     };
 
