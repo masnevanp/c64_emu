@@ -48,42 +48,14 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),  // T0
         };
     }
-    namespace ST {
-        static const MOP zp_sta[] = {
-            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
-            MOP(R16::zpaf, R8::a,    RW::w, PC_inc::n, MOPC::nmop     ),
-            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
-        };
-        static const MOP abs_sta[] = {
-            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
-            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::nmop     ),
-            MOP(R16::a1,   R8::a,    RW::w, PC_inc::n, MOPC::nmop     ),
-            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
-        };
-    }
     namespace RM {
-        static const MOP zp_lda[] = {
-            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
-            MOP(R16::zpaf, R8::a,    RW::r, PC_inc::n, MOPC::a_nz     ),
-            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
-        };
         static const MOP zp[] = {
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
             MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
-        static const MOP imm_and[] = {
-            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::do_and   ),
-            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
-        };
         static const MOP imm[] = {
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::do_op    ),
-            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
-        };
-        static const MOP abs_lda[] = {
-            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
-            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::nmop     ),
-            MOP(R16::a1,   R8::a,    RW::r, PC_inc::n, MOPC::a_nz     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP abs[] = {
@@ -102,15 +74,6 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
             MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::rm_zp_y  ),
             MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
-            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
-        };
-        static const MOP abs_x_lda[] = {
-            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
-            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::rm_x     ),
-            MOP(R16::a1,   R8::a,    RW::r, PC_inc::n, MOPC::a_nz     ),
-            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
-            MOP(R16::a1,   R8::a,    RW::r, PC_inc::n, MOPC::nmop     ),
-            MOP(R16::a2,   R8::a,    RW::r, PC_inc::n, MOPC::a_nz     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP idx_ind[] = {
@@ -404,7 +367,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
         SB::sb, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
         // 0x20
         FC::jsr, RM::idx_ind, UD::hlt, UD::rmw_idx_ind, RM::zp, RM::zp, RMW::zp, RMW::zp,
-        FC::plp, RM::imm_and, SB::sb, RM::imm, RM::abs, RM::abs, RMW::abs, RMW::abs,
+        FC::plp, RM::imm, SB::sb, RM::imm, RM::abs, RM::abs, RMW::abs, RMW::abs,
         // 0x30
         FC::bra, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
         SB::sb, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
@@ -421,17 +384,17 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
         FC::bra, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
         SB::sb_sei, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
         // 0x80
-        RM::imm, ST::idx_ind, RM::imm, ST::idx_ind, ST::zp, ST::zp_sta, ST::zp, ST::zp,
-        SB::sb, RM::imm, SB::sb, RM::imm, ST::abs, ST::abs_sta, ST::abs, ST::abs,
+        RM::imm, ST::idx_ind, RM::imm, ST::idx_ind, ST::zp, ST::zp, ST::zp, ST::zp,
+        SB::sb, RM::imm, SB::sb, RM::imm, ST::abs, ST::abs, ST::abs, ST::abs,
         // 0x90
         FC::bra, ST::ind_y, UD::hlt, UD::st_ind_y, ST::zp_x, ST::zp_x, ST::zp_y, ST::zp_y,
         SB::sb, ST::abs_y, SB::sb, UD::st_abs_y, UD::st_abs_x, ST::abs_x, UD::st_abs_y, UD::st_abs_y,
         // 0xa0
-        RM::imm, RM::idx_ind, RM::imm, RM::idx_ind, RM::zp, RM::zp_lda, RM::zp, RM::zp,
-        SB::sb, RM::imm, SB::sb, RM::imm, RM::abs, RM::abs_lda, RM::abs, RM::abs,
+        RM::imm, RM::idx_ind, RM::imm, RM::idx_ind, RM::zp, RM::zp, RM::zp, RM::zp,
+        SB::sb, RM::imm, SB::sb, RM::imm, RM::abs, RM::abs, RM::abs, RM::abs,
         // 0xb0
         FC::bra, RM::ind_idx, UD::hlt, RM::ind_idx, RM::zp_x, RM::zp_x, RM::zp_y, RM::zp_y,
-        SB::sb, RM::abs_y, SB::sb, RM::abs_y, RM::abs_x, RM::abs_x_lda, RM::abs_y, RM::abs_y,
+        SB::sb, RM::abs_y, SB::sb, RM::abs_y, RM::abs_x, RM::abs_x, RM::abs_y, RM::abs_y,
         // 0xc0
         RM::imm, RM::idx_ind, RM::imm, UD::rmw_idx_ind, RM::zp, RM::zp, RMW::zp, RMW::zp,
         SB::sb, RM::imm, SB::sb, RM::imm, RM::abs, RM::abs, RMW::abs, RMW::abs,

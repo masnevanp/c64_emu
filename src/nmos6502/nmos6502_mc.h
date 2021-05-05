@@ -10,7 +10,7 @@ namespace NMOS6502 {
     namespace MC {
         enum MOPC : u8 { // micro-op code
             nmop = 0, abs_x, inc_zpa, abs_y, rm_zp_x, rm_zp_y, rm_x, rm_y,
-            rm_idx_ind, do_and, a_nz, do_op, st_zp_x, st_zp_y, st_idx_ind, st_reg,
+            rm_idx_ind, a_nz, do_op, st_zp_x, st_zp_y, st_idx_ind, st_reg,
             jmp_ind, bra, hold_ints, php, pha, jsr, jmp_abs, rti,
             rts, inc_sp, brk, dispatch_cli, dispatch_sei, dispatch, dispatch_brk, sig_hlt,
             hlt, reset
