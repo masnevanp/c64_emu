@@ -391,7 +391,7 @@ public:
         reset_cold();
         vic_out.init_sync();
 
-        for (;;) {
+        for (do_run = true; do_run;) {
             sync_master.tick();
             vic.tick();
             if (!rdy_low || cpu.mrw() == NMOS6502::MC::RW::w) {
@@ -431,6 +431,7 @@ private:
     IO_space io_space;
     Banker sys_banker;
 
+    bool do_run;
     u16 rdy_low;
 
     Host::Input host_input;
@@ -482,7 +483,7 @@ private:
                 case kc::vo_fsc:   vid_out.toggle_fullscr_win(); break;
                 case kc::menu_pl:  menu.key_plus();              break;
                 case kc::menu_mi:  menu.key_minus();             break;
-                case kc::quit:     exit(0);                      break;
+                case kc::quit:     do_run = false;               break;
             }
         },
 
