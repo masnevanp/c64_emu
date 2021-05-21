@@ -23,7 +23,7 @@ public:
         //audio_out.put(buf, BUF_SZ / 2); // some breathing room
     }
 
-    void output(bool frame_done = false) {
+    void output(bool frame_done) {
         tick();
         audio_out.put(buf, buf_ptr - buf);
         buf_ptr = buf;

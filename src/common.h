@@ -69,13 +69,28 @@ namespace Key_code {
     };
 
     enum System : u8 {
-        rst_w = GS, rst_c, rstre, swp_j, menu_ent, menu_pl, menu_mi, vo_fsc, quit, nop,
+        rstre = GS, quit, nop,
+        rst_c, swp_j, v_fsc, menu_tgl,
+        menu_ent, menu_up, menu_down,
     };
 
 } // namespace Key_code
 
 
 using Sig_key = Sig2<u8, u8>;
+
+
+template<typename T>
+struct Param {
+    T val;
+    const T min;
+    const T max;
+    const T step;
+
+    Param(T val_, T min_, T max_, T step_) : val(val_), min(min_), max(max_), step(step_) {}
+    operator T() const { return val; }
+    Param<T>& operator=(T v) { val = v; return *this; }
+};
 
 
 #endif // COMMON_H_INCLUDED

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <memory>
 #include "utils.h"
 
 
@@ -13,45 +14,48 @@ namespace Menu {
 /*
     A simple menu operated with three keys:
     - enter: to select/enter items (values/actions/etc..)
-    - plus/minus: adjust selected item
+    - up/down: adjust selected item
 */
 
 class Item {
 public:
-    Item(const char* name_) : name(name_) {}
+    Item(const std::string& name_) : name(name_) {}
     virtual ~Item() {}
 
     virtual Item* select() { return this; }
+    virtual Item* done()   { return nullptr; }
+    virtual void  up()     {}
+    virtual void  down()   {}
 
-    // key handlers
-    virtual Item* key_enter() = 0;
-    virtual void  key_plus()  {}
-    virtual void  key_minus() {}
+    virtual std::string state() const { return name; }
 
-    virtual std::string state() const { return ""; }
-
-    const char* name;
+    const std::string name;
 };
 
 
 class Controller {
 public:
-    Controller(Item* act_) : act(act_) {}
-    virtual ~Controller() {}
+    Controller(Item* init) : prev(init) { select(init); }
+    virtual ~Controller()  {}
 
     void key_enter() {
-        Item* next = act->key_enter();
+        Item* next = act->done();
         if (next) {
             prev = act;
-            act = next;
+            select(next);
         } else {
             act = prev;
         }
     }
-    void key_plus()  { act->key_plus();  }
-    void key_minus() { act->key_minus(); }
+    void key_up()   { act->up(); }
+    void key_down() { act->down(); }
 
-    const Item* active() const { return act; }
+    void select(Item* item) {
+        act = item->select();
+        if (!act) act = prev;
+    }
+
+    std::string state() const { return act->state(); }
 
 private:
     Item* act = nullptr;
@@ -61,27 +65,38 @@ private:
 
 class Group : public Item {
 public:
-    Group(const char* name, std::vector<Item*> items_) : Item(name), items(items_) {
-        for (auto item : items) {
-            Group* g = dynamic_cast<Group*>(item);
-            if (g) g->add(this); // add link to parent
-        }
+    Group(const std::string& name, std::vector<Item*> items_ = {}) : Item(name), items(items_) {}
+    Group(const std::string& name, std::vector<Group>& subs, std::initializer_list<Item*> more_items = {})
+      : Item(name)
+    {
+        for (auto& s : subs) items.push_back(&s);
+
+        add(more_items);
     }
     virtual ~Group() {}
 
-    virtual Item* key_enter() {
-        auto item = selected()->select();
-        return item ? item : this;
-    }
-    virtual void key_plus()  { ++selector; }
-    virtual void key_minus() { --selector; }
+    virtual Item* select() { selector = 0; return this; }
+    virtual Item* done()   { return selected(); }
+    virtual void up()      { if (selector == 0) { selector = items.size(); } --selector; }
+    virtual void down()    { ++selector; if (selector == items.size()) selector = 0; }
 
     virtual std::string state() const { return selected()->name; }
 
-    void add(Item* item) { items.push_back(item); }
+    void add(std::initializer_list<Item*> more_items) {
+        for (auto item : more_items) {
+            if (item != this) items.push_back(item);
+        }
+    }
+
+    template<typename Cont>
+    void add(Cont& more_items) {
+        for (auto& item : more_items) {
+            if ((Item*)&item != (Item*)this) items.push_back(&item);
+        }
+    }
 
 private:
-    Item* selected() const { return items[selector % items.size()]; }
+    Item* selected() const { return items[selector]; }
 
     std::vector<Item*> items;
     unsigned int selector = 0;
@@ -90,83 +105,89 @@ private:
 
 class Kludge : public Item {
 public:
-    Kludge(const char* name,
-        std::function<Item* ()> sel_=[](){ return nullptr; },
-        std::function<Item* ()> ent_=[](){ return nullptr; },
-        std::function<void ()> pl_=[](){},
-        std::function<void ()> mi_=[](){}
-    ) : Item(name), sel(sel_), ent(ent_), pl(pl_), mi(mi_) {}
+    Kludge(const std::string& name,
+        std::function<Item* ()> select=[](){ return nullptr; },
+        std::function<Item* ()> done=[](){ return nullptr; },
+        std::function<void ()> up=[](){},
+        std::function<void ()> down=[](){}
+    ) : Item(name), _select(select), _done(done), _up(up), _down(down) {}
     virtual ~Kludge() {}
 
-    virtual Item* select()    { return sel(); }
-    virtual Item* key_enter() { return ent(); }
-    virtual void  key_plus()  { pl(); }
-    virtual void  key_minus() { mi(); }
+    virtual Item* select() { return _select(); }
+    virtual Item* done()   { return _done(); }
+    virtual void  up()     { _up(); }
+    virtual void  down()   { _down(); }
 
 private:
-    std::function<Item* ()> sel;
-    std::function<Item* ()> ent;
-    std::function<void ()> pl;
-    std::function<void ()> mi;
+    std::function<Item* ()> _select;
+    std::function<Item* ()> _done;
+    std::function<void ()> _up;
+    std::function<void ()> _down;
 };
 
 
-/*
 class Action : public Item {
 public:
-    Action(const char* name) : Item(name) {}
-    virtual Item* key_enter() { done(); return nullptr; }
-    virtual void done() = 0;
-};
-*/
+    Action(const std::string& name, std::function<void ()> a) : Item(name), act(a) {}
+    virtual ~Action() {}
 
-template<typename T>
-class Dial : public Item /*Action*/ {
-public:
-    Dial(
-        const char* name, T& connected_t_,
-        const T& min_, const T& max_, const T& step_,
-        bool live_notify_, Sig notify)
-      : Item(name), connected_t(connected_t_), pos(connected_t_),
-        min(min_), max(max_), step(step_),
-        live_notify(live_notify_), _notify(notify) {}
-    virtual ~Dial() {}
-
-    //virtual void done()      { if (!live_notify) notify(); }
-
-    virtual Item* key_enter() { if (!live_notify) notify(); return nullptr; }
-    virtual void  key_plus()  { adjust(+step); }
-    virtual void  key_minus() { adjust(-step); }
-
-    virtual std::string state() const { return std::to_string(pos); }
-
-    void notify(/*bool force=false*/) {
-        //if (connected_t != pos || force) {
-            connected_t = pos;
-            _notify();
-        //}
+    virtual Item* done() {
+        if (accept) act();
+        accept = false;
+        return nullptr;
     }
+    virtual void up()   { accept = !accept; }
+    virtual void down() { accept = !accept; }
+
+    virtual std::string state() const { return name + (accept ? "  YES" : "  NO"); }
 
 private:
-    T& connected_t;
-    T pos;
-
-    const T min;
-    const T max;
-    const T step;
-
-    const bool live_notify;
-
-    Sig _notify;
-
-    void adjust(const T& amount) {
-        T adjusted = pos + amount;
-        if (adjusted >= min && adjusted <= max) { // TODO(?): wrap around
-            pos = adjusted;
-            if (live_notify) notify();
-        }
-    }
+    bool accept = false;
+    std::function<void ()> act;
 };
+
+
+class Knob : public Item {
+public:
+    template<typename P>
+    Knob(const std::string& name, P& param, Sig notify)
+      : Item(name), imp(std::make_shared<_Param<P>>(param, notify)) { notify(); }
+    virtual ~Knob() {}
+
+    virtual Item* done() { return imp->done(); }
+    virtual void  up()   { imp->up(); }
+    virtual void  down() { imp->down(); }
+
+    virtual std::string state() const { return name + imp->state(); }
+
+private:
+    std::shared_ptr<Item> imp;
+
+    template<typename P>
+    class _Param : public Item {
+    public:
+        _Param(P& param_, Sig notify_) : Item(""), param(param_), notify(notify_) {}
+        virtual ~_Param() {}
+
+        virtual void  up()   { adjust(+1); }
+        virtual void  down() { adjust(-1); }
+
+        virtual std::string state() const { return "  # " + std::to_string(param.val); }
+
+    private:
+        P& param;
+        Sig notify;
+
+        void adjust(int direction) {
+            decltype(param.val) adjusted = param.val + (direction * param.step);
+            if (adjusted >= param.min && adjusted <= param.max) {
+                param.val = adjusted;
+                notify();
+            }
+        }
+    };
+};
+
 
 
 } // namespace Menu

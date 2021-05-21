@@ -239,55 +239,52 @@ private:
 class Video_out {
 public:
     static constexpr auto pixel_format = SDL_PIXELFORMAT_ARGB8888;
-    static constexpr int bytes_per_pixel = 4; // BytesPerPixel
+    static constexpr int bytes_per_pixel = 4;
 
-    enum Mode : u8 { win, fullscr_win, fullscr };
+    enum Mode : u8 { win=0, fullscr_win, fullscr, _n };
 
     struct Settings {
-        u8 mode = Mode::win;
+        Param<u8> mode{Mode::win, 0, 2, 1};
 
-        u8 window_scale = 40;
-        //u8 fullscreen_scale = 100;
+        Param<double> window_scale{4.0, 0.5, 8, 0.05}; // TODO: fullscreen_scale?
+        Param<double> aspect_ratio{0.89, 0.5, 1.25, 0.005}; // PAL actual: ~0.935 
 
-        u8 aspect_ratio = 178; // aspect_ratio / 200
+        Param<u8> sharpness{0, 0, 3, 1};
 
-        u8 sharpness = 0;
+        Param<u8> brightness{78, 0, 100, 1};
+        Param<u8> contrast{100, 0, 100, 1};
+        Param<u8> saturation{68, 0, 100, 1};
 
-        u8 brightness = 78;
-        u8 contrast = 100;
-        u8 saturation = 68;
-
-        u8 filter_pattern = 7;
-        u8 filter_level = 11; // 0..15,  0 --> all pass
+        Param<u8> filter_pattern{7, 0, 254, 1}; // TODO: actual max
+        Param<u8> filter_level{11, 0, 15, 1}; // 0 --> all pass
     };
 
-    Video_out(const u8* vic_frame_)
-      : frame(set, vic_frame_), filter(set),
-        _settings_menu{
-        //   name              connected setting  min  max step live  notify
-            {"mode",           set.mode,            0,   2, 1, false, std::bind(&Video_out::upd_mode, this)},
-            {"window scale",   set.window_scale,    5,  95, 1,  true, std::bind(&Video_out::upd_dimensions, this)},
-            {"aspect ratio",   set.aspect_ratio,    1, 255, 1,  true, std::bind(&Video_out::upd_dimensions, this)},
-            {"sharpness",      set.sharpness,       0,   3, 1,  true, std::bind(&Frame::upd_sharpness, &frame)},
-            {"brightness",     set.brightness,      0, 100, 1,  true, std::bind(&Frame::upd_palette, &frame)},
-            {"contrast",       set.contrast,        0, 100, 1,  true, std::bind(&Frame::upd_palette, &frame)},
-            {"saturation",     set.saturation,      0, 100, 1,  true, std::bind(&Frame::upd_palette, &frame)},
-            {"filter pattern", set.filter_pattern,  0, 255, 1,  true, std::bind(&Filter::upd, &filter)},
-            {"filter level",   set.filter_level,    0,  15, 1,  true, std::bind(&Filter::upd, &filter)},
+    Video_out() : frame(set), filter(set),
+        _menu_items{
+            //name                     connected setting   notify
+            {"VIDEO / MODE",           set.mode,           std::bind(&Video_out::upd_mode, this)},
+            {"VIDEO / WINDOW SCALE",   set.window_scale,   std::bind(&Video_out::upd_dimensions, this)},
+            {"VIDEO / ASPECT RATIO",   set.aspect_ratio,   std::bind(&Video_out::upd_dimensions, this)},
+            {"VIDEO / SHARPNESS",      set.sharpness,      std::bind(&Frame::upd_sharpness, &frame)},
+            {"VIDEO / BRIGHTNESS",     set.brightness,     std::bind(&Frame::upd_palette, &frame)},
+            {"VIDEO / CONTRAST",       set.contrast,       std::bind(&Frame::upd_palette, &frame)},
+            {"VIDEO / SATURATION",     set.saturation,     std::bind(&Frame::upd_palette, &frame)},
+            {"VIDEO / FILTER PATTERN", set.filter_pattern, std::bind(&Filter::upd, &filter)},
+            {"VIDEO / FILTER LEVEL",   set.filter_level,   std::bind(&Filter::upd, &filter)},
         }
-    {
-        for (auto& s : _settings_menu) s.notify(); // update with initial values
-    }
+    {}
 
     ~Video_out();
 
-    void put_frame() {
+    void put(const u8* vic_frame) {
         //SDL_RenderClear(renderer);
-        frame.draw();
+        frame.draw(vic_frame);
         frame.frame.copy(renderer, dstrect);
         filter.frame.copy(renderer, dstrect);
-        SDL_RenderPresent(renderer);
+        flip();
     }
+
+    void flip() { SDL_RenderPresent(renderer); }
 
     void toggle_fullscr_win() { // TODO: cycle through presets instead --> TODO: presets...
         set.mode = (set.mode == Mode::win) ? Mode::fullscr_win : Mode::win;
@@ -296,7 +293,7 @@ public:
 
     bool v_synced() const { return sdl_mode.refresh_rate == FRAME_RATE; }
 
-    std::vector<Menu::Item*> settings_menu();
+    Menu::Group settings_menu();
 
     static SDL_Texture* create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SDL_BlendMode bm,
                                             int w, int h);
@@ -325,18 +322,17 @@ private:
         static constexpr int max_w = VIC_II::FRAME_WIDTH * 3; // TODO: non-hardcoded
         static constexpr int max_h = VIC_II::FRAME_HEIGHT * 3; // TODO: non-hardcoded
 
-        Frame(const Settings& set_, const u8* vic_frame_) : set(set_), vic_frame(vic_frame_) {}
+        Frame(const Settings& set_) : set(set_) {}
 
         void upd_palette();
         void upd_sharpness();
 
         u32 col(const u8 vic_pixel) { return palette[vic_pixel & 0xf]; } // TODO: do '&' here? (or in VIC?)}
 
-        std::function<void (void)> draw;
+        std::function<void (const u8* )> draw;
 
         const Settings& set;
         u32 palette[16];
-        const u8* vic_frame;
         SDL_frame frame{max_w, max_h, SDL_TEXTUREACCESS_STREAMING, SDL_BLENDMODE_NONE};
     };
 
@@ -379,7 +375,7 @@ private:
     SDL_Rect fullscreen_dstrect = {0, 0, 0, 0};
     SDL_Rect* dstrect = nullptr;
 
-    std::vector<Menu::Dial<u8>> _settings_menu;
+    std::vector<Menu::Knob> _menu_items;
 };
 
 

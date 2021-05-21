@@ -1012,16 +1012,14 @@ public:
                 mobs.do_dma(2);
 
                 if (s.frame_cycle == FRAME_CYCLE_COUNT) {
-                    out.sync_line(0);
+                    out.frame_done(s.frame);
                     s.raster_y = s.frame_cycle = s.beam_pos = 0;
                     border.frame_start();
                     return;
                 }
 
                 ++s.raster_y;
-
-                out.sync_line(s.raster_y);
-
+                out.line_done(s.raster_y);
                 raster_cmp(s.raster_y);
 
                 // TODO: reveal the magic numbers....

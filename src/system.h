@@ -238,63 +238,89 @@ private:
 
 class VIC_out {
 public:
+    struct Overlay {
+        const u16 x; const u16 y;
+        const u16 w; const u16 h;
+
+        bool visible = false;
+
+        u8* pixels;
+
+        Overlay(u16 x_, u16 y_, u16 w_, u16 h_) : x(x_), y(y_), w(w_), h(h_), pixels(new u8[w * h]) {}
+        ~Overlay() { delete[] pixels; }
+
+        void clear(u8 col) { for (int p = 0; p < w * h; ++p) pixels[p] = col; }
+        // static constexpr u8 transparent = 0xff;
+    };
+
     VIC_out(
-        IO::Int_hub& int_hub_,
-        Host::Video_out& vid_out_, Host::Input& host_input_,
-        TheSID& sid_
+        IO::Int_hub& int_hub_, Host::Video_out& vid_out_, Host::Input& host_input_,
+        TheSID& sid_, Overlay& overlay_
     ) :
-        int_hub(int_hub_),
-        vid_out(vid_out_), host_input(host_input_),
-        sid(sid_) { }
+        int_hub(int_hub_), vid_out(vid_out_), host_input(host_input_),
+        sid(sid_), overlay(overlay_) { }
 
     void set_irq() { int_hub.set(IO::Int_hub::Src::vic); }
     void clr_irq() { int_hub.clr(IO::Int_hub::Src::vic); }
 
     void init_sync() { // call if system has been 'paused'
-        vid_out.put_frame();
+        vid_out.flip();
         sid.flush();
         clock.reset();
     }
 
-    void sync_line(u16 line) {
-        if (line % SYNC_FREQ != 0) return;
+    void frame_done(u8* frame) {
+        host_input.poll();
 
-        if (line == 0) { // frame done?
-            host_input.poll();
+        frame_moment += VIC_II::FRAME_MS;
+        auto sync_moment = std::round(frame_moment);
+        bool reset = sync_moment == 6318000; // since '316687 * FRAME_MS = 6318000'
+        frame_moment = reset ? 0 : frame_moment;
 
-            frame_moment += VIC_II::FRAME_MS;
-            auto sync_moment = std::round(frame_moment);
-            bool reset = sync_moment == 6318000; // since '316687 * FRAME_MS = 6318000'
-            frame_moment = reset ? 0 : frame_moment;
-
-            int diff_ms;
-            if (vid_out.v_synced()) {
-                if ((frame_skip & 0x3) == 0x0) vid_out.put_frame();
-                diff_ms = clock.diff(sync_moment, reset);
-            } else {
-                diff_ms = clock.sync(sync_moment, reset);
-                if ((frame_skip & 0x3) == 0x0) vid_out.put_frame();
+        auto output_frame = [&]() {
+            if (overlay.visible) {
+                const u8* src = overlay.pixels;
+                for (int y = 0; y < overlay.h; ++y) {
+                    u8* tgt = &frame[((overlay.y + y) * VIC_II::FRAME_WIDTH) + overlay.x];
+                    for (int x = 0; x < overlay.w; ++x, ++src) {
+                        const auto col = *(src);
+                        /*if (col != Overlay::transparent)*/ tgt[x] = col;
+                    }
+                }
             }
+            vid_out.put(frame);
+        };
 
-            if (diff_ms <= -VIC_II::FRAME_MS) {
-                ++frame_skip;
-            } else if (frame_skip) {
-                frame_skip = 0;
-                sid.flush();
-            }
-
-            sid.output(true);
+        int diff_ms;
+        if (vid_out.v_synced()) {
+            if ((frame_skip & 0x3) == 0x0) output_frame();
+            diff_ms = clock.diff(sync_moment, reset);
         } else {
+            diff_ms = clock.sync(sync_moment, reset);
+            if ((frame_skip & 0x3) == 0x0) output_frame();
+        }
+
+        if (diff_ms <= -VIC_II::FRAME_MS) {
+            ++frame_skip;
+        } else if (frame_skip) {
+            frame_skip = 0;
+            sid.flush();
+        }
+
+        sid.output(true);
+    }
+
+    void line_done(u16 line) {
+        if (line % SYNC_FREQ == 0) {
             if (!frame_skip) {
                 host_input.poll();
                 auto frame_progress = double(line) / double(VIC_II::FRAME_LINE_COUNT);
                 auto sync_moment = frame_moment + (frame_progress * VIC_II::FRAME_MS);
                 clock.sync(std::round(sync_moment));
             }
-            sid.output();
+            sid.output(false);
         }
     }
-
 
 private:
     IO::Int_hub& int_hub;
@@ -304,10 +330,11 @@ private:
 
     TheSID& sid;
 
+    Overlay& overlay;
+
     Clock clock;
     double frame_moment = 0;
     int frame_skip = 0;
-
 };
 
 
@@ -321,29 +348,74 @@ struct State {
 
 class Menu {
 public:
-    Menu(std::vector<::Menu::Item*> video_items)
-      : video_menu("Video", video_items),
-        menu_hide{"Hide",
-            /*select*/ [&](){ return &menu_hide; }, // eventually also: vid.menu_box.hide();
-            /*enter */ [&](){ return &main_menu; }  // eventually also: vid.menu_box.show();
-        },
-        main_menu("Main Menu", {&video_menu, &menu_hide}),
-        ctrl{&menu_hide}
-    {}
+    static constexpr u8 col[2] = {11, 13}; // bg, fg
 
-    void key_enter() { ctrl.key_enter(); update(); }
-    void key_plus()  { ctrl.key_plus();  update(); }
-    void key_minus() { ctrl.key_minus(); update(); }
+    Menu(std::initializer_list<std::pair<std::string, std::function<void ()>>> imm_actions_,
+        std::initializer_list<std::pair<std::string, std::function<void ()>>> actions_,
+        std::initializer_list<::Menu::Group> subs_,
+        const u8* charrom);
+
+    void key(u8 code) {
+        using kc = Key_code::System;
+
+        if (overlay.visible) {
+            switch (code) {
+                case kc::menu_ent:  ctrl.key_enter(); break;
+                case kc::menu_up:   ctrl.key_up();    break;
+                case kc::menu_down: ctrl.key_down();  break;
+            }
+        } else {
+            overlay.visible = true;
+        }
+
+        update();
+    }
+
+    void toggle()  {
+        if (!overlay.visible) ctrl.select(&main_menu);
+        overlay.visible = !overlay.visible;
+        update();
+    }
+
+    VIC_out::Overlay overlay{
+        VIC_II::BORDER_SZ_V, (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 3,
+        40 * 8, 2 * 8
+    };
 
 private:
-    ::Menu::Group video_menu;
-    ::Menu::Kludge menu_hide;
-    ::Menu::Group main_menu;
+    ::Menu::Group main_menu{"^"};
+    std::vector<::Menu::Kludge> imm_actions;
+    std::vector<::Menu::Action> actions;
 
-    ::Menu::Controller ctrl;
+    std::vector<::Menu::Group> subs;
 
-    void update() const { // eventually: vid.menu_box.set_text(...);
-        std::cout << ctrl.active()->name << " -> " << ctrl.active()->state() << std::endl;
+    ::Menu::Controller ctrl{&main_menu};
+
+    const u8* charset;
+
+    void update() {
+        overlay.clear(col[0]);
+
+        const std::string text = ctrl.state();
+        auto text_x = 4; // (overlay.w - (text.length() * 8)) / 2; // centered
+
+        for (u8 ci = 0; ci < text.length(); ++ci) {
+            for (int px_row = 0; px_row < 8; ++px_row) {
+                auto c = text[ci] % 64; // map ascii code to character data (subset)
+                const u8* pixels = &charset[(8 * c) + px_row];
+                u8* tgt = &overlay.pixels[text_x + ci * 8 + 2 * px_row * overlay.w];
+                for (int px = 7; px >= 0; --px, ++tgt) {
+                    *tgt = *(tgt + overlay.w) = col[(*pixels >> px) & 0x1];
+                }
+            }
+        }
+    }
+
+    ::Menu::Kludge Imm_action(const std::pair<std::string, std::function<void ()>>& a) {
+        return ::Menu::Kludge(a.first, [act = a.second, &vis = overlay.visible](){ act(); vis = false; return nullptr; });
+    }
+    ::Menu::Action Action(const std::pair<std::string, std::function<void ()>>& a) {
+        return ::Menu::Action(a.first, [act = a.second, &vis = overlay.visible](){ act(); vis = false; return nullptr; });
     }
 };
 
@@ -356,14 +428,27 @@ public:
         sid(s.vic.frame_cycle),
         col_ram(s.color_ram),
         vic(s.vic, s.ram, col_ram, rom.charr, rdy_low, vic_out),
-        vid_out(s.vic.frame),
-        vic_out(int_hub, vid_out, host_input, sid),
+        vid_out(),
+        vic_out(int_hub, vid_out, host_input, sid, menu.overlay),
         int_hub(cpu),
         kb_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in),
         io_space(cia1, cia2, sid, vic, col_ram),
         sys_banker(s.ram, rom, io_space),
         host_input(host_input_handlers),
-        menu(vid_out.settings_menu())
+        menu(
+            {
+                {"RESET WARM !", [&](){ reset_warm(); } },
+                {"RESET COLD !", [&](){ reset_cold(); } },
+                {"SWAP JOYS !",  [&](){ host_input.swap_joysticks(); } },
+            },
+            {
+                {"SHUTDOWN ?", [&](){ do_run = false; } },
+            },
+            {
+                vid_out.settings_menu(),
+            },
+            rom.charr
+        )
     {}
 
     void reset_warm() {
@@ -476,14 +561,14 @@ private:
             }
 
             switch (code) {
-                case kc::rst_w:    reset_warm();                 break;
-                case kc::rst_c:    reset_cold();                 break;
-                case kc::swp_j:    host_input.swap_joysticks();  break;
-                case kc::menu_ent: menu.key_enter();             break;
-                case kc::vo_fsc:   vid_out.toggle_fullscr_win(); break;
-                case kc::menu_pl:  menu.key_plus();              break;
-                case kc::menu_mi:  menu.key_minus();             break;
-                case kc::quit:     do_run = false;               break;
+                case kc::quit:      do_run = false;               break;
+                case kc::rst_c:     reset_cold();                 break;
+                case kc::v_fsc:     vid_out.toggle_fullscr_win(); break;
+                case kc::swp_j:     host_input.swap_joysticks();  break;
+                case kc::menu_tgl:  menu.toggle();                break;
+                case kc::menu_ent:
+                case kc::menu_up:
+                case kc::menu_down: menu.key(code);               break;
             }
         },
 

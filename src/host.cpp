@@ -48,9 +48,9 @@ u8 Input::KC_LU_TBL[] = {
     /* 80..   : SDL_Keycode 40000039.. --> Key_code (80 = kc 40000039, 81 = kc 4000003a, ...) */
     // 80..8f
     ke::s_lck, kb::f1,    ke::f2,    kb::f3,    ke::f4,    kb::f5,    ke::f6,     kb::f7,
-    ke::f8,    sy::rst_w, sy::rst_c, sy::swp_j, sy::quit,  sy::nop,   sy::vo_fsc, sy::rstre,
+    ke::f8,    sy::rst_c, sy::swp_j, sy::v_fsc, sy::menu_tgl,sy::nop, sy::nop, sy::rstre,
     // 90..9f
-    sy::nop,   kb::home,  sy::menu_pl, sy::nop, sy::menu_ent, sy::menu_mi, kb::crs_r,  ke::crs_l,
+    sy::nop,   kb::home,  sy::menu_up, sy::nop, sy::menu_ent, sy::menu_down, kb::crs_r, ke::crs_l,
     kb::crs_d, ke::crs_u, sy::nop,   J1|js::ju, kb::mul,   kb::minus, kb::plus,   kb::ret,
     // a0..af
     J2|js::jl, J2|js::jd, J2|js::jr, J1|js::jb, J2|js::ju, sy::nop,   J1|js::jl,  J1|js::jd,
@@ -125,7 +125,7 @@ void Video_out::Frame::upd_sharpness() {
 
     switch (set.sharpness) {
         case 0: // {1, 1}
-            draw = [&]() {
+            draw = [&](const u8* vic_frame) {
                 for (int pos = 0; pos < VIC_II::FRAME_SIZE; ++pos) {
                     frame.pixels[pos] = col(vic_frame[pos]);
                 }
@@ -134,13 +134,12 @@ void Video_out::Frame::upd_sharpness() {
             };
             break;
         case 1: // {1, 2}
-            draw = [&]() {
-                const u8* vic_frame_pos = vic_frame;
+            draw = [&](const u8* vic_frame) {
                 u32* scan = frame.pixels;
 
                 for (int y = 0; y < VIC_II::FRAME_HEIGHT; ++y) {
                     for (int x = 0; x < VIC_II::FRAME_WIDTH; ++x, ++scan) {
-                        const auto c = col(*vic_frame_pos++);
+                        const auto c = col(*vic_frame++);
                         *scan = c;
                         *(scan + VIC_II::FRAME_WIDTH) = c;
                     }
@@ -152,22 +151,21 @@ void Video_out::Frame::upd_sharpness() {
             };
             break;
         case 2: // {2, 2}
-            draw = [&]() {
-                const u8* vic_frame_pos = vic_frame;
+            draw = [&](const u8* vic_frame) {
                 u32* scan = frame.pixels;
 
                 for (int y = 0; y < VIC_II::FRAME_HEIGHT; ++y) {
                     for (int x = 0; x < VIC_II::FRAME_WIDTH; ++x) {
-                        const auto c = col(vic_frame_pos[x]);
+                        const auto c = col(vic_frame[x]);
                         *scan++ = c;
                         *scan++ = c;
                     }
                     for (int x = 0; x < VIC_II::FRAME_WIDTH; ++x) {
-                        const auto c = col(vic_frame_pos[x]);
+                        const auto c = col(vic_frame[x]);
                         *scan++ = c;
                         *scan++ = c;
                     }
-                    vic_frame_pos += VIC_II::FRAME_WIDTH;
+                    vic_frame += VIC_II::FRAME_WIDTH;
                 }
 
                 const auto bytes_per_row = 2 * (bytes_per_pixel * VIC_II::FRAME_WIDTH);
@@ -175,13 +173,12 @@ void Video_out::Frame::upd_sharpness() {
             };
             break;
         case 3: // {3, 3}
-            draw = [&]() {
-                const u8* vic_frame_pos = vic_frame;
+            draw = [&](const u8* vic_frame) {
                 u32* scan = frame.pixels;
 
                 auto draw_row = [&]() {
                     for (int x = 0; x < VIC_II::FRAME_WIDTH; ++x) {
-                        const auto c = col(vic_frame_pos[x]);
+                        const auto c = col(vic_frame[x]);
                         *scan++ = c;
                         *scan++ = c;
                         *scan++ = c;
@@ -192,7 +189,7 @@ void Video_out::Frame::upd_sharpness() {
                     draw_row();
                     draw_row();
                     draw_row();
-                    vic_frame_pos += VIC_II::FRAME_WIDTH;
+                    vic_frame += VIC_II::FRAME_WIDTH;
                 }
 
                 const auto bytes_per_row = 3 * (bytes_per_pixel * VIC_II::FRAME_WIDTH);
@@ -281,10 +278,10 @@ Video_out::~Video_out() {
 }
 
 
-std::vector<Menu::Item*> Video_out::settings_menu() {
-    std::vector<Menu::Item*> m;
-    for (auto& i : _settings_menu) m.push_back(&i);
-    return m;
+Menu::Group Video_out::settings_menu() {
+    auto g = Menu::Group("VIDEO /");
+    g.add(_menu_items);
+    return g;
 }
 
 
@@ -370,24 +367,22 @@ void Video_out::upd_mode() {
 
 
 void Video_out::upd_dimensions() {
-    const double aspect_ratio = set.aspect_ratio / 200.0;
-
     if (set.mode == Mode::win) {
-        int w = aspect_ratio * (set.window_scale / 10.0) * VIC_II::FRAME_WIDTH;
-        int h = (set.window_scale / 10.0) * VIC_II::FRAME_HEIGHT;
+        int w = set.aspect_ratio * (set.window_scale * VIC_II::FRAME_WIDTH);
+        int h = set.window_scale * VIC_II::FRAME_HEIGHT;
         SDL_SetWindowSize(window, w, h);
         dstrect = nullptr;
     } else {
         int win_w; int win_h;
         SDL_GetRendererOutputSize(renderer, &win_w, &win_h);
-        int w = aspect_ratio * (((double)win_h / VIC_II::FRAME_HEIGHT) * VIC_II::FRAME_WIDTH);
+        int w = set.aspect_ratio * (((double)win_h / VIC_II::FRAME_HEIGHT) * VIC_II::FRAME_WIDTH);
         if (w < win_w) {
             fullscreen_dstrect.x = (win_w - w) / 2;
             fullscreen_dstrect.y = 0;
             fullscreen_dstrect.w = w;
             fullscreen_dstrect.h = win_h;
         } else {
-            int h =  (((double)win_w / VIC_II::FRAME_WIDTH) * VIC_II::FRAME_HEIGHT) / aspect_ratio;
+            int h =  (((double)win_w / VIC_II::FRAME_WIDTH) * VIC_II::FRAME_HEIGHT) / set.aspect_ratio;
             fullscreen_dstrect.x = 0;
             fullscreen_dstrect.y = (win_h - h) / 2;
             fullscreen_dstrect.w = win_w;

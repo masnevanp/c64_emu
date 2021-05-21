@@ -133,6 +133,28 @@ const u8 System::Banker::Mode_to_PLA_idx[32] = {
 };
 
 
+System::Menu::Menu(std::initializer_list<std::pair<std::string, std::function<void ()>>> imm_actions_,
+    std::initializer_list<std::pair<std::string, std::function<void ()>>> actions_,
+    std::initializer_list<::Menu::Group> subs_,
+    const u8* charrom)
+  : subs(subs_), charset(&charrom[256 * 8]) // using the 'lower case' half
+{
+    for (auto a : imm_actions_) imm_actions.push_back(Imm_action(a));
+    for (auto a : actions_) actions.push_back(Action(a));
+
+    imm_actions.push_back(Imm_action({"^", [&](){}}));
+
+    main_menu.add(actions);
+    main_menu.add(subs);
+    main_menu.add(imm_actions);
+
+    for (auto& sub : subs) { // link all to all
+        sub.add({ &main_menu });
+        sub.add(subs);
+    }
+}
+
+
 void System::C64::init_ram() { // TODO: parameterize pattern (+ add 'randomness'?)
     for (int addr = 0x0000; addr <= 0xffff; ++addr)
         s.ram[addr] = (addr & 0x80) ? 0xff : 0x00;
