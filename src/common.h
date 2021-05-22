@@ -81,15 +81,43 @@ using Sig_key = Sig2<u8, u8>;
 
 
 template<typename T>
-struct Param {
+class Param {
+public:
+    Param(T init, T min_, T max_, T step_) : val(init), min(min_), max(max_), step(step_) {}
+
+    operator T() const { return val; }
+    operator std::string() const {
+        if constexpr (std::is_convertible<T, std::string>::value) return val;
+        else return std::to_string(val);
+    }
+    Param<T>& operator++() { set(val + step); return *this; }
+    Param<T>& operator--() { set(val - step); return *this; }
+    Param<T>& operator=(T v) { set(v); return *this; }
+
+private:
     T val;
     const T min;
     const T max;
     const T step;
 
-    Param(T val_, T min_, T max_, T step_) : val(val_), min(min_), max(max_), step(step_) {}
-    operator T() const { return val; }
-    Param<T>& operator=(T v) { val = v; return *this; }
+    void set(T v) { if (v >= min && v <= max) val = v; }
+};
+
+
+template<typename T>
+struct Choice {
+    const std::vector<T> choices;
+    const std::vector<std::string> choices_str;
+
+    T chosen;
+
+    operator T() const { return chosen; }
+    Choice<T>& operator=(T c) { chosen = c; return *this; }
+
+    Choice(std::initializer_list<T> choices_, std::initializer_list<std::string> choices_str_, T chosen_)
+        : choices(choices_), choices_str(choices_str_), chosen(chosen_) {}
+    Choice(std::initializer_list<T> choices_, std::initializer_list<std::string> choices_str_)
+        : Choice(choices_, choices_str_, *choices_.begin()) {}
 };
 
 

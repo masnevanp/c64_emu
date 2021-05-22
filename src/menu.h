@@ -149,9 +149,14 @@ private:
 
 class Knob : public Item {
 public:
-    template<typename P>
-    Knob(const std::string& name, P& param, Sig notify)
-      : Item(name), imp(std::make_shared<_Param<P>>(param, notify)) { notify(); }
+    template<typename T>
+    Knob(const std::string& name, Param<T>& param, Sig notify)
+      : Item(name), imp(std::make_shared<_Param<Param<T>>>(param, notify)) {}
+
+    template<typename T>
+    Knob(const std::string& name, Choice<T>& choice, Sig notify)
+      : Item(name), imp(std::make_shared<_Choice<Choice<T>>>(choice, notify)) {}
+
     virtual ~Knob() {}
 
     virtual Item* done() { return imp->done(); }
@@ -163,28 +168,41 @@ public:
 private:
     std::shared_ptr<Item> imp;
 
-    template<typename P>
+    template<typename T>
     class _Param : public Item {
     public:
-        _Param(P& param_, Sig notify_) : Item(""), param(param_), notify(notify_) {}
+        _Param(T& param_, Sig notify_) : Item(""), param(param_), notify(notify_) { notify(); }
         virtual ~_Param() {}
 
-        virtual void  up()   { adjust(+1); }
-        virtual void  down() { adjust(-1); }
+        virtual void  up()   { ++param; notify(); }
+        virtual void  down() { --param; notify(); }
 
-        virtual std::string state() const { return "  # " + std::to_string(param.val); }
+        virtual std::string state() const { return "  # " + std::string(param); }
 
     private:
-        P& param;
+        T& param;
+        Sig notify;
+    };
+
+    template<typename T>
+    class _Choice : public Item {
+    public:
+        _Choice(T& choice_, Sig notify_) : Item(""), choice(choice_), notify(notify_) { notify(); }
+        virtual ~_Choice() {}
+
+        virtual Item* done() { choice.chosen = chosen(); notify(); return nullptr; }
+        virtual void  up()   { ++ci; }
+        virtual void  down() { --ci; }
+
+        virtual std::string state() const { return "  @ " + chosen_str(); }
+
+    private:
+        T& choice;
+        u32 ci = 0;
         Sig notify;
 
-        void adjust(int direction) {
-            decltype(param.val) adjusted = param.val + (direction * param.step);
-            if (adjusted >= param.min && adjusted <= param.max) {
-                param.val = adjusted;
-                notify();
-            }
-        }
+        const auto chosen() const { return choice.choices[ci % choice.choices.size()]; }
+        const std::string& chosen_str() const { return choice.choices_str[ci % choice.choices_str.size()]; }
     };
 };
 

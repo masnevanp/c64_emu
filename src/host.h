@@ -241,22 +241,25 @@ public:
     static constexpr auto pixel_format = SDL_PIXELFORMAT_ARGB8888;
     static constexpr int bytes_per_pixel = 4;
 
-    enum Mode : u8 { win=0, fullscr_win, fullscr, _n };
+    enum class Mode : u8 { win, fullscr_win, fullscr };
 
     struct Settings {
-        Param<u8> mode{Mode::win, 0, 2, 1};
-
-        Param<double> window_scale{4.0, 0.5, 8, 0.05}; // TODO: fullscreen_scale?
+        Choice<Mode> mode{
+            {Mode::win,  Mode::fullscr_win, Mode::fullscr },
+            {"WINDOWED", "FULLSCREEN",      "TRUE FULLSCREEN" },
+        };
+        // TODO: fullscreen_scale?
+        Param<double> window_scale{4.00, 0.5, 8.00, 0.05}; // init, min, max, step
         Param<double> aspect_ratio{0.89, 0.5, 1.25, 0.005}; // PAL actual: ~0.935 
 
         Param<u8> sharpness{0, 0, 3, 1};
 
         Param<u8> brightness{78, 0, 100, 1};
-        Param<u8> contrast{100, 0, 100, 1};
+        Param<u8> contrast {100, 0, 100, 1};
         Param<u8> saturation{68, 0, 100, 1};
 
         Param<u8> filter_pattern{7, 0, 254, 1}; // TODO: actual max
-        Param<u8> filter_level{11, 0, 15, 1}; // 0 --> all pass
+        Param<u8> filter_level {11, 0,  15, 1}; // 0 --> all pass
     };
 
     Video_out() : frame(set), filter(set),
