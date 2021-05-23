@@ -1,7 +1,6 @@
 #ifndef HOST_H_INCLUDED
 #define HOST_H_INCLUDED
 
-#include <functional>
 #include <SDL.h>
 #include "common.h"
 #include "utils.h"
@@ -245,8 +244,8 @@ public:
 
     struct Settings {
         Choice<Mode> mode{
-            {Mode::win,  Mode::fullscr_win, Mode::fullscr },
-            {"WINDOWED", "FULLSCREEN",      "TRUE FULLSCREEN" },
+            {Mode::win,  Mode::fullscr_win, Mode::fullscr},
+            {"WINDOWED", "FULLSCREEN", "TRUE FULLSCREEN"},
         };
         // TODO: fullscreen_scale?
         Param<double> window_scale{4.00, 0.5, 8.00, 0.05}; // init, min, max, step
@@ -261,22 +260,9 @@ public:
         Param<u8> filter_pattern{7, 0, 254, 1}; // TODO: actual max
         Param<u8> filter_level {11, 0,  15, 1}; // 0 --> all pass
     };
+    Menu::Group settings_menu() { return Menu::Group("VIDEO /", menu_items); }
 
-    Video_out() : frame(set), filter(set),
-        _menu_items{
-            //name                     connected setting   notify
-            {"VIDEO / MODE",           set.mode,           std::bind(&Video_out::upd_mode, this)},
-            {"VIDEO / WINDOW SCALE",   set.window_scale,   std::bind(&Video_out::upd_dimensions, this)},
-            {"VIDEO / ASPECT RATIO",   set.aspect_ratio,   std::bind(&Video_out::upd_dimensions, this)},
-            {"VIDEO / SHARPNESS",      set.sharpness,      std::bind(&Frame::upd_sharpness, &frame)},
-            {"VIDEO / BRIGHTNESS",     set.brightness,     std::bind(&Frame::upd_palette, &frame)},
-            {"VIDEO / CONTRAST",       set.contrast,       std::bind(&Frame::upd_palette, &frame)},
-            {"VIDEO / SATURATION",     set.saturation,     std::bind(&Frame::upd_palette, &frame)},
-            {"VIDEO / FILTER PATTERN", set.filter_pattern, std::bind(&Filter::upd, &filter)},
-            {"VIDEO / FILTER LEVEL",   set.filter_level,   std::bind(&Filter::upd, &filter)},
-        }
-    {}
-
+    Video_out() : frame(set), filter(set) {}
     ~Video_out();
 
     void put(const u8* vic_frame) {
@@ -296,11 +282,8 @@ public:
 
     bool v_synced() const { return sdl_mode.refresh_rate == FRAME_RATE; }
 
-    Menu::Group settings_menu();
-
     static SDL_Texture* create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SDL_BlendMode bm,
                                             int w, int h);
-
 private:
     struct SDL_frame {
         const int max_w;
@@ -378,7 +361,18 @@ private:
     SDL_Rect fullscreen_dstrect = {0, 0, 0, 0};
     SDL_Rect* dstrect = nullptr;
 
-    std::vector<Menu::Knob> _menu_items;
+    std::vector<Menu::Knob> menu_items{
+        //name                     connected setting   notify
+        {"VIDEO / MODE",           set.mode,           [&](){ upd_mode(); }},
+        {"VIDEO / WINDOW SCALE",   set.window_scale,   [&](){ upd_dimensions(); }},
+        {"VIDEO / ASPECT RATIO",   set.aspect_ratio,   [&](){ upd_dimensions(); }},
+        {"VIDEO / SHARPNESS",      set.sharpness,      [&](){ frame.upd_sharpness(); }},
+        {"VIDEO / BRIGHTNESS",     set.brightness,     [&](){ frame.upd_palette(); }},
+        {"VIDEO / CONTRAST",       set.contrast,       [&](){ frame.upd_palette(); }},
+        {"VIDEO / SATURATION",     set.saturation,     [&](){ frame.upd_palette(); }},
+        {"VIDEO / FILTER PATTERN", set.filter_pattern, [&](){ filter.upd(); }},
+        {"VIDEO / FILTER LEVEL",   set.filter_level,   [&](){ filter.upd(); }},
+    };
 };
 
 

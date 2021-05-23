@@ -139,6 +139,13 @@ System::Menu::Menu(std::initializer_list<std::pair<std::string, std::function<vo
     const u8* charrom)
   : subs(subs_), charset(&charrom[256 * 8]) // using the 'lower case' half
 {
+    auto Imm_action = [&](const std::pair<std::string, std::function<void ()>>& a) {
+        return ::Menu::Kludge(a.first, [act = a.second, &vis = overlay.visible](){ act(); vis = false; return nullptr; });
+    };
+    auto Action = [&](const std::pair<std::string, std::function<void ()>>& a) {
+        return ::Menu::Action(a.first, [act = a.second, &vis = overlay.visible](){ act(); vis = false; return nullptr; });
+    };
+
     for (auto a : imm_actions_) imm_actions.push_back(Imm_action(a));
     for (auto a : actions_) actions.push_back(Action(a));
 
@@ -149,8 +156,35 @@ System::Menu::Menu(std::initializer_list<std::pair<std::string, std::function<vo
     main_menu.add(imm_actions);
 
     for (auto& sub : subs) { // link all to all
-        sub.add({ &main_menu });
         sub.add(subs);
+        sub.add(actions);
+        sub.add(imm_actions);
+    }
+}
+
+
+void System::Menu::toggle_visibility()  {
+    if (!overlay.visible) ctrl.select(&main_menu);
+    overlay.visible = !overlay.visible;
+    update();
+}
+
+
+void System::Menu::update() {
+    overlay.clear(col[0]);
+
+    const std::string text = ctrl.state();
+    auto text_x = 4; // (overlay.w - (text.length() * 8)) / 2; // centered
+
+    for (u8 ci = 0; ci < text.length(); ++ci) {
+        for (int px_row = 0; px_row < 8; ++px_row) {
+            auto c = text[ci] % 64; // map ascii code to character data (subset)
+            const u8* pixels = &charset[(8 * c) + px_row];
+            u8* tgt = &overlay.pixels[text_x + ci * 8 + 2 * px_row * overlay.w];
+            for (int px = 7; px >= 0; --px, ++tgt) {
+                *tgt = *(tgt + overlay.w) = col[(*pixels >> px) & 0x1];
+            }
+        }
     }
 }
 

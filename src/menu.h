@@ -66,13 +66,8 @@ private:
 class Group : public Item {
 public:
     Group(const std::string& name, std::vector<Item*> items_ = {}) : Item(name), items(items_) {}
-    Group(const std::string& name, std::vector<Group>& subs, std::initializer_list<Item*> more_items = {})
-      : Item(name)
-    {
-        for (auto& s : subs) items.push_back(&s);
-
-        add(more_items);
-    }
+    template<typename Cont>
+    Group(const std::string& name, Cont& items) : Item(name) { add(items); }
     virtual ~Group() {}
 
     virtual Item* select() { selector = 0; return this; }
@@ -82,17 +77,19 @@ public:
 
     virtual std::string state() const { return selected()->name; }
 
-    void add(std::initializer_list<Item*> more_items) {
+    Group& add(std::initializer_list<Item*> more_items) {
         for (auto item : more_items) {
             if (item != this) items.push_back(item);
         }
+        return *this;
     }
 
     template<typename Cont>
-    void add(Cont& more_items) {
+    Group& add(Cont& more_items) {
         for (auto& item : more_items) {
             if ((Item*)&item != (Item*)this) items.push_back(&item);
         }
+        return *this;
     }
 
 private:

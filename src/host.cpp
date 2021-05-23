@@ -278,13 +278,6 @@ Video_out::~Video_out() {
 }
 
 
-Menu::Group Video_out::settings_menu() {
-    auto g = Menu::Group("VIDEO /");
-    g.add(_menu_items);
-    return g;
-}
-
-
 SDL_Texture* Video_out::create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SDL_BlendMode bm, int w, int h)
 {
     SDL_Texture* t = SDL_CreateTexture(r, Video_out::pixel_format, ta, w, h);

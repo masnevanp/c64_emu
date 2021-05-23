@@ -3,6 +3,7 @@
 
 #include "resid/sid.h"
 #include "host.h"
+#include "menu.h"
 
 
 
@@ -11,17 +12,23 @@ class reSID_Wrapper {
 public:
     static const int OUTPUT_FREQ = 44100;
 
-    reSID_Wrapper(const u16& frame_cycle_) : frame_cycle(frame_cycle_)
-    {
-        re_sid.set_sampling_parameters(CPU_FREQ, reSID::SAMPLE_RESAMPLE, OUTPUT_FREQ);
-    }
+    struct Settings {
+        using Model    = reSID::chip_model;
+        using Sampling = reSID::sampling_method;
+
+        Choice<Model> model{
+            {Model::MOS6581, Model::MOS8580}, {"MOS6581", "MOS8580"},
+        };
+        Choice<Sampling> sampling{ // NOTE: 'fast' can get pitchy...
+            {Sampling::SAMPLE_INTERPOLATE, Sampling::SAMPLE_RESAMPLE,
+                Sampling::SAMPLE_RESAMPLE_FASTMEM, Sampling::SAMPLE_FAST},
+            {"INTERPOLATE", "RESAMPLE", "RESAMPLE FASTMEM", "FAST"},
+        };
+    };
+    Menu::Group settings_menu() { return Menu::Group("RESID /", menu_items); }
 
     void reset() { re_sid.reset(); }
-
-    void flush() {
-        audio_out.flush();
-        //audio_out.put(buf, BUF_SZ / 2); // some breathing room
-    }
+    void flush() { audio_out.flush(); }
 
     void output(bool frame_done) {
         tick();
@@ -31,11 +38,12 @@ public:
     }
 
     void r(const u8& ri, u8& data) { data = re_sid.read(ri); }
-
     void w(const u8& ri, const u8& data) {
         tick(); // tick with old state first
         re_sid.write(ri, data);
     }
+
+    reSID_Wrapper(const u16& frame_cycle_) : frame_cycle(frame_cycle_) {}
 
 private:
     reSID::SID re_sid;
@@ -51,6 +59,13 @@ private:
     const u16& frame_cycle;
 
     Host::Audio_out audio_out;
+
+    Settings set;
+
+    std::vector<Menu::Knob> menu_items{
+        {"RESID / MODEL",    set.model,    [&](){ re_sid.set_chip_model(set.model); }},
+        {"RESID / SAMPLING", set.sampling, [&](){ re_sid.set_sampling_parameters(CPU_FREQ, set.sampling, OUTPUT_FREQ); }},
+    };
 
     void tick() {
         int n = frame_cycle - ticked;

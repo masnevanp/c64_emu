@@ -355,7 +355,7 @@ public:
         std::initializer_list<::Menu::Group> subs_,
         const u8* charrom);
 
-    void key(u8 code) {
+    void handle_key(u8 code) {
         using kc = Key_code::System;
 
         if (overlay.visible) {
@@ -371,18 +371,11 @@ public:
         update();
     }
 
-    void toggle()  {
-        if (!overlay.visible) ctrl.select(&main_menu);
-        overlay.visible = !overlay.visible;
-        update();
-    }
-
-    VIC_out::Overlay overlay{
-        VIC_II::BORDER_SZ_V, (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 3,
-        40 * 8, 2 * 8
-    };
+    void toggle_visibility();
 
 private:
+    friend class C64;
+
     ::Menu::Group main_menu{"^"};
     std::vector<::Menu::Kludge> imm_actions;
     std::vector<::Menu::Action> actions;
@@ -393,30 +386,12 @@ private:
 
     const u8* charset;
 
-    void update() {
-        overlay.clear(col[0]);
+    VIC_out::Overlay overlay{
+        VIC_II::BORDER_SZ_V, (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 3,
+        40 * 8, 2 * 8
+    };
 
-        const std::string text = ctrl.state();
-        auto text_x = 4; // (overlay.w - (text.length() * 8)) / 2; // centered
-
-        for (u8 ci = 0; ci < text.length(); ++ci) {
-            for (int px_row = 0; px_row < 8; ++px_row) {
-                auto c = text[ci] % 64; // map ascii code to character data (subset)
-                const u8* pixels = &charset[(8 * c) + px_row];
-                u8* tgt = &overlay.pixels[text_x + ci * 8 + 2 * px_row * overlay.w];
-                for (int px = 7; px >= 0; --px, ++tgt) {
-                    *tgt = *(tgt + overlay.w) = col[(*pixels >> px) & 0x1];
-                }
-            }
-        }
-    }
-
-    ::Menu::Kludge Imm_action(const std::pair<std::string, std::function<void ()>>& a) {
-        return ::Menu::Kludge(a.first, [act = a.second, &vis = overlay.visible](){ act(); vis = false; return nullptr; });
-    }
-    ::Menu::Action Action(const std::pair<std::string, std::function<void ()>>& a) {
-        return ::Menu::Action(a.first, [act = a.second, &vis = overlay.visible](){ act(); vis = false; return nullptr; });
-    }
+    void update();
 };
 
 
@@ -446,6 +421,7 @@ public:
             },
             {
                 vid_out.settings_menu(),
+                sid.settings_menu(),
             },
             rom.charr
         )
@@ -565,10 +541,10 @@ private:
                 case kc::rst_c:     reset_cold();                 break;
                 case kc::v_fsc:     vid_out.toggle_fullscr_win(); break;
                 case kc::swp_j:     host_input.swap_joysticks();  break;
-                case kc::menu_tgl:  menu.toggle();                break;
+                case kc::menu_tgl:  menu.toggle_visibility();     break;
                 case kc::menu_ent:
                 case kc::menu_up:
-                case kc::menu_down: menu.key(code);               break;
+                case kc::menu_down: menu.handle_key(code);        break;
             }
         },
 
