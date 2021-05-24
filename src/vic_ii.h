@@ -1105,7 +1105,7 @@ public:
             case 17: // 28
                 if (!s.v_blank) {
                     gfx.feed_gd();
-                    border.check_left(!CR2::csel);
+                    border.check_left(CR2::csel ^ CR2::csel);
                     output();
                     gfx.read_gd();
                     gfx.read_vm();
@@ -1137,7 +1137,7 @@ public:
             case 55: // 332
                 if (!s.v_blank) {
                     gfx.feed_gd();
-                    border.check_right(!CR2::csel);
+                    border.check_right(CR2::csel ^ CR2::csel);
                     output();
                 }
                 mobs.check_dma();
