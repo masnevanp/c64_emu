@@ -9,6 +9,7 @@ using u16 = NMOS6502::u16;
 using i16 = int16_t;
 using u32 = uint32_t;
 using i32 = int32_t;
+using u64 = uint64_t;
 
 
 // Real PAL C64 COLOR_CLOCK_FREQ: 17734472.0 --> ~50.125 fps

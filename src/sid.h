@@ -30,11 +30,10 @@ public:
     void reset() { re_sid.reset(); }
     void flush() { audio_out.flush(); }
 
-    void output(bool frame_done) {
+    void output() {
         tick();
         audio_out.put(buf, buf_ptr - buf);
         buf_ptr = buf;
-        if (frame_done) ticked = 0; // 'frame_cycle' will also get reset (elsewhere)
     }
 
     void r(const u8& ri, u8& data) { data = re_sid.read(ri); }
@@ -43,7 +42,7 @@ public:
         re_sid.write(ri, data);
     }
 
-    reSID_Wrapper(const u16& frame_cycle_) : frame_cycle(frame_cycle_) {}
+    reSID_Wrapper(const u64& cycle_) : cycle(cycle_) {}
 
 private:
     reSID::SID re_sid;
@@ -55,8 +54,8 @@ private:
     i16 buf[BUF_SZ];
     i16* buf_ptr = buf;
 
-    u16 ticked = 0; // how many times has re-sid been ticked (for upcoming burst)
-    const u16& frame_cycle;
+    u64 last_tick_cycle = 0;
+    const u64& cycle;
 
     Host::Audio_out audio_out;
 
@@ -68,11 +67,11 @@ private:
     };
 
     void tick() {
-        int n = frame_cycle - ticked;
+        int n = cycle - last_tick_cycle;
         if (n) {
+            last_tick_cycle = cycle;
             // there is always enough space in the buffer (hence the '0xffff')
             buf_ptr += re_sid.clock(n, buf_ptr, 0xffff);
-            ticked = frame_cycle;
         }
     }
 };

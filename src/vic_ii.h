@@ -476,7 +476,7 @@ private:
             if (gs.ba_area) {
                 gs.ba_line = (raster_y & CR1::y_scroll) == gs.y_scroll;
                 if (gs.ba_line) {
-                    u8 line_cycle = cs.frame_cycle % LINE_CYCLE_COUNT;
+                    u8 line_cycle = cs.cycle % LINE_CYCLE_COUNT;
                     if (line_cycle < 14) activate(); // else delayed (see read_vm())
                     if (line_cycle > 10 && line_cycle < 54) ba.gfx_set(line_cycle | 0x80); // store cycle for AEC checking later
                 }
@@ -918,7 +918,7 @@ public:
     struct State {
         u8 reg[REG_COUNT];
 
-        u16 frame_cycle = 0;
+        u64 cycle = 0; // good for ~595K years...
         u16 raster_x;
         u16 raster_y = FRAME_LINE_COUNT - 1;
         u8 v_blank = true;
@@ -1004,22 +1004,21 @@ public:
             if (((s.cr1(CR1::rst8) << 1) | s.reg[R::rast]) == r) irq.req(IRQ::rst);
         };
 
-        ++s.frame_cycle;
-        auto line_cycle = s.frame_cycle % LINE_CYCLE_COUNT;
+        ++s.cycle;
 
-        switch (line_cycle) {
+        switch (auto line_cycle = s.cycle % LINE_CYCLE_COUNT; line_cycle) {
             case  0:
                 mobs.do_dma(2);
 
-                if (s.frame_cycle == FRAME_CYCLE_COUNT) {
-                    out.frame_done(s.frame);
-                    s.raster_y = s.frame_cycle = s.beam_pos = 0;
+                if (s.raster_y == (FRAME_LINE_COUNT - 1)) {
+                    out.frame(s.frame);
+                    s.raster_y = s.beam_pos = 0;
                     border.frame_start();
                     return;
                 }
 
                 ++s.raster_y;
-                out.line_done(s.raster_y);
+                out.sync(s.raster_y);
                 raster_cmp(s.raster_y);
 
                 // TODO: reveal the magic numbers....
@@ -1039,7 +1038,7 @@ public:
                 return;
             case  1:
                 mobs.prep_dma(5);
-                if (s.frame_cycle == 1) raster_cmp(0);
+                if (s.raster_y == 0) raster_cmp(0);
                 return;
             case  2: mobs.do_dma(3);   return;
             case  3: mobs.prep_dma(6); return;

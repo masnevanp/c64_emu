@@ -82,7 +82,6 @@ private:
     TheSID& sid;
     VIC& vic;
     Color_RAM& col_ram;
-
 };
 
 
@@ -269,7 +268,7 @@ public:
         clock.reset();
     }
 
-    void frame_done(u8* frame) {
+    void frame(u8* frame) {
         host_input.poll();
 
         frame_moment += VIC_II::FRAME_MS;
@@ -307,10 +306,10 @@ public:
             sid.flush();
         }
 
-        sid.output(true);
+        sid.output();
     }
 
-    void line_done(u16 line) {
+    void sync(u16 line) { // NOTE: not called on the 'frame done' line
         if (line % SYNC_FREQ == 0) {
             if (!frame_skip) {
                 host_input.poll();
@@ -318,7 +317,7 @@ public:
                 auto sync_moment = frame_moment + (frame_progress * VIC_II::FRAME_MS);
                 clock.sync(std::round(sync_moment));
             }
-            sid.output(false);
+            sid.output();
         }
     }
 
@@ -400,7 +399,7 @@ public:
     C64(const ROM& rom) :
         cia1(sync_master, cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1),
         cia2(sync_master, cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
-        sid(s.vic.frame_cycle),
+        sid(s.vic.cycle),
         col_ram(s.color_ram),
         vic(s.vic, s.ram, col_ram, rom.charr, rdy_low, vic_out),
         vid_out(),
