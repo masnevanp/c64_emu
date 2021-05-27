@@ -341,33 +341,34 @@ load_result _Loader::load_hd(const std::string& what) {
 struct D64 {
     const std::vector<u8> data;
 
+    struct BL { u8 track; u8 sector; }; // block location
+
     static constexpr u8 dir_track = 18;
 
-    struct TS { u8 track; u8 sector; };
+    static constexpr BL bam_block{dir_track, 0};
+    static constexpr BL dir_start{dir_track, 1};
 
-    static constexpr TS bam_sector{dir_track, 0};
-    static constexpr TS dir_start{dir_track, 1};
-
-    struct Sector_chain {
+    struct Block_chain {
         const D64& d64;
         const u8* data;
-        Sector_chain(const D64& d64_, const TS& start) : d64(d64_) { data = d64.sector(start); }
-        bool next() { if (data) data = d64.sector(data[0], data[1]); return data != nullptr; }
+        Block_chain(const D64& d64_, const BL& start) : d64(d64_), data(d64.block(start)) {}
+        bool next() { if (data) data = d64.block(data[0], data[1]); return ok(); }
+        bool ok() const { return data != nullptr; }
         bool last() const { return data[0] == 0x00; }
     };
 
     struct BAM {
-        struct TS_alloc {
+        struct Block_alloc {
             u8 free_count;
             u8 free1;
             u8 free2;
             u8 free3;
         };
 
-        TS dir_ts;
+        BL dir_bl;
         u8 dos_version;
         u8 pad1;
-        TS_alloc ts_alloc[35];
+        Block_alloc block_alloc[35];
         u8 disk_name[16];
         u8 pad2[2];
         u8 disk_id[2];
@@ -377,9 +378,9 @@ struct D64 {
 
         u16 blocks_free() const {
             u16 total = std::accumulate(
-                std::begin(ts_alloc), std::end(ts_alloc), 0,
-                    [](u16 a, const TS_alloc& x) { return a + x.free_count; });
-            return total - ts_alloc[dir_track - 1].free_count; // disregard bam/dir track
+                std::begin(block_alloc), std::end(block_alloc), 0,
+                    [](u16 a, const Block_alloc& x) { return a + x.free_count; });
+            return total - block_alloc[dir_track - 1].free_count; // disregard bam/dir track
         }
     };
 
@@ -396,11 +397,11 @@ struct D64 {
             bool closed() const { return file_type & Status::close; }
         };
 
-        TS next_dir_sector;
+        BL next_dir_block;
         File_type file_type;
-        TS file_start;
+        BL file_start;
         u8 filename[16];
-        TS first_side_sector_block;
+        BL first_side_sector_block;
         u8 record_length;
         u8 unused[6];
         U16 size;
@@ -410,11 +411,11 @@ struct D64 {
 
     using dir_list = std::vector<const Dir_entry*>;
 
-    const u8* sector(int abs_n) const {
+    const u8* block(int abs_n) const {
         return (abs_n < 0 || abs_n > 682) ? nullptr : &(data.data()[abs_n * 0x100]);
     }
 
-    const u8* sector(int track_n, int sector_n) const {
+    const u8* block(int track_n, int sector_n) const {
         enum { first_sector = 0, first_track = 1, last_track = 35 };
         static constexpr int sector_count[36] = {
             0,  21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21,
@@ -424,18 +425,18 @@ struct D64 {
         if (track_n < first_track || track_n > last_track) return nullptr;
         if (sector_n < first_sector || sector_n >= sector_count[track_n]) return nullptr;
         for (int t = 1; t < track_n; ++t) sector_n += sector_count[t];
-        return sector(sector_n);
+        return block(sector_n);
     }
-    const u8* sector(const TS& ts) const { return sector(ts.track, ts.sector); }
+    const u8* block(const BL& bl) const { return block(bl.track, bl.sector); }
 
-    Sector_chain sector_chain(const TS& start) const { return Sector_chain(*this, start); }
+    Block_chain block_chain(const BL& start) const { return Block_chain(*this, start); }
 
-    const BAM& bam() const { return *((BAM*)sector(bam_sector)); }
+    const BAM& bam() const { return *((BAM*)block(bam_block)); }
 
     dir_list dir() const {
         dir_list d;
-        for (auto dsc = sector_chain(dir_start); dsc.data; dsc.next()) {
-            Dir_entry* de = (Dir_entry*)dsc.data;
+        for (auto bc = block_chain(dir_start); bc.ok(); bc.next()) {
+            const Dir_entry* de = (Dir_entry*)bc.data;
             for (int dei = 0; dei < 8; ++dei, ++de) { // 8 entries/sector
                 if (de->file_exists()) d.push_back(de);
             }
@@ -443,16 +444,18 @@ struct D64 {
         return d;
     }
 
-    std::vector<u8> read_file(const TS& start) {
-        std::vector<u8> data;
-        for (auto fsc = sector_chain(start); true; fsc.next()) {
-            if (fsc.last()) {
-                auto end = &fsc.data[fsc.data[1] + 1];
-                std::copy(&fsc.data[2], end, std::back_inserter(data));
-                return data;
+    std::vector<u8> read_file(const BL& start) {
+        std::vector<u8> file_data;
+        for (auto bc = block_chain(start); bc.ok(); bc.next()) {
+            if (bc.last()) {
+                auto end = &bc.data[bc.data[1] + 1];
+                std::copy(&bc.data[2], end, std::back_inserter(file_data));
+                return file_data;
             }
-            std::copy(&fsc.data[2], &fsc.data[256], std::back_inserter(data));
+            std::copy(&bc.data[2], &bc.data[256], std::back_inserter(file_data));
+            if (file_data.size() >= data.size()) break; // some kind of safe guard...
         }
+        return {};
     }
 };
 
