@@ -28,12 +28,10 @@ public:
     IO::Port port_b;
 
     Core(
-        const IO::Sync::Master& sync_master,
         const PD_out& port_out_a, const PD_out& port_out_b_,
         IO::Int_hub& int_hub_, IO::Int_hub::Src int_src_, u8 TOD_freq = 50)
       :
         port_a(port_out_a), port_b(port_out_b_),
-        sync(sync_master),
         port_out_b(port_out_b_),
         int_ctrl(int_hub_, int_src_),
         timer_b(int_ctrl, sig_null, cnt, inmode_mask_b, Int_ctrl::Int_src::tb, timer_pb_out, tb_pb_bit),
@@ -67,8 +65,9 @@ public:
     }
 
     void r(const u8& ri, u8& data) {
-        //std::cout << "CIA-" << (int)id << ": r " << (int)ri << "\n"; //getchar();
-        tick();
+        _tick();
+        sync.tick();
+
         switch (ri) {
             case pra:      data = port_a.r_pd();    return;
             case prb:      data = r_prb();          return;
@@ -117,9 +116,18 @@ public:
         }
     }
 
-    void tick() {
-        if (sync.tick()) return;
+    void tick(const u64& system_cycle) { if (!sync.ticked(system_cycle)) _tick(); }
 
+    void set_cnt(bool high) { // TODO (sdr...)
+        if (high && !cnt) {
+            timer_a.tick_cnt();
+            timer_b.tick_cnt();
+        }
+        cnt = high;
+    }
+
+private:
+    void _tick() {
         int_ctrl.tick();
 
         timer_a.tick_phi2();
@@ -132,16 +140,7 @@ public:
         }
     }
 
-    void set_cnt(bool high) { // TODO (sdr...)
-        if (high && !cnt) {
-            timer_a.tick_cnt();
-            timer_b.tick_cnt();
-        }
-        cnt = high;
-    }
-
-private:
-    IO::Sync::Slave sync;
+    IO::Sync::Cycle sync;
 
     const Sig sig_null = [](){};
 

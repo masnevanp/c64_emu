@@ -42,7 +42,7 @@ public:
         re_sid.write(ri, data);
     }
 
-    reSID_Wrapper(const u64& cycle_) : cycle(cycle_) {}
+    reSID_Wrapper(const u64& system_cycle_) : system_cycle(system_cycle_) {}
 
 private:
     reSID::SID re_sid;
@@ -55,7 +55,7 @@ private:
     i16* buf_ptr = buf;
 
     u64 last_tick_cycle = 0;
-    const u64& cycle;
+    const u64& system_cycle;
 
     Host::Audio_out audio_out;
 
@@ -67,9 +67,9 @@ private:
     };
 
     void tick() {
-        int n = cycle - last_tick_cycle;
+        int n = system_cycle - last_tick_cycle;
         if (n) {
-            last_tick_cycle = cycle;
+            last_tick_cycle = system_cycle;
             // there is always enough space in the buffer (hence the '0xffff')
             buf_ptr += re_sid.clock(n, buf_ptr, 0xffff);
         }

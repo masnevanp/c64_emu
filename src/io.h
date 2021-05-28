@@ -9,7 +9,7 @@ namespace IO {
 
 
 namespace Sync {
-    class Master {
+    /*class Master {
     public:
         void tick() { sync_ref = !sync_ref; }
     private:
@@ -28,6 +28,19 @@ namespace Sync {
     private:
         const bool& sync_ref;
         bool sync_s;
+    };*/
+
+    class Cycle {
+    public:
+        void tick() { ++cycle; }
+        bool ticked(const u64& system_cycle) {
+            if (cycle == system_cycle) return true;
+            tick();
+            return false;
+        }
+
+    private:
+        u64 cycle = 0;
     };
 }
 

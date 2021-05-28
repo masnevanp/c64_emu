@@ -397,8 +397,8 @@ private:
 class C64 {
 public:
     C64(const ROM& rom) :
-        cia1(sync_master, cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1),
-        cia2(sync_master, cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
+        cia1(cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1),
+        cia2(cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
         sid(s.vic.cycle),
         col_ram(s.color_ram),
         vic(s.vic, s.ram, col_ram, rom.charr, rdy_low, vic_out),
@@ -452,14 +452,13 @@ public:
         vic_out.init_sync();
 
         for (do_run = true; do_run;) {
-            sync_master.tick();
             vic.tick();
             if (!rdy_low || cpu.mrw() == NMOS6502::MC::RW::w) {
                 sys_banker.access(cpu.mar(), cpu.mdr(), cpu.mrw());
                 cpu.tick();
             }
-            cia1.tick();
-            cia2.tick();
+            cia1.tick(s.vic.cycle);
+            cia2.tick(s.vic.cycle);
             int_hub.tick();
         }
     }
@@ -481,8 +480,6 @@ private:
 
     Host::Video_out vid_out;
     VIC_out vic_out;
-
-    IO::Sync::Master sync_master;
 
     IO::Int_hub int_hub;
 
