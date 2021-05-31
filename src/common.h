@@ -28,6 +28,12 @@ template<typename T1, typename T2>
 using Sig2 = std::function<void (T1, T2)>;
 
 
+enum Color : u8 {
+    black, white, red, cyan, purple, green, blue, yellow,
+    orange, brown, light_red, gray_1, gray_2, light_green, light_blue, gray_3
+};
+
+
 namespace Key_code {
     enum Group { keyboard, keyboard_ext, joystick, system };
 

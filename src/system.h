@@ -347,7 +347,7 @@ struct State {
 
 class Menu {
 public:
-    static constexpr u8 col[2] = {11, 13}; // bg, fg
+    static constexpr u8 col[2] = {Color::gray_1, Color::light_green}; // bg, fg
 
     Menu(std::initializer_list<std::pair<std::string, std::function<void ()>>> imm_actions_,
         std::initializer_list<std::pair<std::string, std::function<void ()>>> actions_,
