@@ -7,17 +7,16 @@
 #include "dbg.h"
 #include "system.h"
 #include "file_utils.h"
-#include "iec.h"
-#include "iec_devs.h"
-#include "tape.h"
+#include "iec_virtual.h"
+#include "tape_virtual.h"
 #include "test.h"
 
 
 
 // Halting instuctions are used as traps
 enum Trap_OPC {
-    IEC_routine = 0x02,
-    tape_routine = 0x12,
+    IEC_virtual_routine = 0x02,
+    tape_virtual_routine = 0x12,
 };
 
 
@@ -36,16 +35,16 @@ void run_c64() {
 
     auto load_file = Loader("data/prg");
 
-    IEC::Virtual::Controller iec_ctrl;
-    Volatile_disk vol_disk;
-    Dummy_device dd;
-    Host_drive hd(load_file);
+    IEC_virtual::Controller iec_ctrl;
+    IEC_virtual::Volatile_disk vol_disk;
+    IEC_virtual::Dummy_device dd;
+    IEC_virtual::Host_drive hd(load_file);
     iec_ctrl.attach(vol_disk, 10);
     iec_ctrl.attach(dd, 30);
     iec_ctrl.attach(hd, 8);
 
-    Tape::Virtual::install_kernal_traps(kernal, Trap_OPC::tape_routine);
-    IEC::Virtual::install_kernal_traps(kernal, Trap_OPC::IEC_routine);
+    Tape_virtual::install_kernal_traps(kernal, Trap_OPC::tape_virtual_routine);
+    IEC_virtual::install_kernal_traps(kernal, Trap_OPC::IEC_virtual_routine);
 
     System::ROM roms{basic, kernal, charr};
     System::C64 c64(roms);
@@ -54,11 +53,11 @@ void run_c64() {
         // TODO: verify that it is a kernal trap, e.g. 'banker.mapping(cpu.pc) == kernal' ?
         bool handled = false;
         switch (c64.cpu.ir) {
-            case Trap_OPC::IEC_routine:
-                handled = IEC::Virtual::on_trap(c64.cpu, c64.s.ram, iec_ctrl);
+            case Trap_OPC::IEC_virtual_routine:
+                handled = IEC_virtual::on_trap(c64.cpu, c64.s.ram, iec_ctrl);
                 break;
-            case Trap_OPC::tape_routine:
-                handled = Tape::Virtual::on_trap(c64.cpu, c64.s.ram, load_file);
+            case Trap_OPC::tape_virtual_routine:
+                handled = Tape_virtual::on_trap(c64.cpu, c64.s.ram, load_file);
                 break;
         }
 
