@@ -341,6 +341,8 @@ struct State {
     u8 ram[0x10000];
     u8 color_ram[Color_RAM::size] = {};
 
+    u16 rdy_low;
+
     VIC::State vic;
 };
 
@@ -401,7 +403,7 @@ public:
         cia2(cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
         sid(s.vic.cycle),
         col_ram(s.color_ram),
-        vic(s.vic, s.ram, col_ram, rom.charr, rdy_low, vic_out),
+        vic(s.vic, s.ram, col_ram, rom.charr, s.rdy_low, vic_out),
         vid_out(),
         vic_out(int_hub, vid_out, host_input, sid, menu.overlay),
         int_hub(cpu),
@@ -444,7 +446,7 @@ public:
         cpu.reset_cold();
         int_hub.reset();
 
-        rdy_low = false;
+        s.rdy_low = false;
     }
 
     void run() {
@@ -453,7 +455,7 @@ public:
 
         for (do_run = true; do_run;) {
             vic.tick();
-            if (!rdy_low || cpu.mrw() == NMOS6502::MC::RW::w) {
+            if (!s.rdy_low || cpu.mrw() == NMOS6502::MC::RW::w) {
                 sys_banker.access(cpu.mar(), cpu.mdr(), cpu.mrw());
                 cpu.tick();
             }
@@ -489,7 +491,6 @@ private:
     Banker sys_banker;
 
     bool do_run;
-    u16 rdy_low;
 
     Host::Input host_input;
 
