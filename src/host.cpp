@@ -50,7 +50,7 @@ u8 Input::KC_LU_TBL[] = {
     ke::s_lck, kb::f1,    ke::f2,    kb::f3,    ke::f4,    kb::f5,    ke::f6,     kb::f7,
     ke::f8,    sy::rst_c, sy::swp_j, sy::v_fsc, sy::menu_tgl,sy::nop, sy::nop, sy::rstre,
     // 90..9f
-    sy::nop,   kb::home,  sy::menu_up, sy::nop, sy::menu_ent, sy::menu_down, kb::crs_r, ke::crs_l,
+    sy::rot_dsk,kb::home, sy::menu_up, sy::nop, sy::menu_ent, sy::menu_down, kb::crs_r, ke::crs_l,
     kb::crs_d, ke::crs_u, sy::nop,   J1|js::ju, kb::mul,   kb::minus, kb::plus,   kb::ret,
     // a0..af
     J2|js::jl, J2|js::jd, J2|js::jr, J1|js::jb, J2|js::ju, sy::nop,   J1|js::jl,  J1|js::jd,
@@ -89,6 +89,145 @@ const u8 Input::SC_LU_TBL[] = {
     /* SDL_Scancode 2e..35 --> Key_code */
     kb::minus, kb::at,    kb::ar_up, sy::nop,   sy::nop,   kb::colon, kb::s_col, kb::pound,
 };
+
+
+Input::Input(Handlers& handlers_)
+    : handlers(handlers_), joy_handler{ &handlers_.joy1, &handlers_.joy2 }
+{
+    // find index of left/right shift
+    while (KC_LU_TBL[sh_l_idx] != Key_code::Keyboard::sh_l) ++sh_l_idx;
+    while (KC_LU_TBL[sh_r_idx] != Key_code::Keyboard::sh_r) ++sh_r_idx;
+
+    // TODO: allow selection (for now just the first two found are attached)
+    // TODO: joystick calibration/configuration...
+    int open_joys = 0;
+    for (int j = 0; j < SDL_NumJoysticks() && open_joys < 2; ++j) {
+        SDL_Joystick* sj = SDL_JoystickOpen(j);
+        if(!sj) SDL_Log("Unable to SDL_JoystickOpen: %s", SDL_GetError());
+        else {
+            sdl_joystick_id[open_joys] = SDL_JoystickInstanceID(sj);
+            sdl_joystick[open_joys++] = sj;
+        }
+    }
+    SDL_Log("%d joysticks attached", open_joys);
+}
+
+
+void Input::swap_joysticks() {
+    Sig_key* t = joy_handler[0];
+    joy_handler[0] = joy_handler[1];
+    joy_handler[1] = t;
+}
+
+
+u8 Input::translate_sdl_key() {
+    static const i32 MAX_KC             = SDLK_SLEEP;
+    static const i32 LAST_CHAR_KC       = SDLK_DELETE;
+    static const i32 FIRST_NON_CHAR_KC  = SDLK_CAPSLOCK;
+    static const i32 OFFSET_NON_CHAR_KC = FIRST_NON_CHAR_KC - (LAST_CHAR_KC + 1);
+    /*
+    std::cout << "\nkc: " << sdl_ev.key.keysym.sym << " ";
+    std::cout << "sc: " << sdl_ev.key.keysym.scancode << " ";
+    */
+    SDL_Keysym key_sym = sdl_ev.key.keysym;
+
+    if (key_sym.sym <= MAX_KC) {
+        // most mapped on keycode, some on scancode
+        if (key_sym.sym <= LAST_CHAR_KC)
+            return KC_LU_TBL[key_sym.sym];
+        else if (key_sym.sym >= FIRST_NON_CHAR_KC)
+            return KC_LU_TBL[key_sym.sym - OFFSET_NON_CHAR_KC];
+        else if (key_sym.scancode >= 0x2e && key_sym.scancode <= 0x35)
+            return SC_LU_TBL[key_sym.scancode - 0x2e];
+    }
+
+    return Key_code::System::nop;
+}
+
+
+void Input::output_key(u8 code, u8 down) {
+    auto group = code >> 6;
+    switch (group) {
+        case Key_code::Group::keyboard:
+            handlers.keyboard(code, down);
+            break;
+        case Key_code::Group::keyboard_ext: {
+            // NOTE: Currently 'ext' contains only 'auto shifted' type of keys.
+            //       This code might break if different type of keys get added.
+            if (code == Key_code::Keyboard_ext::s_lck) {
+                set_shift_lock();
+            } else {
+                static const u8 KC_OFFSET
+                    = Key_code::Keyboard_ext::crs_l - Key_code::Keyboard::crs_r;
+                // 6 of these are actually used (and probably there will not be more)
+                static const u8 BIT[] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
+
+                if (down) {
+                    if (sh_r_down == 0x00) {
+                        // first 'auto shifted' key held down
+                        //   --> set 'left shift' key down & disable the 'real' one
+                        handlers.keyboard(Key_code::Keyboard::sh_r, true);
+                        disable_sh_r();
+                    }
+                    sh_r_down |= BIT[code & 0x7]; // keep track of key presses
+                } else {
+                    sh_r_down &= (~BIT[code & 0x7]);
+                    if (sh_r_down == 0x00) {
+                        // last 'auto shifted' key released
+                        //   --> set 'left shift' key up & enable the 'real' one
+                        handlers.keyboard(Key_code::Keyboard::sh_r, false);
+                        enable_sh_r();
+                    }
+                }
+
+                handlers.keyboard(code - KC_OFFSET, down); // send the corresponding 'real' code
+            }
+
+            break;
+        }
+        case Key_code::Group::joystick: {
+            auto id = code & JOY_ID_BIT ? 1 : 0;
+            (*joy_handler[id])(code & 0x7, down);
+            break;
+        }
+        case Key_code::Group::system:
+            handlers.sys(code, down);
+            break;
+    }
+}
+
+
+void Input::handle_joy_axis() {
+    /*  SDL Wiki: "On most modern joysticks the X axis is usually represented by axis 0
+    and the Y axis by axis 1. The value returned by SDL_JoystickGetAxis()
+    is a signed integer (-32768 to 32767) representing the current position
+    of the axis. It may be necessary to impose certain tolerances on these
+    values to account for jitter. */ // ==> TODO (config/calib)
+
+    static const int X_AXIS = 0;
+
+    SDL_JoyAxisEvent& joy_ev = sdl_ev.jaxis;
+    Sig_key& output = get_joy_output(joy_ev.which);
+
+    using Key_code::Joystick;
+
+    if (joy_ev.axis == X_AXIS) {
+        if (joy_ev.value < 0) output(Joystick::jl, true);
+        else if (joy_ev.value > 0) output(Joystick::jr, true);
+        else {
+            output(Joystick::jl, false);
+            output(Joystick::jr, false);
+        }
+    } else {
+        if (joy_ev.value < 0) output(Joystick::ju, true);
+        else if (joy_ev.value > 0) output(Joystick::jd, true);
+        else {
+            output(Joystick::ju, false);
+            output(Joystick::jd, false);
+        }
+    }
+}
+
 
 
 Video_out::SDL_frame::SDL_frame(int max_w_, int max_h_, SDL_TextureAccess ta_, SDL_BlendMode bm_)

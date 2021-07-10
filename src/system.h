@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <vector>
+#include <filesystem>
 #include "common.h"
 #include "utils.h"
 #include "dbg.h"
@@ -12,8 +13,10 @@
 #include "sid.h"
 #include "cia.h"
 #include "io.h"
+#include "c1541.h"
 #include "host.h"
 #include "menu.h"
+#include "files.h"
 
 
 
@@ -31,11 +34,14 @@ using Color_RAM = VIC_II::Color_RAM;
 // sync.freq. in raster lines (must divide into total line count 312)
 static const int SYNC_FREQ = 52;  // ==> ~3.3 ms
 
+static const int MENU_Y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 3;
+
 
 struct ROM {
     const u8* basic;
     const u8* kernal;
     const u8* charr;
+    const u8* c1541;
 };
 
 
@@ -235,79 +241,71 @@ private:
 };
 
 
-class VIC_out {
+struct VIC_out_overlay {
+    // static constexpr u8 transparent = 0xff;
+
+    const u16 x; const u16 y; const u16 w; const u16 h;
+    bool visible = false;
+
+    u8* pixels;
+
+    VIC_out_overlay(u16 x_, u16 y_, u16 w_, u16 h_) : x(x_), y(y_), w(w_), h(h_), pixels(new u8[w * h]) {}
+    ~VIC_out_overlay() { delete[] pixels; }
+
+    void clear(u8 col) { for (int p = 0; p < w * h; ++p) pixels[p] = col; }
+};
+
+using Overlay = VIC_out_overlay;
+
+
+class C1541_status_panel {
 public:
-    struct Overlay {
-        const u16 x; const u16 y;
-        const u16 w; const u16 h;
+    static constexpr Color col_bg = Color::black;
 
-        bool visible = false;
+    C1541_status_panel(const C1541::Disk_ctrl::Status& status_, const u8* charrom_)
+        : status(status_), charrom(charrom_) { overlay.clear(col_bg); }
 
-        u8* pixels;
+    void update() {
+        if (overlay.visible) draw();
+        overlay.visible = status.head.active();
+    }
 
-        Overlay(u16 x_, u16 y_, u16 w_, u16 h_) : x(x_), y(y_), w(w_), h(h_), pixels(new u8[w * h]) {}
-        ~Overlay() { delete[] pixels; }
+private:
+    friend class VIC_out;
 
-        void clear(u8 col) { for (int p = 0; p < w * h; ++p) pixels[p] = col; }
-        // static constexpr u8 transparent = 0xff;
+    const C1541::Disk_ctrl::Status& status;
+    const u8* charrom;
+
+    Overlay overlay{
+        VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 4 * 8 - 2, MENU_Y + 5,
+        4 * 8, (1 * 8) + 1
     };
 
+    void draw();
+};
+
+
+class VIC_out {
+public:
     VIC_out(
         IO::Int_hub& int_hub_, Host::Video_out& vid_out_, Host::Input& host_input_,
-        TheSID& sid_, Overlay& overlay_
+        TheSID& sid_, Overlay& menu_overlay_, C1541_status_panel& c1541_status_
     ) :
         int_hub(int_hub_), vid_out(vid_out_), host_input(host_input_),
-        sid(sid_), overlay(overlay_) { }
+        sid(sid_), menu_overlay(menu_overlay_), c1541_status(c1541_status_) { }
 
     void set_irq() { int_hub.set(IO::Int_hub::Src::vic); }
     void clr_irq() { int_hub.clr(IO::Int_hub::Src::vic); }
 
+    _Stopwatch watch;
     void init_sync() { // call if system has been 'paused'
         vid_out.flip();
         sid.flush();
-        clock.reset();
+        frame_timer.reset();
+        watch.start();
     }
 
-    void frame(u8* frame) {
-        host_input.poll();
-
-        frame_moment += VIC_II::FRAME_MS;
-        auto sync_moment = std::round(frame_moment);
-        bool reset = sync_moment == 6318000; // since '316687 * FRAME_MS = 6318000'
-        frame_moment = reset ? 0 : frame_moment;
-
-        auto output_frame = [&]() {
-            if (overlay.visible) {
-                const u8* src = overlay.pixels;
-                for (int y = 0; y < overlay.h; ++y) {
-                    u8* tgt = &frame[((overlay.y + y) * VIC_II::FRAME_WIDTH) + overlay.x];
-                    for (int x = 0; x < overlay.w; ++x, ++src) {
-                        const auto col = *(src);
-                        /*if (col != Overlay::transparent)*/ tgt[x] = col;
-                    }
-                }
-            }
-            vid_out.put(frame);
-        };
-
-        int diff_ms;
-        if (vid_out.v_synced()) {
-            if ((frame_skip & 0x3) == 0x0) output_frame();
-            diff_ms = clock.diff(sync_moment, reset);
-        } else {
-            diff_ms = clock.sync(sync_moment, reset);
-            if ((frame_skip & 0x3) == 0x0) output_frame();
-        }
-
-        if (diff_ms <= -VIC_II::FRAME_MS) {
-            ++frame_skip;
-        } else if (frame_skip) {
-            frame_skip = 0;
-            sid.flush();
-        }
-
-        sid.output();
-    }
+    void frame(u8* frame);
 
     void sync(u16 line) { // NOTE: not called on the 'frame done' line
         if (line % SYNC_FREQ == 0) {
@@ -315,7 +313,9 @@ public:
                 host_input.poll();
                 auto frame_progress = double(line) / double(VIC_II::FRAME_LINE_COUNT);
                 auto sync_moment = frame_moment + (frame_progress * VIC_II::FRAME_MS);
-                clock.sync(std::round(sync_moment));
+                watch.stop();
+                frame_timer.sync(std::round(sync_moment));
+                watch.start();
             }
             sid.output();
         }
@@ -329,21 +329,12 @@ private:
 
     TheSID& sid;
 
-    Overlay& overlay;
+    Overlay& menu_overlay;
+    C1541_status_panel& c1541_status;
 
-    Clock clock;
+    Timer frame_timer;
     double frame_moment = 0;
     int frame_skip = 0;
-};
-
-
-struct State {
-    u8 ram[0x10000];
-    u8 color_ram[Color_RAM::size] = {};
-
-    u16 rdy_low;
-
-    VIC::State vic;
 };
 
 
@@ -356,22 +347,7 @@ public:
         std::initializer_list<::Menu::Group> subs_,
         const u8* charrom);
 
-    void handle_key(u8 code) {
-        using kc = Key_code::System;
-
-        if (overlay.visible) {
-            switch (code) {
-                case kc::menu_ent:  ctrl.key_enter(); break;
-                case kc::menu_up:   ctrl.key_up();    break;
-                case kc::menu_down: ctrl.key_down();  break;
-            }
-        } else {
-            overlay.visible = true;
-        }
-
-        update();
-    }
-
+    void handle_key(u8 code);
     void toggle_visibility();
 
 private:
@@ -387,8 +363,8 @@ private:
 
     const u8* charset;
 
-    VIC_out::Overlay overlay{
-        VIC_II::BORDER_SZ_V, (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 3,
+    Overlay overlay{
+        VIC_II::BORDER_SZ_V, MENU_Y,
         40 * 8, 2 * 8
     };
 
@@ -396,16 +372,36 @@ private:
 };
 
 
+struct State {
+    u8 ram[0x10000];
+    u8 color_ram[Color_RAM::size] = {};
+
+    u16 rdy_low;
+
+    VIC::State vic;
+};
+
+
 class C64 {
 public:
+    enum Trap_OPC { // Halting instuctions are used as traps
+        //IEC_virtual_routine = 0x02,
+        tape_routine = 0x12,
+    };
+    enum Trap_ID {
+        load = 0x01, save = 0x02,
+    };
+
     C64(const ROM& rom) :
         cia1(cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1),
         cia2(cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
         sid(s.vic.cycle),
         col_ram(s.color_ram),
         vic(s.vic, s.ram, col_ram, rom.charr, s.rdy_low, vic_out),
+        c1541(cia2.port_a.ext_in, rom.c1541/*, run_cfg_change*/),
+        c1541_status_panel{c1541.dc.status, rom.charr},
         vid_out(),
-        vic_out(int_hub, vid_out, host_input, sid, menu.overlay),
+        vic_out(int_hub, vid_out, host_input, sid, menu.overlay, c1541_status_panel),
         int_hub(cpu),
         kb_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in),
         io_space(cia1, cia2, sid, vic, col_ram),
@@ -418,15 +414,36 @@ public:
                 {"SWAP JOYS !",  [&](){ host_input.swap_joysticks(); } },
             },
             {
-                {"SHUTDOWN ?", [&](){ do_run = false; } },
+                {"SHUTDOWN ?",   [&](){ signal_shutdown(); } },
             },
             {
                 vid_out.settings_menu(),
                 sid.settings_menu(),
+                c1541.menu(),
             },
             rom.charr
         )
-    {}
+    {
+        // intercept load/save for tape device
+        install_tape_kernal_traps(const_cast<u8*>(rom.kernal), Trap_OPC::tape_routine);
+
+        // intercepts kernal calls: untlk, talk, unlsn, listen, tksa, second, acptr, ciout
+        // (fast but very low compatibility)
+        /*
+        IEC_virtual::Controller iec_ctrl;
+        IEC_virtual::Volatile_disk vol_disk;
+        IEC_virtual::Dummy_device dd;
+        IEC_virtual::Host_drive hd(load_file);
+        iec_ctrl.attach(vol_disk, 10);
+        iec_ctrl.attach(dd, 30);
+        iec_ctrl.attach(hd, 8);
+        IEC_virtual::install_kernal_traps(kernal, Trap_OPC::IEC_virtual_routine);
+        */
+
+        loader = Files::Loader("data/prg", img_consumer); // TODO: init_dir configurable (program arg?)
+
+        cpu.sig_halt = cpu_trap;
+    }
 
     void reset_warm() {
         cia1.reset_warm(); // need to reset for correct irq handling
@@ -445,6 +462,7 @@ public:
         sys_banker.reset();
         cpu.reset_cold();
         int_hub.reset();
+        c1541.reset();
 
         s.rdy_low = false;
     }
@@ -453,16 +471,29 @@ public:
         reset_cold();
         vic_out.init_sync();
 
-        for (do_run = true; do_run;) {
+        for (shutdown = false; !shutdown;) {
             vic.tick();
-            if (!s.rdy_low || cpu.mrw() == NMOS6502::MC::RW::w) {
-                sys_banker.access(cpu.mar(), cpu.mdr(), cpu.mrw());
+
+            const auto rw = cpu.mrw();
+            if (!s.rdy_low || rw == NMOS6502::MC::RW::w) {
+                // 'Slip in' the C1541 cycle
+                if (rw == NMOS6502::MC::RW::w) c1541.tick();
+                sys_banker.access(cpu.mar(), cpu.mdr(), rw);
                 cpu.tick();
+                if (rw == NMOS6502::MC::RW::r) c1541.tick();
+            } else {
+                c1541.tick();
             }
+
             cia1.tick(s.vic.cycle);
             cia2.tick(s.vic.cycle);
             int_hub.tick();
+            if (s.vic.cycle % C1541::extra_cycle_freq == 0) c1541.tick();
         }
+
+        /*for (shutdown = false; !shutdown;) {
+            keep_running();
+        }*/
     }
 
     State s;
@@ -477,8 +508,12 @@ public:
     Color_RAM col_ram;
     VIC vic;
 
+    C1541::System c1541;
+
 private:
     static const u8 LP_BIT = 0x10;
+
+    C1541_status_panel c1541_status_panel;
 
     Host::Video_out vid_out;
     VIC_out vic_out;
@@ -490,7 +525,10 @@ private:
     IO_space io_space;
     Banker sys_banker;
 
-    bool do_run;
+    // TODO: lump these (and future related things) together
+    //       (a simple 'Run_cfg' class that accepts requests to change the cfg (or to quit..))
+    bool shutdown;
+    // bool run_cfg_change;
 
     Host::Input host_input;
 
@@ -510,7 +548,13 @@ private:
     };
     IO::Port::PD_out cia2_port_a_out {
         [this](u8 bits, u8 bit_vals) {
-            vic.set_va14_va15(((bit_vals & bits) | ~bits) & 0x3);
+            const u8 out = (bit_vals & bits) | ~bits;
+            vic.set_va14_va15(out & 0b11);
+            c1541.iec.set_cia2_pa_output_state(out);
+            /*if (c1541.idle) {
+                c1541.idle = false;
+                run_cfg_change = true;
+            }*/
         }
     };
     IO::Port::PD_out cia2_port_b_out {
@@ -534,11 +578,12 @@ private:
             }
 
             switch (code) {
-                case kc::quit:      do_run = false;               break;
+                case kc::quit:      signal_shutdown();            break;
                 case kc::rst_c:     reset_cold();                 break;
                 case kc::v_fsc:     vid_out.toggle_fullscr_win(); break;
                 case kc::swp_j:     host_input.swap_joysticks();  break;
                 case kc::menu_tgl:  menu.toggle_visibility();     break;
+                case kc::rot_dsk:   c1541.disk_carousel.rotate(); break;
                 case kc::menu_ent:
                 case kc::menu_up:
                 case kc::menu_down: menu.handle_key(code);        break;
@@ -561,10 +606,79 @@ private:
         }
     };
 
+    // TODO: verify that it is a valid kernal trap (e.g. 'banker.mapping(cpu.pc) == kernal')
+    NMOS6502::Sig cpu_trap {
+        [this]() {
+            bool proceed = true;
+
+            const auto trap_opc = cpu.ir;
+            switch (trap_opc) {
+                /*case Trap_OPC::IEC_virtual_routine:
+                    handled = IEC_virtual::on_trap(c64.cpu, c64.s.ram, iec_ctrl);
+                    break;*/
+                case Trap_OPC::tape_routine: {
+                    const auto routine_id = cpu.d;
+
+                    switch (routine_id) {
+                        case Trap_ID::load: do_load(); break;
+                        case Trap_ID::save: do_save(); break;
+                        default:
+                            proceed = false;
+                            std::cout << "\nUnknown tape routine: " << (int)routine_id;
+                            break;
+                    }
+                    break;
+                }
+                default:
+                    proceed = false;
+                    break;
+            }
+
+            if (proceed) {
+                ++cpu.mcp; // bump to recover from halt
+            } else {
+                std::cout << "\n****** CPU halted! ******\n";
+                Dbg::print_status(cpu, s.ram);
+            }
+        }
+    };
+
+    Files::consumer img_consumer {
+        [this](std::string name, Files::Type type, std::vector<u8>& data) {
+            // std::cout << "File: " << path << ' ' << (int)data.size() << std::endl;
+            C1541::Disk* new_disk = nullptr;
+
+            switch (type) {
+                case Files::Type::d64:
+                    new_disk = new C1541::D64_disk(Files::D64{data});
+                    break;
+                case Files::Type::g64:
+                    new_disk = new C1541::G64_disk(std::move(data));
+                    break;
+                default:
+                    return;
+            }
+
+            if (new_disk) {
+                // auto slot = s.ram[0xb9]; // secondary address
+                c1541.disk_carousel.insert(0, new_disk, name);
+            }
+        }
+    };
+
     Menu menu;
+    Files::loader loader;
 
     void init_ram();
 
+    //void keep_running();
+
+    void do_load();
+    void do_save();
+
+    void signal_shutdown() { /*run_cfg_change =*/ shutdown = true; }
+
+    static void install_tape_kernal_traps(u8* kernal, u8 trap_opc);
 };
 
 

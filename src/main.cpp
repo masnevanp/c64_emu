@@ -1,75 +1,43 @@
 #include <iostream>
-#include <string>
-#include <vector>
-
-#include "nmos6502/nmos6502.h"
 #include "utils.h"
 #include "dbg.h"
 #include "system.h"
-#include "file_utils.h"
-#include "iec_virtual.h"
-#include "tape_virtual.h"
 #include "test.h"
 
 
 
-// Halting instuctions are used as traps
-enum Trap_OPC {
-    IEC_virtual_routine = 0x02,
-    tape_virtual_routine = 0x12,
-};
+void test();
 
 
 void run_c64() {
     u8 basic[0x2000];
     u8 kernal[0x2000];
     u8 charr[0x1000];
+    u8 c1541[0x4000];
 
     auto read_roms = [&]() -> bool {
         return (read_file("data/c64_roms/basic.rom", basic) > 0)
                     && (read_file("data/c64_roms/kernal.rom", kernal) > 0)
-                    && (read_file("data/c64_roms/char.rom", charr) > 0);
+                    && (read_file("data/c64_roms/char.rom", charr) > 0)
+                    && (read_file("data/c1541_roms/c1541.rom", c1541) > 0);
     };
 
     if (!read_roms()) return;
 
-    auto load_file = Loader("data/prg");
-
-    IEC_virtual::Controller iec_ctrl;
-    IEC_virtual::Volatile_disk vol_disk;
-    IEC_virtual::Dummy_device dd;
-    IEC_virtual::Host_drive hd(load_file);
-    iec_ctrl.attach(vol_disk, 10);
-    iec_ctrl.attach(dd, 30);
-    iec_ctrl.attach(hd, 8);
-
-    Tape_virtual::install_kernal_traps(kernal, Trap_OPC::tape_virtual_routine);
-    IEC_virtual::install_kernal_traps(kernal, Trap_OPC::IEC_virtual_routine);
-
-    System::ROM roms{basic, kernal, charr};
+    System::ROM roms{basic, kernal, charr, c1541};
     System::C64 c64(roms);
 
-    c64.cpu.sig_halt = [&]() {
-        // TODO: verify that it is a kernal trap, e.g. 'banker.mapping(cpu.pc) == kernal' ?
-        bool handled = false;
-        switch (c64.cpu.ir) {
-            case Trap_OPC::IEC_virtual_routine:
-                handled = IEC_virtual::on_trap(c64.cpu, c64.s.ram, iec_ctrl);
-                break;
-            case Trap_OPC::tape_virtual_routine:
-                handled = Tape_virtual::on_trap(c64.cpu, c64.s.ram, load_file);
-                break;
-        }
-
-        if (handled) {
-            ++c64.cpu.mcp; // halted --> bump forward
-        } else {
-            std::cout << "\n****** CPU halted! ******\n";
-            Dbg::print_status(c64.cpu, c64.s.ram);
-        }
-    };
-
     c64.run();
+}
+
+
+int main(int argv, char** args) {
+    UNUSED(argv); UNUSED(args);
+    //Test::run_6502_func_test();
+    //Test::run_test_suite();
+    run_c64();
+    //test();
+    return 0;
 }
 
 
@@ -88,14 +56,4 @@ void test()
     Dbg::System sys{mem};
     sys.cpu.set_irq();
     step(sys);
-}
-
-
-int main(int argv, char** args) {
-    UNUSED(argv); UNUSED(args);
-    //Test::run_6502_func_test();
-    //Test::run_test_suite();
-    run_c64();
-    //test();
-    return 0;
 }

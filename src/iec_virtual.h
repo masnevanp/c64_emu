@@ -8,7 +8,7 @@
 #include "nmos6502/nmos6502.h"
 #include "system.h"
 #include "utils.h"
-#include "file_utils.h"
+#include "files.h"
 
 
 
@@ -111,7 +111,7 @@ private:
 
 class Host_drive : public Device  {
 public:
-    Host_drive(loader& load_file_) : load_file(load_file_) {}
+    Host_drive(Files::loader& load_file_) : load_file(load_file_) {}
 
     virtual IO_ST talk(u8 sa) {
         cur_ch = &ch[sa & ch_mask];
@@ -149,7 +149,7 @@ private:
             // now waiting to receive the filename before opening...
         }
 
-        void check_opening(loader& load_file) {
+        void check_opening(Files::loader& load_file) {
             if (status == Status::opening && name.size() > 0) {
                 if (mode == Mode::r) {
                     std::string name_str(name.begin(), name.end());
@@ -197,7 +197,7 @@ private:
     Ch ch[16];
     Ch* cur_ch = &ch[0];
 
-    loader& load_file;
+    Files::loader& load_file;
 };
 
 

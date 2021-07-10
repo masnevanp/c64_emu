@@ -4,6 +4,7 @@ obj
 *.exe
 _local
 data/c64_roms/*.rom
+data/c1541_roms/*.rom
 data/prg/*
 *.bak
 .vscode

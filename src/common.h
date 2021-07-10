@@ -19,6 +19,17 @@ static constexpr double CPU_FREQ = FRAME_RATE * (312.0 * 63.0);
 static constexpr double COLOR_CLOCK_FREQ = 18.0 * CPU_FREQ;
 
 
+struct U16 { // TODO: rename, e.g. U16_le (little-endian u16)
+    u8 b0; u8 b1;
+    operator u16() const { return (b1 << 8) | b0; }
+};
+
+struct U32 {
+    u8 b0; u8 b1; u8 b2; u8 b3;
+    operator u32() const { return (b3 << 24) | (b2 << 16) | (b1 << 8) | b0; }
+};
+
+
 using Sig = NMOS6502::Sig;
 
 template<typename T>
@@ -77,7 +88,7 @@ namespace Key_code {
 
     enum System : u8 {
         rstre = GS, quit, nop,
-        rst_c, swp_j, v_fsc, menu_tgl,
+        rst_c, swp_j, v_fsc, menu_tgl, rot_dsk,
         menu_ent, menu_up, menu_down,
     };
 
@@ -126,6 +137,30 @@ struct Choice {
     Choice(std::initializer_list<T> choices_, std::initializer_list<std::string> choices_str_)
         : Choice(choices_, choices_str_, *choices_.begin()) {}
 };
+
+
+namespace C1541 {
+
+enum : u8 { first_sector = 0, first_track = 1, last_track = 35, dir_track = 18 };
+
+constexpr int sector_count(u8 track_n) {
+    constexpr int cnt[35] = {
+        21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21,
+        21, 19, 19, 19, 19, 19, 19, 19, 18, 18, 18, 18, 18, 18, 17, 17,
+        17, 17, 17
+    };
+    return (track_n < first_track || track_n > last_track) ? 0 : cnt[track_n - 1];
+}
+
+constexpr int speed_zone(u8 track_n) {
+    switch (sector_count(track_n)) {
+        case 17: return 0;    case 18: return 1;
+        case 19: return 2;    case 21: return 3;
+        default: return -1;
+    }
+}
+
+} // namespace C1541
 
 
 #endif // COMMON_H_INCLUDED

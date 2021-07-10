@@ -25,7 +25,7 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     cpu.p = 0x00;
 
     int op_cnt = 0;
-    Clock c;
+    Timer t;
     for (int prev_pc = cpu.pc, psc = 0, step = false, output = false; psc < 15; ++psc) {
         // BEWARE
         if (cpu.mcp->mopc >= MC::MOPC::dispatch_cli && cpu.mcp->mopc <= MC::MOPC::dispatch_brk) {
@@ -49,7 +49,7 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
         else mem[cpu.mar()] = cpu.mdr();
         cpu.tick();
     }
-    int te = c.elapsed();
+    int te = t.elapsed();
 
     std::cout << "stopped on: " << Dbg::print_u16(cpu.pc) << "\n";
     Dbg::print_status(cpu, mem);
@@ -133,7 +133,7 @@ void run_test_suite()
     //load("branchwrap");
     //load("brkn");
 
-    Clock c;
+    Timer t;
     for (;;) {
         //if (sys.cpu.halted()) { std::cout << "\n[HALTED]"; goto exit; }
         if (sys.tn == 0) {
@@ -170,7 +170,7 @@ void run_test_suite()
     }
 
 exit:
-    int te = c.elapsed();
+    int te = t.elapsed();
     //std::cout << "=========================================================\n";
     std::cout << "\ncycle cnt: " << std::dec << sys.cn << ", ";
     std::cout << " time(c1): " << te << ", ";

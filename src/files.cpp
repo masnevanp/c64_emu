@@ -1,10 +1,8 @@
 
-#include "file_utils.h"
-#include <filesystem>
+#include "files.h"
 #include <regex>
 #include <iostream>
 #include <algorithm>
-#include <numeric>
 #include <iterator>
 #include "utils.h"
 
@@ -13,8 +11,11 @@
 namespace fs = std::filesystem;
 
 
+using D64 = Files::D64;
+using load_result = Files::load_result;
+
+
 namespace petscii { // TOREDO...
-    static constexpr char rvs_on     = 0x12;
     static constexpr char slash      = 0x2f;
     static constexpr char arrow_up   = 0x5e;
     static constexpr char arrow_left = 0x5f;
@@ -22,24 +23,30 @@ namespace petscii { // TOREDO...
     static constexpr char underscore = (char)0xa4;
 }
 
+namespace ctrl_ch { // TOREDO...
+    static constexpr char rvs_on     = 0x12;
+    static constexpr char del        = 0x14;
+}
 
-static const char* win_drive_list_entry = "?:/";
-static const char* eject_entry = "EJECT:";
-static const char* eject_entry_short = ":";
 
-static const int MAX_HD_FILE_SIZE = 0xfffff; // TODO: check
-static const int MAX_C64_BIN_SIZE = 0xffff; // TODO: check
-static const int D64_SIZE = 174848;
-static const int D64_WITH_ERROR_INFO_SIZE = 174848 + 683;
-static const int T64_MIN_SIZE = 0x60;
+static const char* win_drive_list_filename = "?:/";
+static const char* unmount_filename = ":";
+
+static const int HD_FILE_SIZE_MAX = 0x7ffff; // TODO: check
+static const int C64_BIN_SIZE_MAX = 0xffff; // TODO: check
+static const int T64_SIZE_MIN = 0x60;
+static const int G64_SIZE_MIN = 0xffff; /// TODO: a more realistic minimum (this is far below...)
 
 
 static const auto& NOT_FOUND = std::nullopt;
 
 
-static constexpr u8 dir_list_first_line[] = { // 0 PRINT"<clr>":LIST1-
+static constexpr u8 dir_list_first_line[] = { // 0 PRINT"<clr>":LIST1-:REM<del><del>...<del>
     0x99, 0x22, 0x93, 0x22, 0x3a,  // 'print' token, '"', '<clr>', '"', ':'
-    0x9b, 0x31, 0xab, 0x00 // 'list' token, '1', '-', eol
+    0x9b, 0x31, 0xab, 0x3a, 0x8f, // 'list' token, '1', '-', ':', 'rem' token
+    0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, // <del>, <del>,...
+    0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, 0x14, // ...<del>, <del>
+    0x14, 0x00 // <del>, eol
 };
 
 static constexpr u8 t64_signatures[][16] = {
@@ -49,19 +56,41 @@ static constexpr u8 t64_signatures[][16] = {
 };
 
 
+Files::Type file_type(const std::vector<u8>& file) {
+    auto is_t64 = [&]() {
+        if (std::size(file) >= T64_SIZE_MIN) {
+            for (const auto& sig : t64_signatures) {
+                if (std::equal(std::begin(sig), std::end(sig), std::begin(file)))
+                    return true;
+            }
+        }
+        return false;
+    };
+
+    auto is_d64 = [&]() {
+        return std::size(file) == Files::D64::size
+                    || std::size(file) == Files::D64::size_with_error_info;
+    };
+
+    auto is_g64 = [&]() {
+        return std::size(file) >= G64_SIZE_MIN
+                    && std::equal(std::begin(Files::g64_signature), std::end(Files::g64_signature),
+                                        std::begin(file));
+    };
+
+    auto is_raw = [&]() { return std::size(file) > 0 && std::size(file) <= C64_BIN_SIZE_MAX; };
+
+    if (is_t64()) return Files::Type::t64;
+    if (is_d64()) return Files::Type::d64;
+    if (is_g64()) return Files::Type::g64;
+    if (is_raw()) return Files::Type::raw;
+
+    return Files::Type::unsupported;
+}
+
+
 using dir_listing = std::pair<std::vector<std::string>, std::vector<std::string>>;
 using dir_filter = std::optional<std::function<bool(const std::string&)>>;
-
-
-struct U16 {
-    u8 b0; u8 b1;
-    operator u16() const { return (b1 << 8) | b0; }
-};
-
-struct U32 {
-    u8 b0; u8 b1; u8 b2; u8 b3;
-    operator u32() const { return (b3 << 24) | (b2 << 16) | (b1 << 8) | b0; }
-};
 
 
 std::string extract_string(const u8* from, char terminator = petscii::nbsp, int max_len = 16) {
@@ -123,16 +152,6 @@ dir_listing list_dir(const std::string& dir, const dir_filter& df = {}) {
 }
 
 
-bool is_t64(const std::vector<u8>& file) {
-    if (std::size(file) >= T64_MIN_SIZE) {
-        for (const auto& sig : t64_signatures) {
-            if (std::equal(std::begin(sig), std::end(sig), std::begin(file)))
-                return true;
-        }
-    }
-    return false;
-}
-
 
 class Basic_listing {
 public:
@@ -179,7 +198,7 @@ std::vector<u8> hd_dir_basic_listing(
     const std::vector<std::string>& files,
     bool drives_entry = false, bool root_entry = false, bool parent_entry = false)
 {
-    auto header = petscii::rvs_on + std::string(" $ ") + quoted(to_client(dir));
+    auto header = ctrl_ch::rvs_on + std::string(" $ ") + quoted(to_client(dir));
 
     Basic_listing bl{
         { 0x00, std::string((char*)dir_list_first_line) },
@@ -188,7 +207,7 @@ std::vector<u8> hd_dir_basic_listing(
 
     if (drives_entry) {
         static auto de = std::string(" ") + petscii::arrow_up + " "
-                            + quoted(win_drive_list_entry);
+                            + quoted(win_drive_list_filename);
         bl.append({ 0x02,  de });
     }
     if (root_entry) {
@@ -216,7 +235,7 @@ std::vector<u8> load_win_drives_list() {
         if (fs::is_directory(d)) drives.push_back(d);
     }
 
-    return hd_dir_basic_listing(win_drive_list_entry, drives, std::vector<std::string>());
+    return hd_dir_basic_listing(win_drive_list_filename, drives, std::vector<std::string>());
 }
 #endif
 
@@ -224,12 +243,18 @@ std::vector<u8> load_win_drives_list() {
 class _Loader {
 public:
 
-    _Loader(const std::string& init_dir) : context{init_dir} {}
+    _Loader(const std::string& init_dir, Files::consumer& img_consumer_)
+        : context{init_dir}, img_consumer(img_consumer_) {}
 
-    load_result operator()(const std::string& what) { return load(what); }
+    load_result operator()(const std::string& what, const u8 disk_img_ops) {
+        diops = disk_img_ops; // don't want to be passing it around everywhere...
+        return load(what);
+    }
 
 private:
     fs::path context;
+    Files::consumer& img_consumer;
+    u8 diops;
 
     load_result load(const std::string& what) {
         if (fs::is_directory(context)) return load_hd(what);
@@ -256,31 +281,59 @@ private:
     }
 
     load_result load_hd_file(const fs::path& path, const std::string& what) {
-        if (fs::file_size(path) > MAX_HD_FILE_SIZE) return NOT_FOUND;
+        if (fs::file_size(path) > HD_FILE_SIZE_MAX) return NOT_FOUND;
 
-        if (auto file = read_file(path.string())) {
-            if (is_t64(*file)) {
-                // context = path;
-                return load_t64(*file, what);
+        if (auto hd_file = read_file(path.string())) {
+            using Diop = Files::Disk_img_op;
+
+            const auto type = file_type(*hd_file);
+            load_result c64_file{NOT_FOUND};
+
+            auto is_already_mounted = [&]() { return context == path; };
+            auto mount = [&]() { context = path; };
+            auto fwd = [&]() { // might rip the contents (move from)}
+                img_consumer(path.filename().string(), type, *hd_file);
+            };
+
+            switch (type) {
+                case Files::Type::t64: c64_file = load_t64(*hd_file, what); break;
+                case Files::Type::d64:
+                    if (is_already_mounted()) {
+                        c64_file = load_d64(*hd_file, what);
+                    } else {
+                        c64_file = (diops & Diop::describe)
+                            ? load_d64(*hd_file, "$") // TODO: print directly to screen (if in direct mode)
+                            : std::vector<u8>(0); // empty file (i.e. op success, nothing loaded)
+
+                        if (diops & Diop::mount) mount();
+                        if (diops & Diop::fwd) fwd();
+                    }
+                    break;
+                case Files::Type::g64:
+                    // TODO: handle as d64 is handled
+                    if (diops & Diop::fwd) {
+                        fwd();
+                        c64_file = std::vector<u8>(0);
+                    }
+                    break;
+                case Files::Type::raw: c64_file = *hd_file; break;
+                case Files::Type::unsupported:
+                default:
+                    return NOT_FOUND;
             }
 
-            auto sz = std::size(*file);
-            if (sz == D64_SIZE || sz == D64_WITH_ERROR_INFO_SIZE) {
-                context = path;
-                return load_d64(*file, what);
-            }
-
-            if (sz <= MAX_C64_BIN_SIZE) return file;
+            return c64_file;
         }
 
         return NOT_FOUND;
     }
 
     load_result load_hd(const std::string& what);
-    load_result load_d64(std::vector<u8>& d64_data, const std::string& what);
-    load_result load_t64(std::vector<u8>& t64_data, const std::string& what);
+    load_result load_d64(const std::vector<u8>& d64_data, const std::string& what);
+    load_result load_g64(const std::vector<u8>& g64_data, const std::string& what);
+    load_result load_t64(const std::vector<u8>& t64_data, const std::string& what);
 
-    load_result eject() {
+    load_result unmount() {
         context = context.parent_path();
         return load("");
     }
@@ -294,7 +347,7 @@ load_result _Loader::load_hd(const std::string& what) {
         if (what.length() == 0 || what == "$") return load_hd_dir(cur_dir);
 
         #ifdef _WIN32
-        if (what == win_drive_list_entry) return load_win_drives_list();
+        if (what == win_drive_list_filename) return load_win_drives_list();
         #endif
 
         // if file/dir --> load it
@@ -338,128 +391,6 @@ load_result _Loader::load_hd(const std::string& what) {
 }
 
 
-struct D64 {
-    const std::vector<u8> data;
-
-    struct BL { u8 track; u8 sector; }; // block location
-
-    static constexpr u8 dir_track = 18;
-
-    static constexpr BL bam_block{dir_track, 0};
-    static constexpr BL dir_start{dir_track, 1};
-
-    struct Block_chain {
-        const D64& d64;
-        const u8* data;
-        Block_chain(const D64& d64_, const BL& start) : d64(d64_), data(d64.block(start)) {}
-        bool next() { if (data) data = d64.block(data[0], data[1]); return ok(); }
-        bool ok() const { return data != nullptr; }
-        bool last() const { return data[0] == 0x00; }
-    };
-
-    struct BAM {
-        struct Block_alloc {
-            u8 free_count;
-            u8 free1;
-            u8 free2;
-            u8 free3;
-        };
-
-        BL dir_bl;
-        u8 dos_version;
-        u8 pad1;
-        Block_alloc block_alloc[35];
-        u8 disk_name[16];
-        u8 pad2[2];
-        u8 disk_id[2];
-        u8 pad3;
-        u8 dos_type[2];
-        u8 pad4[89];
-
-        u16 blocks_free() const {
-            u16 total = std::accumulate(
-                std::begin(block_alloc), std::end(block_alloc), 0,
-                    [](u16 a, const Block_alloc& x) { return a + x.free_count; });
-            return total - block_alloc[dir_track - 1].free_count; // disregard bam/dir track
-        }
-    };
-
-    struct Dir_entry {
-        struct File_type {
-            u8 file_type;
-            enum Type   { del=0, seq, prg, usr, rel, bad, mask=0xf };
-            enum Status { lock = 0x40, close = 0x80 };
-            Type type() const {
-                const Type t = (Type)(file_type & Type::mask);
-                return t < Type::bad ? t : Type::bad;
-            }
-            bool locked() const { return file_type & Status::lock; }
-            bool closed() const { return file_type & Status::close; }
-        };
-
-        BL next_dir_block;
-        File_type file_type;
-        BL file_start;
-        u8 filename[16];
-        BL first_side_sector_block;
-        u8 record_length;
-        u8 unused[6];
-        U16 size;
-
-        bool file_exists() const { return file_type.file_type != 0x00; };
-    };
-
-    using dir_list = std::vector<const Dir_entry*>;
-
-    const u8* block(int abs_n) const {
-        return (abs_n < 0 || abs_n > 682) ? nullptr : &(data.data()[abs_n * 0x100]);
-    }
-
-    const u8* block(int track_n, int sector_n) const {
-        enum { first_sector = 0, first_track = 1, last_track = 35 };
-        static constexpr int sector_count[36] = {
-            0,  21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21,
-            21, 21, 19, 19, 19, 19, 19, 19, 19, 18, 18, 18, 18, 18, 18, 17,
-            17, 17, 17, 17
-        };
-        if (track_n < first_track || track_n > last_track) return nullptr;
-        if (sector_n < first_sector || sector_n >= sector_count[track_n]) return nullptr;
-        for (int t = 1; t < track_n; ++t) sector_n += sector_count[t];
-        return block(sector_n);
-    }
-    const u8* block(const BL& bl) const { return block(bl.track, bl.sector); }
-
-    Block_chain block_chain(const BL& start) const { return Block_chain(*this, start); }
-
-    const BAM& bam() const { return *((BAM*)block(bam_block)); }
-
-    dir_list dir() const {
-        dir_list d;
-        for (auto bc = block_chain(dir_start); bc.ok(); bc.next()) {
-            const Dir_entry* de = (Dir_entry*)bc.data;
-            for (int dei = 0; dei < 8; ++dei, ++de) { // 8 entries/sector
-                if (de->file_exists()) d.push_back(de);
-            }
-        }
-        return d;
-    }
-
-    std::vector<u8> read_file(const BL& start) {
-        std::vector<u8> file_data;
-        for (auto bc = block_chain(start); bc.ok(); bc.next()) {
-            if (bc.last()) {
-                auto end = &bc.data[bc.data[1] + 1];
-                std::copy(&bc.data[2], end, std::back_inserter(file_data));
-                return file_data;
-            }
-            std::copy(&bc.data[2], &bc.data[256], std::back_inserter(file_data));
-            if (file_data.size() >= data.size()) break; // some kind of safe guard...
-        }
-        return {};
-    }
-};
-
-
 load_result d64_dir_basic_listing(const D64& d64) {
     using File_type = D64::Dir_entry::File_type;
 
@@ -474,7 +405,7 @@ load_result d64_dir_basic_listing(const D64& d64) {
         return s;
     };
 
-    auto header = petscii::rvs_on + std::string(" $ ")
+    auto header = ctrl_ch::rvs_on + std::string(" $ ")
         + quoted(extract_string(d64.bam().disk_name, 0x00)) + "  "
         + extract_string(d64.bam().disk_id, petscii::nbsp, 2) + " "
         + extract_string(d64.bam().dos_type, petscii::nbsp, 2) + "    ";
@@ -500,17 +431,18 @@ load_result d64_dir_basic_listing(const D64& d64) {
         bl.append({ 0x05, text });
     }
 
-    bl.append({ 0x09, std::string(" ^ ") + quoted(to_client(eject_entry)) });
-    bl.append({ d64.bam().blocks_free(), "BLOCKS FREE."});
+    bl.append({ 0x00, " : \"=================: NON : " + std::to_string(d64.bam().blocks_free())});
+    bl.append({ 0x00, " :" });
+    bl.append({ 0x09, std::string(" : \"") + unmount_filename + "\"               : *UNMOUNT*" });
 
     return bl.to_bin();
 }
 
 
-load_result _Loader::load_d64(std::vector<u8>& d64_data, const std::string& what) {
-    if (what == eject_entry || what == eject_entry_short) return eject();
+load_result _Loader::load_d64(const std::vector<u8>& d64_data, const std::string& what) {
+    if (what == unmount_filename) return unmount();
 
-    D64 d64{std::move(d64_data)};
+    D64 d64{d64_data};
 
     if (what.length() == 0 || what == "$") return d64_dir_basic_listing(d64);
 
@@ -536,48 +468,25 @@ load_result _Loader::load_d64(std::vector<u8>& d64_data, const std::string& what
 }
 
 
-struct T64 {
-    const std::vector<u8> data;
-
-    struct Dir_entry {
-        u8 _todo[2]; // types
-        U16 start_address;
-        U16 end_address;
-        u8 pad1[2];
-        U32 file_start;
-        u8 pad2[4];
-        u8 __todo[16]; // name
-    };
-
-    std::vector<u8> MUCH_TODO__so_for_now__just_try_to_read_the_first_file() const {
-        const auto& d = data.data();
-        const auto& e = *((Dir_entry*)&d[0x40]);
-
-        auto sz = e.end_address - e.start_address + 1;
-        auto so = e.file_start;
-        auto eo = e.file_start + sz;
-
-        // try to deal with falty images (probably fails on a multifile image)
-        eo = eo > std::size(data) ? std::size(data) : eo;
-
-        std::vector<u8> file({e.start_address.b0, e.start_address.b1});
-        std::copy(&d[so], &d[eo], std::back_inserter<std::vector<u8>>(file));
-
-        return file;
-    }
-};
+// TODO: maybe.. does this make any sense?
+load_result _Loader::load_g64(const std::vector<u8>& g64_data, const std::string& what) {
+    UNUSED(g64_data); UNUSED(what);
+    //std::vector<u8> d64_data(D64::size);
+    // TODO: g64->d64
+    return NOT_FOUND;
+}
 
 
-load_result _Loader::load_t64(std::vector<u8>& t64_data, const std::string& what) { UNUSED(what);
-    T64 t64{std::move(t64_data)};
-    auto file = t64.MUCH_TODO__so_for_now__just_try_to_read_the_first_file();
-    if (std::size(file) > 2 && std::size(file) <= MAX_C64_BIN_SIZE)
+load_result _Loader::load_t64(const std::vector<u8>& t64_data, const std::string& what) { UNUSED(what);
+    Files::T64 t64{t64_data};
+    auto file = t64.first_file();
+    if (std::size(file) > 2 && std::size(file) <= C64_BIN_SIZE_MAX)
         return file;
     else
         return NOT_FOUND;
 }
 
 
-loader Loader(const std::string& init_dir) {
-    return _Loader(init_dir);
+Files::loader Files::Loader(const std::string& init_dir, Files::consumer& aux_consumer) {
+    return _Loader(init_dir, aux_consumer);
 }
