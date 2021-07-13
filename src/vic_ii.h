@@ -89,7 +89,7 @@ public:
 
 private:
 
-    class Banker {
+    class Address_space {
     public:
         struct State {
             // TODO: exrom/game bits
@@ -111,7 +111,7 @@ private:
 
         void set_va14_va15(u8 v) { s.va14_va15 = v; }
 
-        Banker(State& s_, const u8* ram_, const u8* charr)
+        Address_space(State& s_, const u8* ram_, const u8* charr)
             : s(s_), ram(ram_), chr(charr) {}
 
     private:
@@ -320,11 +320,11 @@ private:
             // if dma_on, then cpu has already been stopped --> safe to read all at once (1p + 3s)
             if (m.dma_on) {
                 u16 mb = ((reg[R::mptr] & MPTR::vm) << 6) | MP_BASE;
-                u16 mp = bank.r(mb | mn);
+                u16 mp = addr_space.r(mb | mn);
                 mp <<= 6;
-                u32 d1 = bank.r(mp | m.mdc++);
-                u32 d2 = bank.r(mp | m.mdc++);
-                u32 d3 = bank.r(mp | m.mdc++);
+                u32 d1 = addr_space.r(mp | m.mdc++);
+                u32 d2 = addr_space.r(mp | m.mdc++);
+                u32 d3 = addr_space.r(mp | m.mdc++);
                 m.load_data(d1, d2, d3);
                 ba.mob_done(mn);
             }
@@ -362,9 +362,9 @@ private:
         }
 
         MOBs(
-              State& s, Banker& bank_,
+              State& s, Address_space& addr_space_,
               BA& ba_, IRQ& irq_)
-            : mob(s.mob), bank(bank_), reg(s.reg), raster_y(s.raster_y),
+            : mob(s.mob), addr_space(addr_space_), reg(s.reg), raster_y(s.raster_y),
               ba(ba_), irq(irq_) {}
 
     private:
@@ -411,7 +411,7 @@ private:
             }
         }
 
-        const Banker& bank;
+        const Address_space& addr_space;
         u8* reg;
         const u16& raster_y;
         BA& ba;
@@ -509,12 +509,12 @@ private:
                 activate(); // delayed (see ba_check())
                 col_ram.r(gs.vc, gs.vm[gs.vmri].col); // TODO: mask upper bits if 'noise' is implemented
                 u16 vaddr = ((reg[R::mptr] & MPTR::vm) << 6) | gs.vc;
-                gs.vm[gs.vmri].data = bank.r(vaddr);
+                gs.vm[gs.vmri].data = addr_space.r(vaddr);
             }
         }
 
         void read_gd() {
-            gs.gdr = bank.r(gs.gfx_addr);
+            gs.gdr = addr_space.r(gs.gfx_addr);
             gs.vc = (gs.vc + active()) & 0x3ff;
             gs.vmri += active();
         }
@@ -755,9 +755,9 @@ private:
         }
 
         GFX(
-            Core::State& cs_, Banker& bank_,
+            Core::State& cs_, Address_space& addr_space_,
             const Color_RAM& col_ram_, BA& ba_)
-          : cs(cs_), gs(cs_.gfx), bank(bank_), col_ram(col_ram_), reg(cs.reg),
+          : cs(cs_), gs(cs_.gfx), addr_space(addr_space_), col_ram(col_ram_), reg(cs.reg),
             raster_y(cs.raster_y), ba(ba_) {}
 
     private:
@@ -795,7 +795,7 @@ private:
 
         const Core::State& cs;
         State& gs;
-        const Banker& bank;
+        const Address_space& addr_space;
         const Color_RAM& col_ram;
         const u8* reg;
         const u16& raster_y;
@@ -902,7 +902,7 @@ private:
 
     State& s;
 
-    Banker banker;
+    Address_space addr_space;
     IRQ irq;
     BA ba;
     Light_pen lp;
@@ -923,7 +923,7 @@ public:
         u16 raster_y = FRAME_LINE_COUNT - 1;
         u8 v_blank = true;
 
-        typename Banker::State banker;
+        typename Address_space::State addr_space;
         typename Light_pen::State lp;
         typename MOBs::MOB mob[MOBs::mob_count];
         typename GFX::State gfx;
@@ -939,7 +939,7 @@ public:
 
     void reset() { for (int r = 0; r < REG_COUNT; ++r) w(r, 0); }
 
-    void set_va14_va15(u8 v)    { banker.set_va14_va15(v); }
+    void set_va14_va15(u8 v)    { addr_space.set_va14_va15(v); }
     void set_lp(u8 src, u8 low) { lp.set(src, low); }
 
     void r(const u8& ri, u8& data) {
@@ -1181,8 +1181,8 @@ public:
           const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
           u16& ba_low, Out& out_)
         : s(s_),
-          banker(s_.banker, ram_, charr), irq(s, out_), ba(ba_low), lp(s, irq),
-          mobs(s, banker, ba, irq), gfx(s, banker, col_ram_, ba), border(s),
+          addr_space(s_.addr_space, ram_, charr), irq(s, out_), ba(ba_low), lp(s, irq),
+          mobs(s, addr_space, ba, irq), gfx(s, addr_space, col_ram_, ba), border(s),
           out(out_) { }
 };
 

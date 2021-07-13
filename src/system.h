@@ -24,11 +24,15 @@ namespace System {
 
 class VIC_out;
 
-using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Banker)
+using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Address_space)
 using CIA = CIA::Core;
 using TheSID = reSID_Wrapper; // 'The' due to nameclash
 using VIC = VIC_II::Core<VIC_out>;
 using Color_RAM = VIC_II::Color_RAM;
+
+
+using addr_space_r = std::function<void (const u16& addr, u8& data)>;
+using addr_space_w = std::function<void (const u16& addr, const u8& data)>;
 
 
 // sync.freq. in raster lines (must divide into total line count 312)
@@ -66,7 +70,8 @@ public:
             case 0x8: case 0x9: case 0xa: case 0xb: col_ram.r(addr & 0x03ff, data); return;
             case 0xc:                               cia1.r(addr & 0x000f, data);    return;
             case 0xd:                               cia2.r(addr & 0x000f, data);    return;
-            case 0xe: case 0xf:                     /*TODO: IO areas 1&2*/          return;
+            case 0xe:                               open.io_1_r(addr, data);        return;
+            case 0xf:                               open.io_2_r(addr, data);        return;   
         }
     }
 
@@ -77,10 +82,18 @@ public:
             case 0x8: case 0x9: case 0xa: case 0xb: col_ram.w(addr & 0x03ff, data); return;
             case 0xc:                               cia1.w(addr & 0x000f, data);    return;
             case 0xd:                               cia2.w(addr & 0x000f, data);    return;
-            case 0xe: case 0xf:                     // TODO: IO areas 1&2
-                return;
+            case 0xe:                               open.io_1_w(addr, data);        return;
+            case 0xf:                               open.io_2_w(addr, data);        return;
         }
     }
+
+    struct Open_space {
+        addr_space_r io_1_r;
+        addr_space_w io_1_w;
+        addr_space_r io_2_r;
+        addr_space_w io_2_w;
+    };
+    Open_space open;
 
 private:
     CIA& cia1;
@@ -91,12 +104,12 @@ private:
 };
 
 
-class Banker {
+class Address_space {
 public:
-    Banker(u8* ram_, const ROM& rom, IO_space& io_space_)
+    Address_space(u8* ram_, const ROM& rom, IO_space& io_space_)
         : ram(ram_),
-          bas0(rom.basic),   bas1(rom.basic + 0x1000),
-          kern0(rom.kernal), kern1(rom.kernal + 0x1000),
+          bas(rom.basic),
+          kern(rom.kernal),
           charr(rom.charr),
           io_space(io_space_) { }
 
@@ -109,19 +122,17 @@ public:
     enum Mapping : u8 {
         ram0_r,  ram0_w, // Special mapping for RAM bank 0 due to IO port handling (addr 0&1)
         ram_r,   ram_w,
-        bas0_r,  bas1_r,
-        kern0_r, kern1_r,
+        bas_r,
+        kern_r,
         charr_r,
-        roml0_r, roml0_w,
-        roml1_r, roml1_w,
-        romh0_r, romh0_w,
-        romh1_r, romh1_w,
+        roml_r,  roml_w,
+        romh_r,  romh_w,
         io_r,    io_w,
         none_r,  none_w,
     };
 
 
-    void access(const u16& addr, u8& data, u8 rw) {
+    void access(const u16& addr, u8& data, const u8 rw) {
         switch (pla->pl[rw][addr >> 12]) {
             case ram0_r:
                 data = (addr > 0x0001)
@@ -132,24 +143,19 @@ public:
                 if (addr > 0x0001) ram[addr] = data;
                 else (addr == 0x0000) ? w_dd(data) : w_pd(data);
                 return;
-            case ram_r:   data = ram[addr];                return;
+            case ram_r:   data = ram[addr];                return; // 64 KB
             case ram_w:   ram[addr] = data;                return;
-            case bas0_r:  data = bas0[addr & 0x0fff];      return;
-            case bas1_r:  data = bas1[addr & 0x0fff];      return;
-            case kern0_r: data = kern0[addr & 0x0fff];     return;
-            case kern1_r: data = kern1[addr & 0x0fff];     return;
-            case charr_r: data = charr[addr & 0x0fff];     return;
-            case roml0_r: data = roml0[addr & 0x0fff];     return;
-            case roml0_w:                                  return; // TODO: what?
-            case roml1_r: data = roml1[addr & 0x0fff];     return;
-            case roml1_w:                                  return; // TODO: what?
-            case romh0_r: data = romh0[addr & 0x0fff];     return;
-            case romh0_w:                                  return; // TODO: what?
-            case romh1_r: data = romh1[addr & 0x0fff];     return;
-            case romh1_w:                                  return; // TODO: what?
-            case io_r:    io_space.r(addr & 0x0fff, data); return;
+            case bas_r:   data = bas[addr & 0x1fff];       return; // 8 KB
+            case kern_r:  data = kern[addr & 0x1fff];      return;
+            case charr_r: data = charr[addr & 0x0fff];     return; // 4 KB
+            case roml_r:  crt.roml_r(addr & 0x1fff, data); return; // 8 KB
+            case roml_w:  crt.roml_w(addr & 0x1fff, data); return;
+            case romh_r:  crt.romh_r(addr & 0x1fff, data); return;
+            case romh_w:  crt.romh_w(addr & 0x1fff, data); return;
+            case io_r:    io_space.r(addr & 0x0fff, data); return; // 4 KB
             case io_w:    io_space.w(addr & 0x0fff, data); return;
-            case none_r: case none_w:                      return; // TODO: anything?
+            case none_r:  // TODO: anything..? (return 'floating' state..)
+            case none_w:                                   return;
         }
     }
 
@@ -168,17 +174,24 @@ public:
             ..."
     */
 
-    // TODO: should these include the game|exrom flags? or set them automagically?
-    void attach_roml(const u8* roml) { roml0 = roml; roml1 = roml + 0x1000; }
-    void attach_romh(const u8* romh) { romh0 = romh; romh1 = romh + 0x1000; }
-    // TODO: detatch rom...
+    struct Cartridge_space {
+        addr_space_r roml_r;
+        addr_space_r roml_w;
+        addr_space_r romh_r;
+        addr_space_r romh_w;
+    };
+    Cartridge_space crt;
+
+    void set_exrom_game(bool exrom, bool game) {
+        exrom_game = (exrom << 4) | (game << 3);
+    }
 
 private:
     /* TODO:
        - a separate IO port component...?
        - cassette (datasette) emulation?
        - exrom|game bits (harcoded for now)
-            - update also to VIC banker
+            - update also to VIC addr_space
     */
     enum IO_bits : u8 {
         loram_hiram_charen_bits = 0x07,
@@ -189,6 +202,8 @@ private:
     u8 io_port_dd;
     u8 io_port_pd;
     u8 io_port_state;
+
+    u8 exrom_game;
 
     u8 r_dd() const { return io_port_dd; }
     u8 r_pd() const {
@@ -207,9 +222,8 @@ private:
     }
 
     void set_pla() {
-        static const u8 exrom_game = 0x18; // harcoded
-        u8 lhc = (io_port_state | ~io_port_dd) & loram_hiram_charen_bits; // inputs -> pulled up
-        u8 mode = exrom_game | lhc;
+        const u8 lhc = (io_port_state | ~io_port_dd) & loram_hiram_charen_bits; // inputs -> pulled up
+        const u8 mode = exrom_game | lhc;
         pla = &PLA[Mode_to_PLA_idx[mode]];
     }
 
@@ -225,16 +239,9 @@ private:
 
     u8* ram;
 
-    const u8* bas0;
-    const u8* bas1;
-    const u8* kern0;
-    const u8* kern1;
+    const u8* bas;
+    const u8* kern;
     const u8* charr;
-
-    const u8* roml0;
-    const u8* roml1;
-    const u8* romh0;
-    const u8* romh1;
 
     IO_space& io_space;
 
@@ -375,12 +382,26 @@ private:
 struct State {
     u8 ram[0x10000];
     u8 color_ram[Color_RAM::size] = {};
+    u8 crt_mem[0x4000];
 
     u16 rdy_low;
 
     VIC::State vic;
 };
 
+
+/*
+    // intercepts kernal calls: untlk, talk, unlsn, listen, tksa, second, acptr, ciout
+    // (fast but very low compatibility)
+    IEC_virtual::Controller iec_ctrl;
+    IEC_virtual::Volatile_disk vol_disk;
+    IEC_virtual::Dummy_device dd;
+    IEC_virtual::Host_drive hd(load_file);
+    iec_ctrl.attach(vol_disk, 10);
+    iec_ctrl.attach(dd, 30);
+    iec_ctrl.attach(hd, 8);
+    IEC_virtual::install_kernal_traps(kernal, Trap_OPC::IEC_virtual_routine);
+*/
 
 class C64 {
 public:
@@ -405,7 +426,7 @@ public:
         int_hub(cpu),
         kb_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in),
         io_space(cia1, cia2, sid, vic, col_ram),
-        sys_banker(s.ram, rom, io_space),
+        addr_space(s.ram, rom, io_space),
         host_input(host_input_handlers),
         menu(
             {
@@ -427,22 +448,11 @@ public:
         // intercept load/save for tape device
         install_tape_kernal_traps(const_cast<u8*>(rom.kernal), Trap_OPC::tape_routine);
 
-        // intercepts kernal calls: untlk, talk, unlsn, listen, tksa, second, acptr, ciout
-        // (fast but very low compatibility)
-        /*
-        IEC_virtual::Controller iec_ctrl;
-        IEC_virtual::Volatile_disk vol_disk;
-        IEC_virtual::Dummy_device dd;
-        IEC_virtual::Host_drive hd(load_file);
-        iec_ctrl.attach(vol_disk, 10);
-        iec_ctrl.attach(dd, 30);
-        iec_ctrl.attach(hd, 8);
-        IEC_virtual::install_kernal_traps(kernal, Trap_OPC::IEC_virtual_routine);
-        */
-
         loader = Files::Loader("data/prg", img_consumer); // TODO: init_dir configurable (program arg?)
 
         cpu.sig_halt = cpu_trap;
+
+        toss_cartridge();
     }
 
     void reset_warm() {
@@ -459,7 +469,7 @@ public:
         sid.reset();
         vic.reset();
         kb_matrix.reset();
-        sys_banker.reset();
+        addr_space.reset();
         cpu.reset_cold();
         int_hub.reset();
         c1541.reset();
@@ -478,7 +488,7 @@ public:
             if (!s.rdy_low || rw == NMOS6502::MC::RW::w) {
                 // 'Slip in' the C1541 cycle
                 if (rw == NMOS6502::MC::RW::w) c1541.tick();
-                sys_banker.access(cpu.mar(), cpu.mdr(), rw);
+                addr_space.access(cpu.mar(), cpu.mdr(), rw);
                 cpu.tick();
                 if (rw == NMOS6502::MC::RW::r) c1541.tick();
             } else {
@@ -523,7 +533,7 @@ private:
     IO::Keyboard_matrix kb_matrix;
 
     IO_space io_space;
-    Banker sys_banker;
+    Address_space addr_space;
 
     // TODO: lump these (and future related things) together
     //       (a simple 'Run_cfg' class that accepts requests to change the cfg (or to quit..))
@@ -562,6 +572,12 @@ private:
             UNUSED(this); UNUSED(bits); UNUSED(bit_vals);
         }
     };
+
+    /* ------------------- for unconnected areas  ------------------- */
+    // (in reality, reading unconnected addresses will return whatever is 'floating'
+    // on the bus, so this is not 100% accurate, but meh....)
+    addr_space_r addr_space_null_r { [](const u16& a, u8& d) { UNUSED(a); UNUSED(d); } };
+    addr_space_w addr_space_null_w { [](const u16& a, const u8& d) { UNUSED(a); UNUSED(d); } };
 
     /* -------------------- Host input -------------------- */
     Host::Input::Handlers host_input_handlers {
@@ -606,7 +622,7 @@ private:
         }
     };
 
-    // TODO: verify that it is a valid kernal trap (e.g. 'banker.mapping(cpu.pc) == kernal')
+    // TODO: verify that it is a valid kernal trap (e.g. 'addr_space.mapping(cpu.pc) == kernal')
     NMOS6502::Sig cpu_trap {
         [this]() {
             bool proceed = true;
@@ -646,23 +662,29 @@ private:
     Files::consumer img_consumer {
         [this](std::string name, Files::Type type, std::vector<u8>& data) {
             // std::cout << "File: " << path << ' ' << (int)data.size() << std::endl;
-            C1541::Disk* new_disk = nullptr;
 
             switch (type) {
+                case Files::Type::crt: {
+                    std::cout << "CRT: " << name << ", " << (int)data.size() << " bytes" << std::endl;
+                    Files::CRT crt{data};
+                    std::cout << ((char*)crt.header().name) << std::endl;
+                    for (auto cp : crt.chip_packets()) {
+                        std::cout << (int)cp->load_addr << ' ' << (int)cp->data_size << std::endl;
+                    }
+                    break;
+                }
                 case Files::Type::d64:
-                    new_disk = new C1541::D64_disk(Files::D64{data});
+                    // auto slot = s.ram[0xb9]; // secondary address
+                    // slot=0 --> first free slot
+                    c1541.disk_carousel.insert(0, new C1541::D64_disk(Files::D64{data}), name);
                     break;
                 case Files::Type::g64:
-                    new_disk = new C1541::G64_disk(std::move(data));
+                    c1541.disk_carousel.insert(0, new C1541::G64_disk(std::move(data)), name);
                     break;
                 default:
                     return;
             }
 
-            if (new_disk) {
-                // auto slot = s.ram[0xb9]; // secondary address
-                c1541.disk_carousel.insert(0, new_disk, name);
-            }
         }
     };
 
@@ -675,6 +697,20 @@ private:
 
     void do_load();
     void do_save();
+
+    void toss_cartridge() {
+        addr_space.crt.roml_r = addr_space_null_r;
+        addr_space.crt.roml_w = addr_space_null_w;
+        addr_space.crt.romh_r = addr_space_null_r;
+        addr_space.crt.romh_w = addr_space_null_w;
+
+        io_space.open.io_1_r = addr_space_null_r;
+        io_space.open.io_1_w = addr_space_null_w;
+        io_space.open.io_2_r = addr_space_null_r;
+        io_space.open.io_2_w = addr_space_null_w;
+
+        addr_space.set_exrom_game(true, true);
+    }
 
     void signal_shutdown() { /*run_cfg_change =*/ shutdown = true; }
 
