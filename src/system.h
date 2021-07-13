@@ -382,7 +382,10 @@ private:
 struct State {
     u8 ram[0x10000];
     u8 color_ram[Color_RAM::size] = {};
-    u8 crt_mem[0x4000];
+
+    // holds all the memory that the cartridge uses (ROM, RAM, ...)
+    // TODO: should reserve for the max? (prolly 512 KB)
+    u8 crt_mem[0x010000]; 
 
     u16 rdy_low;
 
@@ -441,6 +444,7 @@ public:
                 vid_out.settings_menu(),
                 sid.settings_menu(),
                 c1541.menu(),
+                ::Menu::Group("CARTRIDGE /", cart_menu_actions),
             },
             rom.charr
         )
@@ -452,7 +456,7 @@ public:
 
         cpu.sig_halt = cpu_trap;
 
-        toss_cartridge();
+        unload_cartridge();
     }
 
     void reset_warm() {
@@ -664,15 +668,10 @@ private:
             // std::cout << "File: " << path << ' ' << (int)data.size() << std::endl;
 
             switch (type) {
-                case Files::Type::crt: {
-                    std::cout << "CRT: " << name << ", " << (int)data.size() << " bytes" << std::endl;
-                    Files::CRT crt{data};
-                    std::cout << ((char*)crt.header().name) << std::endl;
-                    for (auto cp : crt.chip_packets()) {
-                        std::cout << (int)cp->load_addr << ' ' << (int)cp->data_size << std::endl;
-                    }
+                case Files::Type::crt:
+                    load_cartridge(data);
+                    reset_cold();
                     break;
-                }
                 case Files::Type::d64:
                     // auto slot = s.ram[0xb9]; // secondary address
                     // slot=0 --> first free slot
@@ -688,6 +687,11 @@ private:
         }
     };
 
+
+    std::vector<::Menu::Action> cart_menu_actions{
+        {"CARTRIDGE / UNLOAD ?", [&](){ unload_cartridge(); reset_cold(); }},
+    };
+
     Menu menu;
     Files::loader loader;
 
@@ -698,19 +702,8 @@ private:
     void do_load();
     void do_save();
 
-    void toss_cartridge() {
-        addr_space.crt.roml_r = addr_space_null_r;
-        addr_space.crt.roml_w = addr_space_null_w;
-        addr_space.crt.romh_r = addr_space_null_r;
-        addr_space.crt.romh_w = addr_space_null_w;
-
-        io_space.open.io_1_r = addr_space_null_r;
-        io_space.open.io_1_w = addr_space_null_w;
-        io_space.open.io_2_r = addr_space_null_r;
-        io_space.open.io_2_w = addr_space_null_w;
-
-        addr_space.set_exrom_game(true, true);
-    }
+    void load_cartridge(const std::vector<u8>& data);
+    void unload_cartridge();
 
     void signal_shutdown() { /*run_cfg_change =*/ shutdown = true; }
 

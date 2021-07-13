@@ -212,12 +212,19 @@ struct CRT {
         const u8 signature[16];
         const U32b length;
         const Version version;
-        const U16b hw_type; // validate?
-        const u8 exrom; // validate?
-        const u8 game; // validate?
+        const U16b hw_type;
+        const u8 exrom;
+        const u8 game;
         const u8 crt_hw;
         const u8 unused[5];
         const u8 name[32];
+
+        bool valid() const { // NOTE: loader checks the signature
+            if (hw_type > Cartridge_HW_type::last) return false;
+            if (exrom > 1 || game > 1) return false;
+
+            return true;
+        }
     };
 
     struct CHIP_packet {
@@ -237,9 +244,9 @@ struct CRT {
             static constexpr u8 chip[] = { 0x43, 0x48, 0x49, 0x50 };
 
             if (signature[0] != chip[0] || signature[1] != chip[1]
-                    || signature[2] != chip[2] || signature[3] == chip[3]) return false;
-            if (u16(length - 0x10) != data_size) return false;
-            if (type > last) return false;
+                    || signature[2] != chip[2] || signature[3] != chip[3]) return false;
+            if (u16(length - 0x10) != u16(data_size)) return false;
+            if (type > Type::last) return false;
 
             return true;
         }

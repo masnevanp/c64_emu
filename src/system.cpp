@@ -1,6 +1,7 @@
 
 #include "system.h"
 #include <fstream>
+#include <algorithm>
 
 
 
@@ -483,6 +484,66 @@ void System::C64::do_save() {
     // status
     cpu.clr(NMOS6502::Flag::C); // no error
     s.ram[0x90] = 0x00; // io status ok
+}
+
+
+void System::C64::load_cartridge(const std::vector<u8>& data) {
+    using CRT = Files::CRT;
+    using Type = Files::CRT::Cartridge_HW_type;
+
+    CRT crt{data};
+
+    if (!crt.header().valid()) {
+        std::cout << "CRT: invalid header" << std::endl;
+        return;
+    }
+
+    if (crt.header().hw_type != Type::T0_Normal_cartridge) {
+        std::cout << "CRT: TODO - support 'unnormal' carts" << std::endl;
+        return;
+    }
+
+    // TODO: wipe crt_mem
+
+    for (auto cp : crt.chip_packets()) {
+        u16 crt_mem_addr;
+
+        if (cp->load_addr == 0x8000) crt_mem_addr = 0x0000;
+        else if (cp->load_addr == 0xa000 || cp->load_addr == 0xe000) crt_mem_addr = 0x2000;
+        else {
+            std::cout << "CRT: invalid CHIP packet address - " << (int)cp->load_addr << std::endl;
+            continue;
+        }
+
+        std::copy(cp->data(), cp->data() + cp->data_size, &s.crt_mem[crt_mem_addr]);
+    }
+
+    addr_space.crt.roml_r = [this](const u16& addr, u8& data) {
+        data = s.crt_mem[addr];
+    };
+    addr_space.crt.romh_r = [this](const u16& addr, u8& data) {
+        data = s.crt_mem[0x2000 + addr];
+    };
+
+    addr_space.set_exrom_game(
+        crt.header().exrom,
+        crt.header().game
+    );
+}
+
+
+void System::C64::unload_cartridge() {
+    addr_space.crt.roml_r = addr_space_null_r;
+    addr_space.crt.roml_w = addr_space_null_w;
+    addr_space.crt.romh_r = addr_space_null_r;
+    addr_space.crt.romh_w = addr_space_null_w;
+
+    io_space.open.io_1_r = addr_space_null_r;
+    io_space.open.io_1_w = addr_space_null_w;
+    io_space.open.io_2_r = addr_space_null_r;
+    io_space.open.io_2_w = addr_space_null_w;
+
+    addr_space.set_exrom_game(true, true);
 }
 
 
