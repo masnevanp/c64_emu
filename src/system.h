@@ -31,9 +31,6 @@ using VIC = VIC_II::Core<VIC_out>;
 using Color_RAM = VIC_II::Color_RAM;
 
 
-using addr_space_r = std::function<void (const u16& addr, u8& data)>;
-using addr_space_w = std::function<void (const u16& addr, const u8& data)>;
-
 
 // sync.freq. in raster lines (must divide into total line count 312)
 static const int SYNC_FREQ = 52;  // ==> ~3.3 ms
@@ -184,15 +181,10 @@ public:
 
     void set_exrom_game(bool exrom, bool game) {
         exrom_game = (exrom << 4) | (game << 3);
+        set_pla();
     }
 
 private:
-    /* TODO:
-       - a separate IO port component...?
-       - cassette (datasette) emulation?
-       - exrom|game bits (harcoded for now)
-            - update also to VIC addr_space
-    */
     enum IO_bits : u8 {
         loram_hiram_charen_bits = 0x07,
         cassette_switch_sense = 0x10,
@@ -379,17 +371,28 @@ private:
 };
 
 
+struct Cartridge_ctx {
+    Address_space& addr_space;
+    IO_space::Open_space& io_space;
+
+    u8* crt_mem;
+    u8* sys_ram;
+};
+
+
 struct State {
     u8 ram[0x10000];
     u8 color_ram[Color_RAM::size] = {};
 
-    // holds all the memory that the cartridge uses (ROM, RAM, ...)
-    // TODO: should reserve for the max? (prolly 512 KB)
-    u8 crt_mem[0x010000]; 
-
     u16 rdy_low;
 
     VIC::State vic;
+
+    // holds all the memory that a cartridge requires: ROM, RAM,
+    // emulation control data, ...
+    // TODO: dynamic, or meh..? (although 640k is enough for everyone...)
+    //       (nasty, if state saving is implemented)
+    u8 crt_mem[640 * 1024];
 };
 
 
@@ -421,7 +424,7 @@ public:
         cia2(cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
         sid(s.vic.cycle),
         col_ram(s.color_ram),
-        vic(s.vic, s.ram, col_ram, rom.charr, s.rdy_low, vic_out),
+        vic(s.vic, s.ram, col_ram, rom.charr, addr_space.crt.romh_r, s.rdy_low, vic_out),
         c1541(cia2.port_a.ext_in, rom.c1541/*, run_cfg_change*/),
         c1541_status_panel{c1541.dc.status, rom.charr},
         vid_out(),
@@ -563,7 +566,7 @@ private:
     IO::Port::PD_out cia2_port_a_out {
         [this](u8 bits, u8 bit_vals) {
             const u8 out = (bit_vals & bits) | ~bits;
-            vic.set_va14_va15(out & 0b11);
+            vic.set_bank(out & 0b11);
             c1541.iec.set_cia2_pa_output_state(out);
             /*if (c1541.idle) {
                 c1541.idle = false;
@@ -668,10 +671,12 @@ private:
             // std::cout << "File: " << path << ' ' << (int)data.size() << std::endl;
 
             switch (type) {
-                case Files::Type::crt:
-                    load_cartridge(data);
-                    reset_cold();
+                case Files::Type::crt: {
+                    Files::CRT crt{data};
+                    if (crt.header().valid()) load_cartridge(crt);
+                    else std::cout << "CRT: invalid header" << std::endl;
                     break;
+                }
                 case Files::Type::d64:
                     // auto slot = s.ram[0xb9]; // secondary address
                     // slot=0 --> first free slot
@@ -688,24 +693,27 @@ private:
     };
 
 
-    std::vector<::Menu::Action> cart_menu_actions{
-        {"CARTRIDGE / UNLOAD ?", [&](){ unload_cartridge(); reset_cold(); }},
-    };
-
-    Menu menu;
-    Files::loader loader;
-
-    void init_ram();
+    void load_cartridge(const Files::CRT& crt);
+    void unload_cartridge();
 
     //void keep_running();
 
     void do_load();
     void do_save();
 
-    void load_cartridge(const std::vector<u8>& data);
-    void unload_cartridge();
-
+    void init_ram();
     void signal_shutdown() { /*run_cfg_change =*/ shutdown = true; }
+
+
+    std::vector<::Menu::Action> cart_menu_actions{
+        {"CARTRIDGE / UNLOAD ?", [&](){ unload_cartridge(); reset_cold(); }},
+    };
+
+    Menu menu;
+
+    Files::loader loader;
+
+    Cartridge_ctx crt_ctx{addr_space, io_space.open, s.crt_mem, s.ram};
 
     static void install_tape_kernal_traps(u8* kernal, u8 trap_opc);
 };

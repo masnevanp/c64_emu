@@ -92,47 +92,63 @@ private:
     class Address_space {
     public:
         struct State {
-            // TODO: exrom/game bits
-            u8 va14_va15 = 0b11; // NOTE: bits inverted (0b11 --> bank 0)
+            u8 ultimax = false;
+            u8 bank = 0b11;
         };
 
         u8 r(const u16& addr) const { // addr is 14bits
-            switch (bank[s.va14_va15][addr >> 12]) {
+            switch (layout[addr >> 12]) {
                 case ram_0: return ram[0x0000 | addr];
                 case ram_1: return ram[0x4000 | addr];
                 case ram_2: return ram[0x8000 | addr];
                 case ram_3: return ram[0xc000 | addr];
                 case chr_r: return chr[0x0fff & addr];
-                case romh:  return 0x00; // TODO
-                case none:  return 0x00; // TODO: wut..?
+                case romh: {
+                    u8 data;
+                    romh_r(addr & 0x01fff, data);
+                    return data;
+                }
             }
-            return 0x00; // silence compiler...
         }
 
-        void set_va14_va15(u8 v) { s.va14_va15 = v; }
+        void set_ultimax(bool act)  { s.ultimax = act; set_layout(); }
+        void set_bank(u8 va14_va15) { s.bank = va14_va15; set_layout(); }
 
-        Address_space(State& s_, const u8* ram_, const u8* charr)
-            : s(s_), ram(ram_), chr(charr) {}
+        Address_space(
+            State& s_, const u8* ram_, const u8* charr, const addr_space_r& romh_r_)
+          : s(s_), ram(ram_), chr(charr), romh_r(romh_r_) { set_layout(); }
 
     private:
         enum Mapping : u8 {
             ram_0, ram_1, ram_2, ram_3,
-            chr_r, romh, none,
+            chr_r, romh,
         };
 
-        // TODO: full mode handling (ultimax + special modes)
-        static constexpr u8 bank[4][4] = { // [mode]
-            { ram_3, ram_3, ram_3, ram_3 },
-            { ram_2, chr_r, ram_2, ram_2 },
-            { ram_1, ram_1, ram_1, ram_1 },
-            { ram_0, chr_r, ram_0, ram_0 },
+        static constexpr u8 layouts[2][4][4] = {
+            {   // non-ultimax
+                { ram_3, ram_3, ram_3, ram_3 },
+                { ram_2, chr_r, ram_2, ram_2 },
+                { ram_1, ram_1, ram_1, ram_1 },
+                { ram_0, chr_r, ram_0, ram_0 },
+            },
+            {   // ultimax
+                { ram_3, ram_3, ram_3, romh },
+                { ram_2, ram_2, ram_2, romh },
+                { ram_1, ram_1, ram_1, romh },
+                { ram_0, ram_1, ram_0, romh },
+            }
         };
+
+        void set_layout() { layout = &layouts[s.ultimax][s.bank][0]; }
 
         State& s;
 
+        const u8* layout;
+
         const u8* ram;
         const u8* chr;
-        //const u8* romh;
+
+        const addr_space_r& romh_r;
     };
 
 
@@ -939,7 +955,8 @@ public:
 
     void reset() { for (int r = 0; r < REG_COUNT; ++r) w(r, 0); }
 
-    void set_va14_va15(u8 v)    { addr_space.set_va14_va15(v); }
+    void set_ultimax(bool act)  { addr_space.set_ultimax(act); }
+    void set_bank(u8 va14_va15) { addr_space.set_bank(va14_va15); }
     void set_lp(u8 src, u8 low) { lp.set(src, low); }
 
     void r(const u8& ri, u8& data) {
@@ -1179,9 +1196,10 @@ public:
     Core(
           State& s_,
           const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
+          const addr_space_r& romh_r,
           u16& ba_low, Out& out_)
         : s(s_),
-          addr_space(s_.addr_space, ram_, charr), irq(s, out_), ba(ba_low), lp(s, irq),
+          addr_space(s_.addr_space, ram_, charr, romh_r), irq(s, out_), ba(ba_low), lp(s, irq),
           mobs(s, addr_space, ba, irq), gfx(s, addr_space, col_ram_, ba), border(s),
           out(out_) { }
 };

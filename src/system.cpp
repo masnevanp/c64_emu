@@ -338,9 +338,158 @@ void System::Menu::update() {
 }
 
 
-void System::C64::init_ram() { // TODO: parameterize pattern (+ add 'randomness'?)
-    for (int addr = 0x0000; addr <= 0xffff; ++addr)
-        s.ram[addr] = (addr & 0x80) ? 0xff : 0x00;
+using CRT_ctx = System::Cartridge_ctx;
+
+// for 'normal cartridge' chip config
+int crt_load_normal_chips(const Files::CRT& crt, CRT_ctx& ctx) {
+    int count = 0;
+
+    for (auto cp : crt.chip_packets()) {
+        u32 crt_mem_addr;
+
+        if (cp->load_addr == 0x8000) crt_mem_addr = 0x0000;
+        else if (cp->load_addr == 0xa000 || cp->load_addr == 0xe000) crt_mem_addr = 0x2000;
+        else {
+            std::cout << "CRT: invalid CHIP packet address - " << (int)cp->load_addr << std::endl;
+            continue;
+        }
+
+        std::copy(cp->data(), cp->data() + cp->data_size, &ctx.crt_mem[crt_mem_addr]);
+
+        ++count;
+    }
+
+    return count;
+}
+
+
+
+bool crt_load_T0_Normal_cartridge(const Files::CRT& crt, CRT_ctx& ctx) {
+    const bool attached = crt_load_normal_chips(crt, ctx) > 0;
+
+    if (attached) {
+        ctx.addr_space.crt.roml_r = [&](const u16& a, u8& d) { d = ctx.crt_mem[a]; };
+        ctx.addr_space.crt.romh_r = [&](const u16& a, u8& d) { d = ctx.crt_mem[0x2000 + a]; };
+    }
+
+    return attached;
+}
+
+
+// not sure if this is 100% correct, but seems to work...
+bool crt_load_T4_Simons_BASIC(const Files::CRT& crt, CRT_ctx& ctx) {
+    const bool attached = crt_load_normal_chips(crt, ctx) == 2;
+
+    if (attached) {
+        enum { romh_act = 0x4000 };
+
+        ctx.addr_space.crt.roml_r = [&](const u16& a, u8& d) { d = ctx.crt_mem[a]; };
+
+        ctx.addr_space.crt.romh_r = [&](const u16& a, u8& d) {
+            d = ctx.crt_mem[romh_act]
+                    ? ctx.crt_mem[0x2000 + a]
+                    : ctx.sys_ram[0xa000 + a];
+        };
+        ctx.addr_space.crt.romh_w = [&](const u16& a, const u8& d) {
+            ctx.sys_ram[0xa000 + a] = d; // writes always go to ram, right?
+        };
+
+        ctx.io_space.io_1_r = [&](const u16& a, u8& d) { UNUSED(a);
+            ctx.crt_mem[romh_act] = d = 0x00;
+            ctx.addr_space.set_exrom_game(false, true);
+        };
+        ctx.io_space.io_1_w = [&](const u16& a, const u8& d) { UNUSED(a); UNUSED(d);
+            ctx.crt_mem[romh_act] = 0x01;
+            ctx.addr_space.set_exrom_game(false, false);
+        };
+
+        ctx.crt_mem[romh_act] = 0x00; // init
+    }
+
+    return attached;
+}
+
+
+bool crt_load_T5_Ocean_type_1(const Files::CRT& crt, CRT_ctx& ctx) {
+    bool attached = false;
+
+    u16 crt_mem_addr = 0x0001;
+    for (auto cp : crt.chip_packets()) {
+        if (cp->load_addr != 0x8000 || cp->data_size != 0x2000) {
+            std::cout << "CRT: invalid CHIP packet" << std::endl;
+            continue;
+        }
+
+        std::copy(cp->data(), cp->data() + cp->data_size, &ctx.crt_mem[crt_mem_addr]);
+
+        crt_mem_addr += 0x2000;
+        attached = true;
+    }
+
+    if (attached) {
+        enum { bank = 0x0000 };
+
+        ctx.crt_mem[bank] = 0x00;
+
+        ctx.addr_space.crt.roml_r = [&](const u16& a, u8& d) {
+            u32 bank_base = (ctx.crt_mem[bank] * 0x2000) + 1;
+            d = ctx.crt_mem[bank_base + a];
+        };
+
+        ctx.io_space.io_1_w = [&](const u16& a, const u8& d) {
+            if (a == 0x0e00) ctx.crt_mem[bank] = d & 0b11;
+        };
+    }
+
+    return attached;
+}
+
+
+void System::C64::load_cartridge(const Files::CRT& crt) {
+    bool attached = false;
+
+    switch (const auto type = crt.header().hw_type; type) {
+        using T = Files::CRT::Cartridge_HW_type;
+
+        case T::T0_Normal_cartridge:
+            attached = crt_load_T0_Normal_cartridge(crt, crt_ctx);
+            break;
+        case T::T4_Simons_BASIC:
+            attached = crt_load_T4_Simons_BASIC(crt, crt_ctx);
+            break;
+        case T::T5_Ocean_type_1:
+            attached = crt_load_T5_Ocean_type_1(crt, crt_ctx);
+            break;
+        default:
+            std::cout << "CRT: unsupported HW type: " << (int)type << std::endl;
+            return;
+    }
+
+    if (attached) {
+        addr_space.set_exrom_game(crt.header().exrom, crt.header().game);
+
+        const bool ultimax = crt.header().exrom == 1 && crt.header().game == 0;
+        vic.set_ultimax(ultimax);
+
+        reset_cold();
+    }
+}
+
+
+void System::C64::unload_cartridge() {
+    addr_space.crt.roml_r = addr_space_null_r;
+    addr_space.crt.roml_w = addr_space_null_w;
+    addr_space.crt.romh_r = addr_space_null_r;
+    addr_space.crt.romh_w = addr_space_null_w;
+
+    io_space.open.io_1_r = addr_space_null_r;
+    io_space.open.io_1_w = addr_space_null_w;
+    io_space.open.io_2_r = addr_space_null_r;
+    io_space.open.io_2_w = addr_space_null_w;
+
+    addr_space.set_exrom_game(true, true);
+
+    vic.set_ultimax(false);
 }
 
 
@@ -487,63 +636,9 @@ void System::C64::do_save() {
 }
 
 
-void System::C64::load_cartridge(const std::vector<u8>& data) {
-    using CRT = Files::CRT;
-    using Type = Files::CRT::Cartridge_HW_type;
-
-    CRT crt{data};
-
-    if (!crt.header().valid()) {
-        std::cout << "CRT: invalid header" << std::endl;
-        return;
-    }
-
-    if (crt.header().hw_type != Type::T0_Normal_cartridge) {
-        std::cout << "CRT: TODO - support 'unnormal' carts" << std::endl;
-        return;
-    }
-
-    // TODO: wipe crt_mem
-
-    for (auto cp : crt.chip_packets()) {
-        u16 crt_mem_addr;
-
-        if (cp->load_addr == 0x8000) crt_mem_addr = 0x0000;
-        else if (cp->load_addr == 0xa000 || cp->load_addr == 0xe000) crt_mem_addr = 0x2000;
-        else {
-            std::cout << "CRT: invalid CHIP packet address - " << (int)cp->load_addr << std::endl;
-            continue;
-        }
-
-        std::copy(cp->data(), cp->data() + cp->data_size, &s.crt_mem[crt_mem_addr]);
-    }
-
-    addr_space.crt.roml_r = [this](const u16& addr, u8& data) {
-        data = s.crt_mem[addr];
-    };
-    addr_space.crt.romh_r = [this](const u16& addr, u8& data) {
-        data = s.crt_mem[0x2000 + addr];
-    };
-
-    addr_space.set_exrom_game(
-        crt.header().exrom,
-        crt.header().game
-    );
-}
-
-
-void System::C64::unload_cartridge() {
-    addr_space.crt.roml_r = addr_space_null_r;
-    addr_space.crt.roml_w = addr_space_null_w;
-    addr_space.crt.romh_r = addr_space_null_r;
-    addr_space.crt.romh_w = addr_space_null_w;
-
-    io_space.open.io_1_r = addr_space_null_r;
-    io_space.open.io_1_w = addr_space_null_w;
-    io_space.open.io_2_r = addr_space_null_r;
-    io_space.open.io_2_w = addr_space_null_w;
-
-    addr_space.set_exrom_game(true, true);
+void System::C64::init_ram() { // TODO: parameterize pattern (+ add 'randomness'?)
+    for (int addr = 0x0000; addr <= 0xffff; ++addr)
+        s.ram[addr] = (addr & 0x80) ? 0xff : 0x00;
 }
 
 
