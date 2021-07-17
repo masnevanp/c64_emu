@@ -340,8 +340,8 @@ void System::Menu::update() {
 
 using CRT_ctx = System::Cartridge_ctx;
 
-// for 'normal cartridge' chip config
-int crt_load_normal_chips(const Files::CRT& crt, CRT_ctx& ctx) {
+// loads all the chips in the order found (so not suitable for every cart type)
+int crt_load_chips(const Files::CRT& crt, CRT_ctx& ctx) {
     int count = 0;
 
     for (auto cp : crt.chip_packets()) {
@@ -365,7 +365,7 @@ int crt_load_normal_chips(const Files::CRT& crt, CRT_ctx& ctx) {
 
 
 bool crt_load_T0_Normal_cartridge(const Files::CRT& crt, CRT_ctx& ctx) {
-    const bool attached = crt_load_normal_chips(crt, ctx) > 0;
+    const bool attached = crt_load_chips(crt, ctx) > 0;
 
     if (attached) {
         ctx.addr_space.crt.roml_r = [&](const u16& a, u8& d) { d = ctx.crt_mem[a]; };
@@ -376,34 +376,36 @@ bool crt_load_T0_Normal_cartridge(const Files::CRT& crt, CRT_ctx& ctx) {
 }
 
 
-// not sure if this is 100% correct, but seems to work...
 bool crt_load_T4_Simons_BASIC(const Files::CRT& crt, CRT_ctx& ctx) {
-    const bool attached = crt_load_normal_chips(crt, ctx) == 2;
+    const bool attached = crt_load_chips(crt, ctx) == 2;
 
     if (attached) {
-        enum { romh_act = 0x4000 };
+        struct romh_active {
+            operator bool() const { return _c.crt_mem[0x4000]; }
+            void operator=(bool act) {
+                _c.crt_mem[0x4000] = act;
+                _c.addr_space.set_exrom_game(false, !act);
+            }
 
-        ctx.addr_space.crt.roml_r = [&](const u16& a, u8& d) { d = ctx.crt_mem[a]; };
+            CRT_ctx& _c;
+        };
+
+        ctx.addr_space.crt.roml_r = [&](const u16& a, u8& d) {
+            d = ctx.crt_mem[a];
+        };
 
         ctx.addr_space.crt.romh_r = [&](const u16& a, u8& d) {
-            d = ctx.crt_mem[romh_act]
+            d = romh_active{ctx}
                     ? ctx.crt_mem[0x2000 + a]
                     : ctx.sys_ram[0xa000 + a];
         };
-        ctx.addr_space.crt.romh_w = [&](const u16& a, const u8& d) {
-            ctx.sys_ram[0xa000 + a] = d; // writes always go to ram, right?
-        };
 
-        ctx.io_space.io_1_r = [&](const u16& a, u8& d) { UNUSED(a);
-            ctx.crt_mem[romh_act] = d = 0x00;
-            ctx.addr_space.set_exrom_game(false, true);
+        ctx.io_space.io_1_r = [&](const u16& a, u8& d) { UNUSED(a); UNUSED(d);
+            romh_active{ctx} = false;
         };
         ctx.io_space.io_1_w = [&](const u16& a, const u8& d) { UNUSED(a); UNUSED(d);
-            ctx.crt_mem[romh_act] = 0x01;
-            ctx.addr_space.set_exrom_game(false, false);
+            romh_active{ctx} = true;
         };
-
-        ctx.crt_mem[romh_act] = 0x00; // init
     }
 
     return attached;
@@ -445,9 +447,99 @@ bool crt_load_T5_Ocean_type_1(const Files::CRT& crt, CRT_ctx& ctx) {
 }
 
 
-void System::C64::load_cartridge(const Files::CRT& crt) {
-    bool attached = false;
+bool crt_load_T10_Epyx_Fastload(const Files::CRT& crt, CRT_ctx& ctx) {
+    const bool attached = crt_load_chips(crt, ctx) == 1;
 
+    if (attached) {
+        u8& exrom = *const_cast<u8*>(&crt.header().exrom);
+        exrom = 0;
+
+        struct status {
+            bool inactive() const { return _c.sys_cycle >= _inact_at(); }
+            void activate()       { _inact_at() = _c.sys_cycle + 512; }
+
+            CRT_ctx& _c;
+            u64& _inact_at() const { return *(u64*)&_c.crt_mem[0x2000]; }
+        };
+
+        ctx.addr_space.crt.roml_r = [&](const u16& a, u8& d) {
+            if (status{ctx}.inactive()) {
+                d = ctx.sys_ram[0x8000 + a];
+            } else {
+                d = ctx.crt_mem[a];
+                status{ctx}.activate();
+            }
+        };
+
+        ctx.io_space.io_1_r = [&](const u16& a, u8& d) { UNUSED(a); UNUSED(d);
+            status{ctx}.activate();
+        };
+        ctx.io_space.io_2_r = [&](const u16& a, u8& d) {
+            d = ctx.crt_mem[0x1f00 | (a & 0x00ff)];
+        };
+
+        ctx.when_reset_cold = [&]() { status{ctx}.activate(); };
+    }
+
+    return attached;
+}
+
+
+bool crt_load_T16_Warp_Speed(const Files::CRT& crt, CRT_ctx& ctx) {
+    const bool attached = crt_load_chips(crt, ctx) == 1; // TODO: verify the size (0x4000)
+
+    if (attached) {
+        u8& exrom = *const_cast<u8*>(&crt.header().exrom);
+        exrom = false;
+        u8& game = *const_cast<u8*>(&crt.header().game);
+        game = false;
+
+        struct active {
+            operator bool() const { return _c.crt_mem[0x4000]; }
+            void operator=(bool act) {
+                _c.crt_mem[0x4000] = act;
+                _c.addr_space.set_exrom_game(!act, !act);
+            }
+
+            CRT_ctx& _c;
+        };
+
+
+        ctx.addr_space.crt.roml_r = [&](const u16& a, u8& d) {
+            d = active{ctx}
+                    ? ctx.crt_mem[0x0000 + a]
+                    : ctx.sys_ram[0x8000 + a];
+        };
+        ctx.addr_space.crt.romh_r = [&](const u16& a, u8& d) {
+            d = active{ctx}
+                    ? ctx.crt_mem[0x2000 + a]
+                    : ctx.sys_ram[0xa000 + a];
+        };
+
+        ctx.io_space.io_1_r = [&](const u16& a, u8& d) {
+            d = ctx.crt_mem[0x1e00 | (a & 0x00ff)];
+        };
+        ctx.io_space.io_2_r = [&](const u16& a, u8& d) {
+            d = ctx.crt_mem[0x1f00 | (a & 0x00ff)];
+        };
+        ctx.io_space.io_1_w = [&](const u16& a, const u8& d) { UNUSED(a); UNUSED(d);
+            active{ctx} = true;
+        };
+        ctx.io_space.io_2_w = [&](const u16& a, const u8& d) { UNUSED(a); UNUSED(d);
+            active{ctx} = false;
+        };
+
+        ctx.when_reset_cold = [&]() { active{ctx} = true; };
+    }
+
+    return attached;
+}
+
+
+void System::C64::load_cartridge(const Files::CRT& crt) {
+    unload_cartridge();
+
+    bool attached = false;
     switch (const auto type = crt.header().hw_type; type) {
         using T = Files::CRT::Cartridge_HW_type;
 
@@ -459,6 +551,12 @@ void System::C64::load_cartridge(const Files::CRT& crt) {
             break;
         case T::T5_Ocean_type_1:
             attached = crt_load_T5_Ocean_type_1(crt, crt_ctx);
+            break;
+        case T::T10_Epyx_Fastload:
+            attached = crt_load_T10_Epyx_Fastload(crt, crt_ctx);
+            break;
+        case T::T16_Warp_Speed:
+            attached = crt_load_T16_Warp_Speed(crt, crt_ctx);
             break;
         default:
             std::cout << "CRT: unsupported HW type: " << (int)type << std::endl;
@@ -477,19 +575,26 @@ void System::C64::load_cartridge(const Files::CRT& crt) {
 
 
 void System::C64::unload_cartridge() {
-    addr_space.crt.roml_r = addr_space_null_r;
-    addr_space.crt.roml_w = addr_space_null_w;
-    addr_space.crt.romh_r = addr_space_null_r;
-    addr_space.crt.romh_w = addr_space_null_w;
+    // reading unconnected areas should return whatever is 'floating'
+    // on the bus, so this is not 100% accurate, but meh....
+    addr_space_r null_r { [](const u16& a, u8& d) { UNUSED(a); UNUSED(d); } };
+    addr_space_w null_w { [](const u16& a, const u8& d) { UNUSED(a); UNUSED(d); } };
 
-    io_space.open.io_1_r = addr_space_null_r;
-    io_space.open.io_1_w = addr_space_null_w;
-    io_space.open.io_2_r = addr_space_null_r;
-    io_space.open.io_2_w = addr_space_null_w;
+    addr_space.crt.roml_r = null_r;
+    addr_space.crt.roml_w = null_w;
+    addr_space.crt.romh_r = null_r;
+    addr_space.crt.romh_w = null_w;
+
+    io_space.open.io_1_r = null_r;
+    io_space.open.io_1_w = null_w;
+    io_space.open.io_2_r = null_r;
+    io_space.open.io_2_w = null_w;
 
     addr_space.set_exrom_game(true, true);
 
     vic.set_ultimax(false);
+
+    crt_ctx.when_reset_cold = nullptr;
 }
 
 

@@ -375,8 +375,12 @@ struct Cartridge_ctx {
     Address_space& addr_space;
     IO_space::Open_space& io_space;
 
+    std::function<void ()> when_reset_cold;
+
     u8* crt_mem;
     u8* sys_ram;
+
+    u64& sys_cycle;
 };
 
 
@@ -480,6 +484,7 @@ public:
         cpu.reset_cold();
         int_hub.reset();
         c1541.reset();
+        if (crt_ctx.when_reset_cold) crt_ctx.when_reset_cold();
 
         s.rdy_low = false;
     }
@@ -579,12 +584,6 @@ private:
             UNUSED(this); UNUSED(bits); UNUSED(bit_vals);
         }
     };
-
-    /* ------------------- for unconnected areas  ------------------- */
-    // (in reality, reading unconnected addresses will return whatever is 'floating'
-    // on the bus, so this is not 100% accurate, but meh....)
-    addr_space_r addr_space_null_r { [](const u16& a, u8& d) { UNUSED(a); UNUSED(d); } };
-    addr_space_w addr_space_null_w { [](const u16& a, const u8& d) { UNUSED(a); UNUSED(d); } };
 
     /* -------------------- Host input -------------------- */
     Host::Input::Handlers host_input_handlers {
@@ -692,7 +691,11 @@ private:
         }
     };
 
-
+    /*
+      Cartridge support is possible only due to these (thanks!):
+         https://vice-emu.sourceforge.io/vice_17.html
+         https://sourceforge.net/p/vice-emu/code/HEAD/tree/trunk/vice/src/c64/cart/
+    */
     void load_cartridge(const Files::CRT& crt);
     void unload_cartridge();
 
@@ -713,7 +716,9 @@ private:
 
     Files::loader loader;
 
-    Cartridge_ctx crt_ctx{addr_space, io_space.open, s.crt_mem, s.ram};
+    Cartridge_ctx crt_ctx{
+        addr_space, io_space.open, nullptr, s.crt_mem, s.ram, s.vic.cycle
+    };
 
     static void install_tape_kernal_traps(u8* kernal, u8 trap_opc);
 };
