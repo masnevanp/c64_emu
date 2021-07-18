@@ -115,7 +115,8 @@ private:
         void set_bank(u8 va14_va15) { s.bank = va14_va15; set_layout(); }
 
         Address_space(
-            State& s_, const u8* ram_, const u8* charr, const addr_space_r& romh_r_)
+            State& s_, const u8* ram_, const u8* charr,
+            const Expansion_ctx::Address_space::r& romh_r_)
           : s(s_), ram(ram_), chr(charr), romh_r(romh_r_) { set_layout(); }
 
     private:
@@ -148,7 +149,7 @@ private:
         const u8* ram;
         const u8* chr;
 
-        const addr_space_r& romh_r;
+        const Expansion_ctx::Address_space::r& romh_r;
     };
 
 
@@ -1196,7 +1197,7 @@ public:
     Core(
           State& s_,
           const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
-          const addr_space_r& romh_r,
+          const Expansion_ctx::Address_space::r& romh_r,
           u16& ba_low, Out& out_)
         : s(s_),
           addr_space(s_.addr_space, ram_, charr, romh_r), irq(s, out_), ba(ba_low), lp(s, irq),

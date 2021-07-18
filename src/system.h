@@ -17,6 +17,7 @@
 #include "host.h"
 #include "menu.h"
 #include "files.h"
+#include "cartridge.h"
 
 
 
@@ -46,69 +47,19 @@ struct ROM {
 };
 
 
-class IO_space {
-public:
-    IO_space(
-        CIA& cia1_, CIA& cia2_,
-        TheSID& sid_,
-        VIC& vic_,
-        Color_RAM& col_ram_)
-      :
-        cia1(cia1_), cia2(cia2_),
-        sid(sid_),
-        vic(vic_),
-        col_ram(col_ram_)
-    { }
-
-    void r(const u16& addr, u8& data) {
-        switch (addr >> 8) {
-            case 0x0: case 0x1: case 0x2: case 0x3: vic.r(addr & 0x003f, data);     return;
-            case 0x4: case 0x5: case 0x6: case 0x7: sid.r(addr & 0x001f, data);     return;
-            case 0x8: case 0x9: case 0xa: case 0xb: col_ram.r(addr & 0x03ff, data); return;
-            case 0xc:                               cia1.r(addr & 0x000f, data);    return;
-            case 0xd:                               cia2.r(addr & 0x000f, data);    return;
-            case 0xe:                               open.io_1_r(addr, data);        return;
-            case 0xf:                               open.io_2_r(addr, data);        return;   
-        }
-    }
-
-    void w(const u16& addr, const u8& data) {
-        switch (addr >> 8) {
-            case 0x0: case 0x1: case 0x2: case 0x3: vic.w(addr & 0x003f, data);     return;
-            case 0x4: case 0x5: case 0x6: case 0x7: sid.w(addr & 0x001f, data);     return;
-            case 0x8: case 0x9: case 0xa: case 0xb: col_ram.w(addr & 0x03ff, data); return;
-            case 0xc:                               cia1.w(addr & 0x000f, data);    return;
-            case 0xd:                               cia2.w(addr & 0x000f, data);    return;
-            case 0xe:                               open.io_1_w(addr, data);        return;
-            case 0xf:                               open.io_2_w(addr, data);        return;
-        }
-    }
-
-    struct Open_space {
-        addr_space_r io_1_r;
-        addr_space_w io_1_w;
-        addr_space_r io_2_r;
-        addr_space_w io_2_w;
-    };
-    Open_space open;
-
-private:
-    CIA& cia1;
-    CIA& cia2;
-    TheSID& sid;
-    VIC& vic;
-    Color_RAM& col_ram;
-};
-
-
 class Address_space {
 public:
-    Address_space(u8* ram_, const ROM& rom, IO_space& io_space_)
-        : ram(ram_),
-          bas(rom.basic),
-          kern(rom.kernal),
-          charr(rom.charr),
-          io_space(io_space_) { }
+    Address_space(
+        u8* ram_, const ROM& rom,
+        CIA& cia1_, CIA& cia2_, TheSID& sid_, VIC& vic_,
+        Color_RAM& col_ram_)
+      :
+        ram(ram_), bas(rom.basic), kern(rom.kernal), charr(rom.charr),
+        cia1(cia1_), cia2(cia2_), sid(sid_), vic(vic_),
+        col_ram(col_ram_)
+    {
+        exp.exrom_game = [&](bool e, bool g) { set_exrom_game(e, g); };
+    }
 
     void reset() {
         io_port_state = 0x00;
@@ -145,44 +96,18 @@ public:
             case bas_r:   data = bas[addr & 0x1fff];       return; // 8 KB
             case kern_r:  data = kern[addr & 0x1fff];      return;
             case charr_r: data = charr[addr & 0x0fff];     return; // 4 KB
-            case roml_r:  crt.roml_r(addr & 0x1fff, data); return; // 8 KB
-            case roml_w:  crt.roml_w(addr & 0x1fff, data); return;
-            case romh_r:  crt.romh_r(addr & 0x1fff, data); return;
-            case romh_w:  crt.romh_w(addr & 0x1fff, data); return;
-            case io_r:    io_space.r(addr & 0x0fff, data); return; // 4 KB
-            case io_w:    io_space.w(addr & 0x0fff, data); return;
+            case roml_r:  exp.roml_r(addr & 0x1fff, data); return; // 8 KB
+            case roml_w:  exp.roml_w(addr & 0x1fff, data); return;
+            case romh_r:  exp.romh_r(addr & 0x1fff, data); return;
+            case romh_w:  exp.romh_w(addr & 0x1fff, data); return;
+            case io_r:    r_io(addr & 0x0fff, data);       return; // 4 KB
+            case io_w:    w_io(addr & 0x0fff, data);       return;
             case none_r:  // TODO: anything..? (return 'floating' state..)
             case none_w:                                   return;
         }
     }
 
-    /*
-        The C64 PLA Dissected:
-            "The lines #LORAM (I1), #HIRAM (I2) and #CHAREN (I3) are connected to the pro-
-            cessor port of the CPU, better known as bits 0..2 of $00/$01 in the 6510/8500.  After a
-            reset these lines are all set to input mode by the CPU, which means that they are not
-            driven.  To make sure the have a sane value when the machine is started, they are pulled
-            up by R43, R44 and R45.  With all these values being 1, the C64 can start with KERNAL,
-            I/O and BASIC banked in."
-            ...
-            "The two lines #EXROM and #GAME can be pulled down by cartridges to change the
-            memory map of the C64, e.g., to map external ROM into the address space.  When they
-            are not pulled down from the cartridge port, resistors in RP4 pull them up."
-            ..."
-    */
-
-    struct Cartridge_space {
-        addr_space_r roml_r;
-        addr_space_r roml_w;
-        addr_space_r romh_r;
-        addr_space_r romh_w;
-    };
-    Cartridge_space crt;
-
-    void set_exrom_game(bool exrom, bool game) {
-        exrom_game = (exrom << 4) | (game << 3);
-        set_pla();
-    }
+    Expansion_ctx::Address_space exp;
 
 private:
     enum IO_bits : u8 {
@@ -207,6 +132,37 @@ private:
 
     void w_dd(const u8& dd) { io_port_dd = dd; update_state(); }
     void w_pd(const u8& pd) { io_port_pd = pd; update_state(); }
+
+    void r_io(const u16& addr, u8& data) {
+        switch (addr >> 8) {
+            case 0x0: case 0x1: case 0x2: case 0x3: vic.r(addr & 0x003f, data);     return;
+            case 0x4: case 0x5: case 0x6: case 0x7: sid.r(addr & 0x001f, data);     return;
+            case 0x8: case 0x9: case 0xa: case 0xb: col_ram.r(addr & 0x03ff, data); return;
+            case 0xc:                               cia1.r(addr & 0x000f, data);    return;
+            case 0xd:                               cia2.r(addr & 0x000f, data);    return;
+            case 0xe:                               exp.io1_r(addr, data);          return;
+            case 0xf:                               exp.io2_r(addr, data);          return;
+        }
+    }
+
+    void w_io(const u16& addr, const u8& data) {
+        switch (addr >> 8) {
+            case 0x0: case 0x1: case 0x2: case 0x3: vic.w(addr & 0x003f, data);     return;
+            case 0x4: case 0x5: case 0x6: case 0x7: sid.w(addr & 0x001f, data);     return;
+            case 0x8: case 0x9: case 0xa: case 0xb: col_ram.w(addr & 0x03ff, data); return;
+            case 0xc:                               cia1.w(addr & 0x000f, data);    return;
+            case 0xd:                               cia2.w(addr & 0x000f, data);    return;
+            case 0xe:                               exp.io1_w(addr, data);          return;
+            case 0xf:                               exp.io2_w(addr, data);          return;
+        }
+    }
+
+    void set_exrom_game(bool exrom, bool game) {
+        exrom_game = (exrom << 4) | (game << 3);
+        set_pla();
+
+        vic.set_ultimax(exrom && !game);
+    }
 
     void update_state() { // output bits set from 'pd', input bits unchanged
         io_port_state = (io_port_pd & io_port_dd) | (io_port_state & ~io_port_dd);
@@ -235,8 +191,11 @@ private:
     const u8* kern;
     const u8* charr;
 
-    IO_space& io_space;
-
+    CIA& cia1;
+    CIA& cia2;
+    TheSID& sid;
+    VIC& vic;
+    Color_RAM& col_ram;
 };
 
 
@@ -371,19 +330,6 @@ private:
 };
 
 
-struct Cartridge_ctx {
-    Address_space& addr_space;
-    IO_space::Open_space& io_space;
-
-    std::function<void ()> when_reset_cold;
-
-    u8* crt_mem;
-    u8* sys_ram;
-
-    u64& sys_cycle;
-};
-
-
 struct State {
     u8 ram[0x10000];
     u8 color_ram[Color_RAM::size] = {};
@@ -392,11 +338,11 @@ struct State {
 
     VIC::State vic;
 
-    // holds all the memory that a cartridge requires: ROM, RAM,
+    // holds all the memory that an expansion (e.g. a cart) requires: ROM, RAM,
     // emulation control data, ...
-    // TODO: dynamic, or meh..? (although 640k is enough for everyone...)
+    // TODO: dynamic, or meh..? (although 640k is enough for everyone...except easyflash..)
     //       (nasty, if state saving is implemented)
-    u8 crt_mem[640 * 1024];
+    u8 exp_mem[640 * 1024];
 };
 
 
@@ -428,15 +374,14 @@ public:
         cia2(cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
         sid(s.vic.cycle),
         col_ram(s.color_ram),
-        vic(s.vic, s.ram, col_ram, rom.charr, addr_space.crt.romh_r, s.rdy_low, vic_out),
+        vic(s.vic, s.ram, col_ram, rom.charr, addr_space.exp.romh_r, s.rdy_low, vic_out),
         c1541(cia2.port_a.ext_in, rom.c1541/*, run_cfg_change*/),
         c1541_status_panel{c1541.dc.status, rom.charr},
         vid_out(),
         vic_out(int_hub, vid_out, host_input, sid, menu.overlay, c1541_status_panel),
         int_hub(cpu),
         kb_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in),
-        io_space(cia1, cia2, sid, vic, col_ram),
-        addr_space(s.ram, rom, io_space),
+        addr_space(s.ram, rom, cia1, cia2, sid, vic, col_ram),
         host_input(host_input_handlers),
         menu(
             {
@@ -463,7 +408,7 @@ public:
 
         cpu.sig_halt = cpu_trap;
 
-        unload_cartridge();
+        Cartridge::detach(exp_ctx);
     }
 
     void reset_warm() {
@@ -484,7 +429,7 @@ public:
         cpu.reset_cold();
         int_hub.reset();
         c1541.reset();
-        if (crt_ctx.when_reset_cold) crt_ctx.when_reset_cold();
+        exp_ctx.reset();
 
         s.rdy_low = false;
     }
@@ -544,7 +489,6 @@ private:
 
     IO::Keyboard_matrix kb_matrix;
 
-    IO_space io_space;
     Address_space addr_space;
 
     // TODO: lump these (and future related things) together
@@ -672,8 +616,11 @@ private:
             switch (type) {
                 case Files::Type::crt: {
                     Files::CRT crt{data};
-                    if (crt.header().valid()) load_cartridge(crt);
-                    else std::cout << "CRT: invalid header" << std::endl;
+                    if (crt.header().valid()) {
+                        if (Cartridge::attach(crt, exp_ctx)) reset_cold();
+                    } else {
+                        std::cout << "CRT: invalid header" << std::endl;
+                    }
                     break;
                 }
                 case Files::Type::d64:
@@ -696,8 +643,6 @@ private:
          https://vice-emu.sourceforge.io/vice_17.html
          https://sourceforge.net/p/vice-emu/code/HEAD/tree/trunk/vice/src/c64/cart/
     */
-    void load_cartridge(const Files::CRT& crt);
-    void unload_cartridge();
 
     //void keep_running();
 
@@ -709,15 +654,15 @@ private:
 
 
     std::vector<::Menu::Action> cart_menu_actions{
-        {"CARTRIDGE / UNLOAD ?", [&](){ unload_cartridge(); reset_cold(); }},
+        {"CARTRIDGE / DETACH ?", [&](){ Cartridge::detach(exp_ctx); reset_cold(); }},
     };
 
     Menu menu;
 
     Files::loader loader;
 
-    Cartridge_ctx crt_ctx{
-        addr_space, io_space.open, nullptr, s.crt_mem, s.ram, s.vic.cycle
+    Expansion_ctx exp_ctx{
+        addr_space.exp, s.ram, s.vic.cycle, s.exp_mem, nullptr
     };
 
     static void install_tape_kernal_traps(u8* kernal, u8 trap_opc);

@@ -32,7 +32,7 @@ namespace ctrl_ch { // TOREDO...
 static const char* win_drive_list_filename = "?:/";
 static const char* unmount_filename = ":";
 
-static const int HD_FILE_SIZE_MAX = 0x7ffff; // TODO: check
+static const int HD_FILE_SIZE_MAX = 0x200000; // TODO: check
 static const int C64_BIN_SIZE_MAX = 0xffff; // TODO: check
 static const int T64_SIZE_MIN = 0x60;
 static const int G64_SIZE_MIN = 0xffff; // TODO: a more realistic minimum (this is far below...)
