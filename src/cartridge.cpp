@@ -6,24 +6,44 @@
 
 
 
+/*
+  TODO:
+    - handle .CRTs with banks out-of-order (although .CRTs seem to have the chips always
+      in order)
+*/
 using Ctx = Expansion_ctx;
 
-// loads all the chips in the order found (so not suitable for every cart type)
-int load_chips(const Files::CRT& crt, Ctx& ctx) {
+
+// for the basic 'no fancy dynamic banking' carts
+int load_static_chips(const Files::CRT& crt, Ctx& ctx) {
     int count = 0;
 
     for (auto cp : crt.chip_packets()) {
-        u32 exp_mem_addr;
+        u32 tgt_addr;
 
-        if (cp->load_addr == 0x8000) exp_mem_addr = 0x0000;
-        else if (cp->load_addr == 0xa000 || cp->load_addr == 0xe000) exp_mem_addr = 0x2000;
+        if (cp->load_addr == 0x8000) tgt_addr = 0x0000;
+        else if (cp->load_addr == 0xa000 || cp->load_addr == 0xe000) tgt_addr = 0x2000;
         else {
             std::cout << "CRT: invalid CHIP packet address - " << (int)cp->load_addr << std::endl;
             continue;
         }
 
-        std::copy(cp->data(), cp->data() + cp->data_size, &ctx.mem[exp_mem_addr]);
+        std::copy(cp->data(), cp->data() + cp->data_size, &ctx.mem[tgt_addr]);
 
+        ++count;
+    }
+
+    return count;
+}
+
+// just load all the chips in the order found (TODO: ever need to check the order?)
+int load_chips(const Files::CRT& crt, Ctx& ctx) {
+    int count = 0;
+
+    u8* tgt = ctx.mem;
+    for (auto cp : crt.chip_packets()) {
+        std::copy(cp->data(), cp->data() + cp->data_size, tgt);
+        tgt += cp->data_size;
         ++count;
     }
 
@@ -45,7 +65,7 @@ static const auto& not_attached = std::nullopt;
 
 
 Result T0_Normal_cartridge(const Files::CRT& crt, Ctx& ctx) {
-    if (load_chips(crt, ctx) == 0) return not_attached;
+    if (load_static_chips(crt, ctx) == 0) return not_attached;
 
     ctx.as.roml_r = [&](const u16& a, u8& d) { d = ctx.mem[a]; };
     ctx.as.romh_r = [&](const u16& a, u8& d) { d = ctx.mem[0x2000 + a]; };
@@ -55,7 +75,7 @@ Result T0_Normal_cartridge(const Files::CRT& crt, Ctx& ctx) {
 
 
 Result T4_Simons_BASIC(const Files::CRT& crt, Ctx& ctx) {
-    if (load_chips(crt, ctx) != 2) return not_attached;
+    if (load_static_chips(crt, ctx) != 2) return not_attached;
 
     struct romh_active {
         void operator=(bool act) { _c.as.exrom_game(false, !act); }
@@ -83,7 +103,7 @@ Result T4_Simons_BASIC(const Files::CRT& crt, Ctx& ctx) {
 
 
 Result T5_Ocean_type_1(const Files::CRT& crt, Ctx& ctx) {
-    u32 exp_mem_addr = 0x0001;
+    u32 exp_mem_addr = 0x0001; // current bank stored at 0x0000
     int banks = 0;
 
     for (auto cp : crt.chip_packets()) {
@@ -101,41 +121,32 @@ Result T5_Ocean_type_1(const Files::CRT& crt, Ctx& ctx) {
 
     if (banks == 0) return not_attached;
 
-    enum { bank = 0x0000 };
-
-    ctx.as.roml_r = [&](const u16& a, u8& d) {
-        u32 bank_base = (ctx.mem[bank] * 0x2000) + 1;
-        d = ctx.mem[bank_base + a];
+    struct bank {
+        void operator=(u8 b) { _c.mem[0x0000] = b & 0b00111111; }
+        operator u32() const { return (_c.mem[0x0000] * 0x2000) + 1; }
+        Ctx& _c;
     };
 
-    bool exrom;
-    bool game;
+    const bool game = (banks == 64);
 
-    const bool type_a = banks < 64;
-    if (type_a) {
-        ctx.as.romh_r = [&](const u16& a, u8& d) {
-            u32 bank_base = (ctx.mem[bank] * 0x2000) + 1;
-            d = ctx.mem[bank_base + a];
-        };
-        exrom = false;
-        game = false;
-    } else {
-        exrom = false;
-        game = true;
+    if (!game) {
+        ctx.as.romh_r = [&](const u16& a, u8& d) { d = ctx.mem[bank{ctx} + a]; };
     }
 
+    ctx.as.roml_r = [&](const u16& a, u8& d) { d = ctx.mem[bank{ctx} + a]; };
+
     ctx.as.io1_w = [&](const u16& a, const u8& d) {
-        if (a == 0x0e00) ctx.mem[bank] = d & 0b00111111;
+        if (a == 0x0e00) bank{ctx} = d & 0b00111111;
     };
 
-    ctx.reset = [&]() { ctx.mem[bank] = 0x00; };
+    ctx.reset = [&]() { bank{ctx} = 0; };
 
-    return exrom_game(exrom, game);
+    return exrom_game(false, game);
 }
 
 
 Result T10_Epyx_Fastload(const Files::CRT& crt, Ctx& ctx) {
-    if (load_chips(crt, ctx) != 1) return not_attached;
+    if (load_static_chips(crt, ctx) != 1) return not_attached;
 
     struct status {
         bool inactive() const { return _c.sys_cycle >= _inact_at(); }
@@ -168,7 +179,7 @@ Result T10_Epyx_Fastload(const Files::CRT& crt, Ctx& ctx) {
 
 
 Result T16_Warp_Speed(const Files::CRT& crt, Ctx& ctx) {
-    if (load_chips(crt, ctx) != 1) return not_attached; // TODO: verify the size (0x4000)
+    if (load_static_chips(crt, ctx) != 1) return not_attached; // TODO: verify the size (0x4000)
 
     struct active {
         operator bool() const { return _c.mem[0x4000]; }
@@ -210,8 +221,30 @@ Result T16_Warp_Speed(const Files::CRT& crt, Ctx& ctx) {
 }
 
 
+Result T18_Zaxxon_Super_Zaxxon_SEGA(const Files::CRT& crt, Ctx& ctx) {
+    if (load_chips(crt, ctx) != 3) return not_attached;
+
+    struct romh_base {
+        void operator=(u16 b) { _base() = b; }
+        operator u16() const  { return _base(); }
+        u16& _base() const    { return *(u16*)&_c.mem[0x5000]; }
+        Ctx& _c;
+    };
+
+    ctx.as.roml_r = [&](const u16& a, u8& d) {
+        romh_base{ctx} = 0x1000 | ((a & 0x1000) << 1);
+        d = ctx.mem[a & 0x0fff];
+    };
+    ctx.as.romh_r = [&](const u16& a, u8& d) {
+        d = ctx.mem[romh_base{ctx} + a];
+    };
+
+    return exrom_game(crt);
+}
+
+
 Result T51_MACH_5(const Files::CRT& crt, Ctx& ctx) {
-    if (load_chips(crt, ctx) != 1) return not_attached;
+    if (load_static_chips(crt, ctx) != 1) return not_attached;
 
     struct active {
         void operator=(bool act) { _c.as.exrom_game(!act, true); }
@@ -256,6 +289,9 @@ bool Cartridge::attach(const Files::CRT& crt, Ctx& exp_ctx) {
             break;
         case T::T16_Warp_Speed:
             result = T16_Warp_Speed(crt, exp_ctx);
+            break;
+        case T::T18_Zaxxon_Super_Zaxxon_SEGA:
+            result = T18_Zaxxon_Super_Zaxxon_SEGA(crt, exp_ctx);
             break;
         case T::T51_MACH_5:
             result = T51_MACH_5(crt, exp_ctx);
