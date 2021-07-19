@@ -42,7 +42,7 @@ namespace NMOS6502 {
         enum RW : u8 { w = 0, r = 1 };
         extern const std::string RW_str[];
 
-        struct MOP { // micro-op
+        /*struct MOP { // micro-op
             unsigned char ar : 4;
             unsigned char dr : 4;
             unsigned char mopc : 6;
@@ -51,6 +51,21 @@ namespace NMOS6502 {
 
             MOP(u8 ar_ = 0, u8 dr_ = 0, u8 rw_ = 0, u8 pc_inc_ = 0, u8 mopc_ = hlt)
             : ar(ar_), dr(dr_), mopc(mopc_), rw(rw_), pc_inc(pc_inc_) {}
+
+            operator std::string() const {
+                return "(" + R16_str[ar] + ") " + R8_str[dr] + " " + RW_str[rw]
+                        + PC_inc_str[pc_inc] + " " + MOPC_str[mopc];
+            }
+        };*/
+        struct MOP { // micro-op
+            unsigned char ar;
+            unsigned char dr;
+            unsigned char rw;
+            unsigned char pc_inc;
+            unsigned char mopc;
+
+            MOP(u8 ar_ = 0, u8 dr_ = 0, u8 rw_ = 0, u8 pc_inc_ = 0, u8 mopc_ = hlt)
+            : ar(ar_), dr(dr_), rw(rw_), pc_inc(pc_inc_), mopc(mopc_) {}
 
             operator std::string() const {
                 return "(" + R16_str[ar] + ") " + R8_str[dr] + " " + RW_str[rw]
