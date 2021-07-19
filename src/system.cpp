@@ -1,6 +1,7 @@
 
 #include "system.h"
 #include <fstream>
+#include <algorithm>
 
 
 
@@ -55,50 +56,50 @@
 
 */
 
-const System::Banker::PLA_Line System::Banker::PLA[14] = {
+const System::Address_space::PLA_Line System::Address_space::PLA[14] = {
     /*
     PLA_Line {{
         {ram0_w, ram0_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r},
         {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r},  }},
     PLA_Line {{
         {ram0_w, ram0_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r},
-        {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, romh0_r}, {ram_w, romh1_r}, {ram_w, ram_r}, {ram_w, charr_r}, {ram_w, kern0_r}, {ram_w, kern1_r},  }},
+        {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, romh_r}, {ram_w, romh_r}, {ram_w, ram_r}, {ram_w, charr_r}, {ram_w, kern_r}, {ram_w, kern_r},  }},
     PLA_Line {{
         {ram0_w, ram0_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r},
-        {ram_w, roml0_r}, {ram_w, roml1_r}, {ram_w, romh0_r}, {ram_w, romh1_r}, {ram_w, ram_r}, {ram_w, charr_r}, {ram_w, kern0_r}, {ram_w, kern1_r},  }},
+        {ram_w, roml_r}, {ram_w, roml_r}, {ram_w, romh_r}, {ram_w, romh_r}, {ram_w, ram_r}, {ram_w, charr_r}, {ram_w, kern_r}, {ram_w, kern_r},  }},
     PLA_Line {{
         {ram0_w, ram0_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r},
-        {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, romh0_r}, {ram_w, romh1_r}, {ram_w, ram_r}, {io_w, io_r}, {ram_w, kern0_r}, {ram_w, kern1_r},  }},
+        {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, romh_r}, {ram_w, romh_r}, {ram_w, ram_r}, {io_w, io_r}, {ram_w, kern_r}, {ram_w, kern_r},  }},
     PLA_Line {{
         {ram0_w, ram0_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r},
-        {ram_w, roml0_r}, {ram_w, roml1_r}, {ram_w, romh0_r}, {ram_w, romh1_r}, {ram_w, ram_r}, {io_w, io_r}, {ram_w, kern0_r}, {ram_w, kern1_r},  }},
+        {ram_w, roml_r}, {ram_w, roml_r}, {ram_w, romh_r}, {ram_w, romh_r}, {ram_w, ram_r}, {io_w, io_r}, {ram_w, kern_r}, {ram_w, kern_r},  }},
     PLA_Line {{
         {ram0_w, ram0_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r},
-        {ram_w, roml0_r}, {ram_w, roml1_r}, {ram_w, bas0_r}, {ram_w, bas1_r}, {ram_w, ram_r}, {ram_w, charr_r}, {ram_w, kern0_r}, {ram_w, kern1_r},  }},
+        {ram_w, roml_r}, {ram_w, roml_r}, {ram_w, bas_r}, {ram_w, bas_r}, {ram_w, ram_r}, {ram_w, charr_r}, {ram_w, kern_r}, {ram_w, kern_r},  }},
     PLA_Line {{
         {ram0_w, ram0_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r},
-        {ram_w, roml0_r}, {ram_w, roml1_r}, {ram_w, bas0_r}, {ram_w, bas1_r}, {ram_w, ram_r}, {io_w, io_r}, {ram_w, kern0_r}, {ram_w, kern1_r},  }},
+        {ram_w, roml_r}, {ram_w, roml_r}, {ram_w, bas_r}, {ram_w, bas_r}, {ram_w, ram_r}, {io_w, io_r}, {ram_w, kern_r}, {ram_w, kern_r},  }},
     PLA_Line {{
         {ram0_w, ram0_r}, {none_w, none_r}, {none_w, none_r}, {none_w, none_r}, {none_w, none_r}, {none_w, none_r}, {none_w, none_r}, {none_w, none_r},
-        {roml0_w, roml0_r}, {roml1_w, roml1_r}, {none_w, none_r}, {none_w, none_r}, {none_w, none_r}, {io_w, io_r}, {romh0_w, romh0_r}, {romh1_w, romh1_r},  }},
+        {roml_w, roml_r}, {roml_w, roml_r}, {none_w, none_r}, {none_w, none_r}, {none_w, none_r}, {io_w, io_r}, {romh_w, romh_r}, {romh_w, romh_r},  }},
     PLA_Line {{
         {ram0_w, ram0_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r},
         {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, charr_r}, {ram_w, ram_r}, {ram_w, ram_r},  }},
     PLA_Line {{
         {ram0_w, ram0_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r},
-        {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, charr_r}, {ram_w, kern0_r}, {ram_w, kern1_r},  }},
+        {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, charr_r}, {ram_w, kern_r}, {ram_w, kern_r},  }},
     PLA_Line {{
         {ram0_w, ram0_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r},
-        {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, bas0_r}, {ram_w, bas1_r}, {ram_w, ram_r}, {ram_w, charr_r}, {ram_w, kern0_r}, {ram_w, kern1_r},  }},
+        {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, bas_r}, {ram_w, bas_r}, {ram_w, ram_r}, {ram_w, charr_r}, {ram_w, kern_r}, {ram_w, kern_r},  }},
     PLA_Line {{
         {ram0_w, ram0_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r},
         {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {io_w, io_r}, {ram_w, ram_r}, {ram_w, ram_r},  }},
     PLA_Line {{
         {ram0_w, ram0_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r},
-        {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {io_w, io_r}, {ram_w, kern0_r}, {ram_w, kern1_r},  }},
+        {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {io_w, io_r}, {ram_w, kern_r}, {ram_w, kern_r},  }},
     PLA_Line {{
         {ram0_w, ram0_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, ram_r},
-        {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, bas0_r}, {ram_w, bas1_r}, {ram_w, ram_r}, {io_w, io_r}, {ram_w, kern0_r}, {ram_w, kern1_r},  }},
+        {ram_w, ram_r}, {ram_w, ram_r}, {ram_w, bas_r}, {ram_w, bas_r}, {ram_w, ram_r}, {io_w, io_r}, {ram_w, kern_r}, {ram_w, kern_r},  }},
     */
     PLA_Line {{ // 00: modes 0, 1, 4, 8, 12, 24, 28
         { ram0_w,   ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,
@@ -109,37 +110,37 @@ const System::Banker::PLA_Line System::Banker::PLA[14] = {
         { ram0_w,   ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,
           ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w   },
         { ram0_r,   ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,
-          ram_r,    ram_r,    romh0_r,  romh1_r,  ram_r,    charr_r,  kern0_r,  kern1_r } }},
+          ram_r,    ram_r,    romh_r,   romh_r,   ram_r,    charr_r,  kern_r,   kern_r } }},
     PLA_Line {{ // 02: mode 3
         { ram0_w,   ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,
           ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w   },
         { ram0_r,   ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,
-          roml0_r,  roml1_r,  romh0_r,  romh1_r,  ram_r,    charr_r,  kern0_r,  kern1_r } }},
+          roml_r,   roml_r,   romh_r,   romh_r,   ram_r,    charr_r,  kern_r,   kern_r } }},
     PLA_Line {{ // 03: mode 6
         { ram0_w,   ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,
           ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    io_w,     ram_w,    ram_w   },
         { ram0_r,   ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,
-          ram_r,    ram_r,    romh0_r,  romh1_r,  ram_r,    io_r,     kern0_r,  kern1_r } }},
+          ram_r,    ram_r,    romh_r,   romh_r,   ram_r,    io_r,     kern_r,   kern_r } }},
     PLA_Line {{ // 04: mode 7
         { ram0_w,   ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,
           ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    io_w,     ram_w,    ram_w   },
         { ram0_r,   ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,
-          roml0_r,  roml1_r,  romh0_r,  romh1_r,  ram_r,    io_r,     kern0_r,  kern1_r } }},
+          roml_r,   roml_r,   romh_r,   romh_r,   ram_r,    io_r,     kern_r,   kern_r } }},
     PLA_Line {{ // 05: mode 11
         { ram0_w,   ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,
           ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w   },
         { ram0_r,   ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,
-          roml0_r,  roml1_r,  bas0_r,   bas1_r,   ram_r,    charr_r,  kern0_r,  kern1_r } }},
+          roml_r,   roml_r,   bas_r,    bas_r,    ram_r,    charr_r,  kern_r,   kern_r } }},
     PLA_Line {{ // 06: mode 15
         { ram0_w,   ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,
           ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    io_w,     ram_w,    ram_w   },
         { ram0_r,   ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,
-          roml0_r,  roml1_r,  bas0_r,   bas1_r,   ram_r,    io_r,     kern0_r,  kern1_r } }},
+          roml_r,   roml_r,   bas_r,    bas_r,    ram_r,    io_r,     kern_r,   kern_r } }},
     PLA_Line {{ // 07: modes 16..23
         { ram0_w,   none_w,   none_w,   none_w,   none_w,   none_w,   none_w,   none_w,
-          roml0_w,  roml1_w,  none_w,   none_w,   none_w,   io_w,     romh0_w,  romh1_w },
+          roml_w,   roml_w,   none_w,   none_w,   none_w,   io_w,     romh_w,   romh_w },
         { ram0_r,   none_r,   none_r,   none_r,   none_r,   none_r,   none_r,   none_r,
-          roml0_r,  roml1_r,  none_r,   none_r,   none_r,   io_r,     romh0_r,  romh1_r } }},
+          roml_r,   roml_r,   none_r,   none_r,   none_r,   io_r,     romh_r,   romh_r } }},
     PLA_Line {{ // 08: modes 9, 25
         { ram0_w,   ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,
           ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w   },
@@ -149,12 +150,12 @@ const System::Banker::PLA_Line System::Banker::PLA[14] = {
         { ram0_w,   ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,
           ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w   },
         { ram0_r,   ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,
-          ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    charr_r,  kern0_r,  kern1_r } }},
+          ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    charr_r,  kern_r,   kern_r } }},
     PLA_Line {{ // 10: modes 27
         { ram0_w,   ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,
           ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w   },
         { ram0_r,   ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,
-          ram_r,    ram_r,    bas0_r,   bas1_r,   ram_r,    charr_r,  kern0_r,  kern1_r } }},
+          ram_r,    ram_r,    bas_r,    bas_r,    ram_r,    charr_r,  kern_r,   kern_r } }},
     PLA_Line {{ // 11: modes 5, 13, 29
         { ram0_w,   ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,
           ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    io_w,     ram_w,    ram_w   },
@@ -164,15 +165,15 @@ const System::Banker::PLA_Line System::Banker::PLA[14] = {
         { ram0_w,   ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,
           ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    io_w,     ram_w,    ram_w   },
         { ram0_r,   ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,
-          ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    io_r,     kern0_r,  kern1_r } }},
+          ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    io_r,     kern_r,   kern_r } }},
     PLA_Line {{ // 13: mode 31
         { ram0_w,   ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    ram_w,
           ram_w,    ram_w,    ram_w,    ram_w,    ram_w,    io_w,     ram_w,    ram_w   },
         { ram0_r,   ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,    ram_r,
-          ram_r,    ram_r,    bas0_r,   bas1_r,   ram_r,    io_r,     kern0_r,  kern1_r } }},
+          ram_r,    ram_r,    bas_r,    bas_r,    ram_r,    io_r,     kern_r,   kern_r } }},
 };
 
-const u8 System::Banker::Mode_to_PLA_idx[32] = {
+const u8 System::Address_space::Mode_to_PLA_idx[32] = {
     0,  0,  1,  2,  0, 11,  3,  4, 0,  8,  9,  5,  0, 11, 12,  6,
     7,  7,  7,  7,  7,  7,  7,  7, 0,  8,  9, 10,  0, 11, 12, 13,
 };
@@ -337,19 +338,13 @@ void System::Menu::update() {
 }
 
 
-void System::C64::init_ram() { // TODO: parameterize pattern (+ add 'randomness'?)
-    for (int addr = 0x0000; addr <= 0xffff; ++addr)
-        s.ram[addr] = (addr & 0x80) ? 0xff : 0x00;
-}
-
-
 /*void System::C64::keep_running() {
     auto run_without_c1541 = [&]() {
         while (!run_cfg_change) {
             vic.tick();
 
             if (!s.rdy_low || cpu.mrw() == NMOS6502::MC::RW::w) {
-                sys_banker.access(cpu.mar(), cpu.mdr(), cpu.mrw());
+                addr_space.access(cpu.mar(), cpu.mdr(), cpu.mrw());
                 cpu.tick();
             }
 
@@ -367,7 +362,7 @@ void System::C64::init_ram() { // TODO: parameterize pattern (+ add 'randomness'
             if (!s.rdy_low || rw == NMOS6502::MC::RW::w) {
                 // 'Slip in' the C1541 cycle
                 if (rw == NMOS6502::MC::RW::w) c1541.tick();
-                sys_banker.access(cpu.mar(), cpu.mdr(), rw);
+                addr_space.access(cpu.mar(), cpu.mdr(), rw);
                 cpu.tick();
                 if (rw == NMOS6502::MC::RW::r) c1541.tick();
             } else {
@@ -418,17 +413,17 @@ void System::C64::do_load() {
     };
 
     auto resolve_disk_img_op = [&]() {
-        using Diop = Files::Disk_img_op;
+        using Iop = Files::Img_op;
 
         switch (scnd_addr) {
-            case 0: return Diop(Diop::fwd | Diop::mount | Diop::describe);
-            case 1: return Diop::fwd; // would be 'fwd_1st' (first drive on the bus)
-            case 8: return Diop::fwd; // would be 'fwd_8' if multiple drives were ever supported
-            // case 9: return Diop::fwd_9;
+            case 0: return Iop(Iop::fwd | Iop::mount | Iop::inspect);
+            case 1: return Iop::fwd; // would be 'fwd_1st' (first drive on the bus)
+            case 8: return Iop::fwd; // would be 'fwd_8' if multiple drives were ever supported
+            // case 9: return Iop::fwd_9;
             // ...
-            case 2: return Diop::mount;
-            case 3: return Diop::describe;
-            default: return Diop::none;
+            case 2: return Iop::mount;
+            case 3: return Iop::inspect;
+            default: return Iop::none;
         }
     };
 
@@ -483,6 +478,12 @@ void System::C64::do_save() {
     // status
     cpu.clr(NMOS6502::Flag::C); // no error
     s.ram[0x90] = 0x00; // io status ok
+}
+
+
+void System::C64::init_ram() { // TODO: parameterize pattern (+ add 'randomness'?)
+    for (int addr = 0x0000; addr <= 0xffff; ++addr)
+        s.ram[addr] = (addr & 0x80) ? 0xff : 0x00;
 }
 
 

@@ -32,10 +32,11 @@ namespace ctrl_ch { // TOREDO...
 static const char* win_drive_list_filename = "?:/";
 static const char* unmount_filename = ":";
 
-static const int HD_FILE_SIZE_MAX = 0x7ffff; // TODO: check
+static const int HD_FILE_SIZE_MAX = 0x200000; // TODO: check
 static const int C64_BIN_SIZE_MAX = 0xffff; // TODO: check
 static const int T64_SIZE_MIN = 0x60;
-static const int G64_SIZE_MIN = 0xffff; /// TODO: a more realistic minimum (this is far below...)
+static const int G64_SIZE_MIN = 0xffff; // TODO: a more realistic minimum (this is far below...)
+static const int CRT_SIZE_MIN = 0x0050;
 
 
 static const auto& NOT_FOUND = std::nullopt;
@@ -49,14 +50,29 @@ static constexpr u8 dir_list_first_line[] = { // 0 PRINT"<clr>":LIST1-:REM<del><
     0x14, 0x00 // <del>, eol
 };
 
+
 static constexpr u8 t64_signatures[][16] = {
     { 0x43, 0x36, 0x34, 0x53, 0x20, 0x74, 0x61, 0x70, 0x65, 0x20, 0x69, 0x6D, 0x61, 0x67, 0x65, 0x20 },
     { 0x43, 0x36, 0x34, 0x20, 0x74, 0x61, 0x70, 0x65, 0x20, 0x69, 0x6D, 0x61, 0x67, 0x65, 0x20, 0x66 },
     { 0x43, 0x36, 0x34, 0x53, 0x20, 0x74, 0x61, 0x70, 0x65, 0x20, 0x66, 0x69, 0x6c, 0x65, 0x0d, 0x0a },
 };
 
+static constexpr u8 g64_signature[] = { 0x47, 0x43, 0x52, 0x2D, 0x31, 0x35, 0x34, 0x31 };
+
+static constexpr u8 crt_signature[] = {
+    0x43, 0x36, 0x34, 0x20, 0x43, 0x41, 0x52, 0x54,
+    0x52, 0x49, 0x44, 0x47, 0x45, 0x20, 0x20, 0x20
+};
+
+
 
 Files::Type file_type(const std::vector<u8>& file) {
+    auto is_crt = [&]() {
+        return std::size(file) >= CRT_SIZE_MIN
+                    && std::equal(std::begin(crt_signature), std::end(crt_signature),
+                                        std::begin(file));
+    };
+
     auto is_t64 = [&]() {
         if (std::size(file) >= T64_SIZE_MIN) {
             for (const auto& sig : t64_signatures) {
@@ -67,22 +83,23 @@ Files::Type file_type(const std::vector<u8>& file) {
         return false;
     };
 
+    auto is_g64 = [&]() {
+        return std::size(file) >= G64_SIZE_MIN
+                    && std::equal(std::begin(g64_signature), std::end(g64_signature),
+                                        std::begin(file));
+    };
+
     auto is_d64 = [&]() {
         return std::size(file) == Files::D64::size
                     || std::size(file) == Files::D64::size_with_error_info;
     };
 
-    auto is_g64 = [&]() {
-        return std::size(file) >= G64_SIZE_MIN
-                    && std::equal(std::begin(Files::g64_signature), std::end(Files::g64_signature),
-                                        std::begin(file));
-    };
-
     auto is_raw = [&]() { return std::size(file) > 0 && std::size(file) <= C64_BIN_SIZE_MAX; };
 
+    if (is_crt()) return Files::Type::crt;
     if (is_t64()) return Files::Type::t64;
-    if (is_d64()) return Files::Type::d64;
     if (is_g64()) return Files::Type::g64;
+    if (is_d64()) return Files::Type::d64;
     if (is_raw()) return Files::Type::raw;
 
     return Files::Type::unsupported;
@@ -246,15 +263,15 @@ public:
     _Loader(const std::string& init_dir, Files::consumer& img_consumer_)
         : context{init_dir}, img_consumer(img_consumer_) {}
 
-    load_result operator()(const std::string& what, const u8 disk_img_ops) {
-        diops = disk_img_ops; // don't want to be passing it around everywhere...
+    load_result operator()(const std::string& what, const u8 img_ops) {
+        iops = img_ops; // don't want to be passing it around everywhere...
         return load(what);
     }
 
 private:
     fs::path context;
     Files::consumer& img_consumer;
-    u8 diops;
+    u8 iops; // Files::Img_op flags
 
     load_result load(const std::string& what) {
         if (fs::is_directory(context)) return load_hd(what);
@@ -284,7 +301,7 @@ private:
         if (fs::file_size(path) > HD_FILE_SIZE_MAX) return NOT_FOUND;
 
         if (auto hd_file = read_file(path.string())) {
-            using Diop = Files::Disk_img_op;
+            using Iop = Files::Img_op;
 
             const auto type = file_type(*hd_file);
             load_result c64_file{NOT_FOUND};
@@ -296,27 +313,42 @@ private:
             };
 
             switch (type) {
+                case Files::Type::crt:
+                    c64_file = (iops & Iop::inspect)
+                            ? std::vector<u8>(0)  // TODO: print directly to screen (if in direct mode)
+                            : std::vector<u8>(0); // empty file (i.e. op success, nothing loaded)
+
+                    if (iops & Iop::fwd) fwd();
+
+                    break;
+
                 case Files::Type::t64: c64_file = load_t64(*hd_file, what); break;
+
                 case Files::Type::d64:
                     if (is_already_mounted()) {
                         c64_file = load_d64(*hd_file, what);
                     } else {
-                        c64_file = (diops & Diop::describe)
+                        c64_file = (iops & Iop::inspect)
                             ? load_d64(*hd_file, "$") // TODO: print directly to screen (if in direct mode)
                             : std::vector<u8>(0); // empty file (i.e. op success, nothing loaded)
 
-                        if (diops & Diop::mount) mount();
-                        if (diops & Diop::fwd) fwd();
+                        if (iops & Iop::mount) mount();
+                        if (iops & Iop::fwd) fwd();
                     }
+
                     break;
+
                 case Files::Type::g64:
                     // TODO: handle as d64 is handled
-                    if (diops & Diop::fwd) {
+                    if (iops & Iop::fwd) {
                         fwd();
                         c64_file = std::vector<u8>(0);
                     }
+
                     break;
+
                 case Files::Type::raw: c64_file = *hd_file; break;
+
                 case Files::Type::unsupported:
                 default:
                     return NOT_FOUND;

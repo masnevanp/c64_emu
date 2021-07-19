@@ -19,14 +19,24 @@ static constexpr double CPU_FREQ = FRAME_RATE * (312.0 * 63.0);
 static constexpr double COLOR_CLOCK_FREQ = 18.0 * CPU_FREQ;
 
 
-struct U16 { // TODO: rename, e.g. U16_le (little-endian u16)
+struct U16l { // little-endian
     u8 b0; u8 b1;
     operator u16() const { return (b1 << 8) | b0; }
 };
 
-struct U32 {
+struct U32l {
     u8 b0; u8 b1; u8 b2; u8 b3;
     operator u32() const { return (b3 << 24) | (b2 << 16) | (b1 << 8) | b0; }
+};
+
+struct U16b { // big-endian
+    u8 b0; u8 b1;
+    operator u16() const { return (b0 << 8) | b1; }
+};
+
+struct U32b {
+    u8 b0; u8 b1; u8 b2; u8 b3;
+    operator u32() const { return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3; }
 };
 
 
@@ -37,6 +47,38 @@ using Sig1 = std::function<void (T)>;
 
 template<typename T1, typename T2>
 using Sig2 = std::function<void (T1, T2)>;
+
+
+
+// gather everything required by an expansion (e.g. cart)
+// (TODO: nmi/irq when needed...)
+struct Expansion_ctx {
+    struct Address_space {
+        using r = std::function<void (const u16& addr, u8& data)>;
+        using w = std::function<void (const u16& addr, const u8& data)>;
+
+        r roml_r;
+        w roml_w;
+        r romh_r;
+        w romh_w;
+
+        r io1_r;
+        w io1_w;
+        r io2_r;
+        w io2_w;
+
+        std::function<void (bool e, bool g)> exrom_game;
+    };
+
+    Address_space& as;
+
+    u8* sys_ram;
+    u64& sys_cycle;
+
+    u8* mem;
+
+    std::function<void ()> reset;
+};
 
 
 enum Color : u8 {

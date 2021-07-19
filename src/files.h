@@ -12,10 +12,8 @@
 
 namespace Files {
 
-enum class Type { t64, d64, g64, raw, unsupported };
+enum class Type { crt, t64, d64, g64, raw, unsupported };
 
-
-static constexpr u8 g64_signature[] = { 0x47, 0x43, 0x52, 0x2D, 0x31, 0x35, 0x34, 0x31 };
 
 
 struct T64 {
@@ -23,10 +21,10 @@ struct T64 {
 
     struct Dir_entry {
         u8 _todo[2]; // types
-        U16 start_address;
-        U16 end_address;
+        U16l start_address;
+        U16l end_address;
         u8 pad1[2];
-        U32 file_start;
+        U32l file_start;
         u8 pad2[4];
         u8 __todo[16]; // name
     };
@@ -119,7 +117,7 @@ struct D64 {
         BL first_side_sector_block;
         u8 record_length;
         u8 unused[6];
-        U16 size;
+        U16l size;
 
         bool file_exists() const { return file_type.file_type != 0x00; };
     };
@@ -183,12 +181,12 @@ struct G64 {
         const u8 signature[8];
         const u8 version;
         const u8 track_count; // 'half track' count
-        const U16 max_track_length;
+        const U16l max_track_length;
     };
 
     std::pair<std::size_t, const u8*> track(u8 half_track_num) const {
         if (const u32 tdo = track_data_offset(half_track_num)) {
-            u16 len = *(U16*)(&data[tdo]);
+            u16 len = *(U16l*)(&data[tdo]);
             return {len, &data[tdo + 2]};
         }
         return {0, nullptr};
@@ -199,20 +197,119 @@ struct G64 {
     u32 track_data_offset(u8 track_num) const {
         if (track_num >= header().track_count) return 0;
 
-        const U32* offsets = (U32*)&data[12];
+        const U32l* offsets = (U32l*)&data[12];
         return offsets[track_num];
     }
 };
 
 
-enum Disk_img_op : u8 {
-    fwd  = 0b001, mount = 0b010, describe = 0b100,
+struct CRT {
+    const std::vector<u8>& img;
+
+    struct Header {
+        struct Version { const u8 major; const u8 minor; };
+
+        const u8 signature[16];
+        const U32b length;
+        const Version version;
+        const U16b hw_type;
+        const u8 exrom;
+        const u8 game;
+        const u8 crt_hw;
+        const u8 unused[5];
+        const u8 name[32];
+
+        bool valid() const { // NOTE: loader checks the signature
+            if (hw_type > Cartridge_HW_type::last) return false;
+            if (exrom > 1 || game > 1) return false;
+
+            return true;
+        }
+    };
+
+    struct CHIP_packet {
+        enum Type : u16 { rom = 0, ram = 1, flash = 2, last = flash };
+
+        const u8 signature[4];
+        const U32b length;
+        const U16b type;
+        const U16b bank;
+        const U16b load_addr;
+        const U16b data_size;
+        const u8 _data_first;
+
+        const u8* data() const { return &_data_first; }
+
+        bool valid() const {
+            static constexpr u8 chip[] = { 0x43, 0x48, 0x49, 0x50 };
+
+            if (signature[0] != chip[0] || signature[1] != chip[1]
+                    || signature[2] != chip[2] || signature[3] != chip[3]) return false;
+            if (u16(length - 0x10) != u16(data_size)) return false;
+            if (type > Type::last) return false;
+
+            return true;
+        }
+    };
+
+    const Header& header() const { return *((Header*)&img[0]); }
+
+    std::vector<const CHIP_packet*> chip_packets() const {
+        std::vector<const CHIP_packet*> packets;
+
+        for (u32 offset = header().length; offset < img.size(); ) {
+            CHIP_packet* cp = (CHIP_packet*)&img[offset];
+            if (!cp->valid()) break;
+            if ((offset + cp->length) > img.size()) break;
+
+            packets.push_back(cp);
+
+            offset += cp->length;
+        }
+
+        return packets;
+    };
+
+    // Source: VICE manual (https://vice-emu.sourceforge.io/vice_17.html)
+    enum Cartridge_HW_type : u16 { // sweet...
+        T0_Normal_cartridge = 0, T1_Action_Replay = 1, T2_KCS_Power_Cartridge = 2,
+        T3_Final_Cartridge_III = 3, T4_Simons_BASIC = 4, T5_Ocean_type_1 = 5,
+        T6_Expert_Cartridge = 6, T7_Fun_Play_Power_Play = 7, T8_Super_Games = 8,
+        T9_Atomic_Power = 9, T10_Epyx_Fastload = 10, T11_Westermann_Learning = 11,
+        T12_Rex_Utility = 12, T13_Final_Cartridge_I = 13, T14_Magic_Formel = 14,
+        T15_C64_Game_System_System_3 = 15, T16_Warp_Speed = 16, T17_Dinamic = 17,
+        T18_Zaxxon_Super_Zaxxon_SEGA = 18, T19_Magic_Desk_Domark_HES_Australia = 19, T20_Super_Snapshot_V5 = 20,
+        T21_Comal_80 = 21, T22_Structured_BASIC = 22, T23_Ross = 23,
+        T24_Dela_EP64 = 24, T25_Dela_EP7x8 = 25, T26_Dela_EP256 = 26,
+        T27_Rex_EP256 = 27, T28_Mikro_Assembler = 28, T29_Final_Cartridge_Plus = 29,
+        T30_Action_Replay_4 = 30, T31_Stardos = 31, T32_EasyFlash = 32,
+        T33_EasyFlash_Xbank = 33, T34_Capture = 34, T35_Action_Replay_3 = 35,
+        T36_Retro_Replay = 36, T37_MMC64 = 37, T38_MMC_Replay = 38,
+        T39_IDE64 = 39, T40_Super_Snapshot_V4 = 40, T41_IEEE_488 = 41,
+        T42_Game_Killer = 42, T43_Prophet64 = 43, T44_EXOS = 44,
+        T45_Freeze_Frame = 45, T46_Freeze_Machine = 46, T47_Snapshot64 = 47,
+        T48_Super_Explode_V5_0 = 48, T49_Magic_Voice = 49, T50_Action_Replay_2 = 50,
+        T51_MACH_5 = 51, T52_Diashow_Maker = 52, T53_Pagefox = 53,
+        T54_Kingsoft = 54, T55_Silverrock_128K_Cartridge = 55, T56_Formel_64 = 56,
+        T57_RGCD = 57, T58_RR_Net_MK3 = 58, T59_EasyCalc = 59,
+        T60_GMod2 = 60, T61_MAX_Basic = 61, T62_GMod3 = 62,
+        T63_ZIPP_CODE_48 = 63, T64_Blackbox_V8 = 64, T65_Blackbox_V3 = 65,
+        T66_Blackbox_V4 = 66, T67_REX_RAM_Floppy = 67, T68_BIS_Plus = 68,
+        T69_SD_BOX = 69, T70_MultiMAX = 70, T71_Blackbox_V9 = 71,
+        T72_Lt_Kernal_Host_Adaptor = 72, T73_RAMLink = 73, T74_HERO = 74,
+        last = T74_HERO,
+    };
+};
+
+
+enum Img_op : u8 {
+    fwd  = 0b001, mount = 0b010, inspect = 0b100,
     none = 0,
 };
 
 using load_result = std::optional<std::vector<u8>>;
 using consumer = std::function<void (std::string, Type, std::vector<u8>&)>;
-using loader = std::function<load_result(const std::string&, const u8 disk_img_ops)>;
+using loader = std::function<load_result(const std::string&, const u8 img_ops)>;
 
 loader Loader(const std::string& init_dir, consumer& img_consumer);
 
