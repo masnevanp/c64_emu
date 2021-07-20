@@ -5,6 +5,12 @@
 #include "files.h"
 
 
+/*
+    Cartridge support is possible only due to these (thanks!):
+        https://vice-emu.sourceforge.io/vice_17.html
+        https://sourceforge.net/p/vice-emu/code/HEAD/tree/trunk/vice/src/c64/cart/
+*/
+
 
 namespace Cartridge {
 

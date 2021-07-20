@@ -478,8 +478,6 @@ public:
     C1541::System c1541;
 
 private:
-    static const u8 LP_BIT = 0x10;
-
     C1541_status_panel c1541_status_panel;
 
     Host::Video_out vid_out;
@@ -499,35 +497,30 @@ private:
     Host::Input host_input;
 
     /* -------------------- CIA port outputs -------------------- */
-    // NOTE: there may be coming many updates per cycle (receiver may need to keep track)
     IO::Port::PD_out cia1_port_a_out {
-        [this](u8 bits, u8 bit_vals) {
-            kb_matrix.port_a_out(bits, bit_vals);
-        }
+        [this](u8 state) { kb_matrix.port_a_output(state); }
     };
     IO::Port::PD_out cia1_port_b_out {
-        [this](u8 bits, u8 bit_vals) {
-            kb_matrix.port_b_out(bits, bit_vals);
-            u8 lp_low = (bits & LP_BIT) & ~bit_vals;
-            vic.set_lp(VIC::LP_src::cia, lp_low);
+        [this](u8 state) {
+            kb_matrix.port_b_output(state);
+
+            const u8 lp_bit = state & VIC_II::CIA1_PB_LP_BIT;
+            vic.set_lp(VIC::LP_src::cia, lp_bit);
         }
     };
     IO::Port::PD_out cia2_port_a_out {
-        [this](u8 bits, u8 bit_vals) {
-            const u8 out = (bit_vals & bits) | ~bits;
-            vic.set_bank(out & 0b11);
-            c1541.iec.set_cia2_pa_output_state(out);
+        [this](u8 state) {
+            const u8 va14_va15 = state & 0b11;
+            vic.set_bank(va14_va15);
+
+            c1541.iec.cia2_pa_output(state);
             /*if (c1541.idle) {
                 c1541.idle = false;
                 run_cfg_change = true;
             }*/
         }
     };
-    IO::Port::PD_out cia2_port_b_out {
-        [this](u8 bits, u8 bit_vals) {
-            UNUSED(this); UNUSED(bits); UNUSED(bit_vals);
-        }
-    };
+    IO::Port::PD_out cia2_port_b_out { [](u8 _) { UNUSED(_); } };
 
     /* -------------------- Host input -------------------- */
     Host::Input::Handlers host_input_handlers {
@@ -561,7 +554,8 @@ private:
             const u8 bit_pos = 0x1 << code;
             const u8 bit_val = down ? 0x0 : bit_pos;
             cia1.port_b.ext_in(bit_pos, bit_val);
-            if (bit_pos == LP_BIT) vic.set_lp(VIC::LP_src::ctrl_port, down);
+
+            if (bit_pos == VIC_II::CIA1_PB_LP_BIT) vic.set_lp(VIC::LP_src::ctrl_port, !down);
         },
 
         // joy2
@@ -637,12 +631,6 @@ private:
 
         }
     };
-
-    /*
-      Cartridge support is possible only due to these (thanks!):
-         https://vice-emu.sourceforge.io/vice_17.html
-         https://sourceforge.net/p/vice-emu/code/HEAD/tree/trunk/vice/src/c64/cart/
-    */
 
     //void keep_running();
 

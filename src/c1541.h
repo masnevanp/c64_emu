@@ -492,9 +492,8 @@ public:
         }
     }
 
-    void set_cia2_pa_output_state(u8 os) {
-        //std::cout << "CIA2 PA out: " << (int)os << std::endl;
-        cia2_pa_out = os;
+    void cia2_pa_output(u8 state) {
+        cia2_pa_out = state;
         update_iec_lines();
     }
 

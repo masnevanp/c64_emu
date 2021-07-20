@@ -37,6 +37,9 @@ static const int LINE_CYCLE_COUNT  =  63;
 static const int FRAME_CYCLE_COUNT = FRAME_LINE_COUNT * LINE_CYCLE_COUNT;
 
 
+static constexpr u8 CIA1_PB_LP_BIT = 0x10;
+
+
 class Color_RAM {
 public:
     static const u16 size = 0x0400;
@@ -207,7 +210,7 @@ private:
         }
 
         // TODO: set lp x/y (mouse event)
-        void set(u8 src, u8 low) {
+        void set(u8 src, bool low) {
             if (low) {
                 if (!s.lp.triggered) trigger();
                 s.lp.triggered |= (src | per_frame);
@@ -956,9 +959,9 @@ public:
 
     void reset() { for (int r = 0; r < REG_COUNT; ++r) w(r, 0); }
 
-    void set_ultimax(bool act)  { addr_space.set_ultimax(act); }
-    void set_bank(u8 va14_va15) { addr_space.set_bank(va14_va15); }
-    void set_lp(u8 src, u8 low) { lp.set(src, low); }
+    void set_ultimax(bool act)    { addr_space.set_ultimax(act); }
+    void set_bank(u8 va14_va15)   { addr_space.set_bank(va14_va15); }
+    void set_lp(u8 src, bool bit) { lp.set(src, !bit); }
 
     void r(const u8& ri, u8& data) {
         switch (ri) {

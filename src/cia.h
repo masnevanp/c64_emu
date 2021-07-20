@@ -28,14 +28,13 @@ public:
     IO::Port port_b;
 
     Core(
-        const PD_out& port_out_a, const PD_out& port_out_b_,
+        const PD_out& port_out_a, const PD_out& port_out_b,
         IO::Int_hub& int_hub_, IO::Int_hub::Src int_src_, u8 TOD_freq = 50)
       :
-        port_a(port_out_a), port_b(port_out_b_),
-        port_out_b(port_out_b_),
+        port_a(port_out_a), port_b(port_out_b),
         int_ctrl(int_hub_, int_src_),
-        timer_b(int_ctrl, sig_null, cnt, inmode_mask_b, Int_ctrl::Int_src::tb, timer_pb_out, tb_pb_bit),
-        timer_a(int_ctrl, timer_b.tick_ta, cnt, inmode_mask_a, Int_ctrl::Int_src::ta, timer_pb_out, ta_pb_bit),
+        timer_b(int_ctrl, sig_null, cnt, inmode_mask_b, Int_ctrl::Int_src::tb, port_b, tb_pb_bit),
+        timer_a(int_ctrl, timer_b.tick_ta, cnt, inmode_mask_a, Int_ctrl::Int_src::ta, port_b, ta_pb_bit),
         tod(int_ctrl)
     {
         tod_tick_freq = CPU_FREQ / (double)TOD_freq;
@@ -144,17 +143,6 @@ private:
 
     const Sig sig_null = [](){};
 
-    const PD_out& port_out_b;
-
-    PD_out timer_pb_out {
-        [this](u8 bits, u8 vals) {
-            if (bits) {
-                port_b._set_p_out(bits, vals);
-                port_out_b(bits, vals);
-            }
-        }
-    };
-
     u8 r_prb() { // includes the (possible) timer pb-bits to read value
         // TODO: This ignores the possible 0 value on an input bit
         //       (it would pull the port value to zero too, right?)
@@ -234,12 +222,12 @@ private:
         Timer(
             Int_ctrl& int_ctrl_, const Sig& sig_underflow_, bool& cnt_,
             u8 inmode_mask_, u8 int_src_,
-            const PD_out& pb_out_,
+            IO::Port& port_b_,
             u8 pb_bit_pos_
         )
           : int_ctrl(int_ctrl_), sig_underflow(sig_underflow_), cnt(cnt_),
             inmode_mask(inmode_mask_), int_src(int_src_),
-            pb_out(pb_out_), pb_bit_pos(pb_bit_pos_)
+            port_b(port_b_), pb_bit_pos(pb_bit_pos_)
         {
             reset();
         }
@@ -327,7 +315,7 @@ private:
 
         u8 inmode_mask;
         u8 int_src;
-        const PD_out& pb_out;
+        IO::Port& port_b;
 
         const u8 pb_bit_pos;
 
@@ -411,7 +399,7 @@ private:
 
         void update_pb() {
             pb_bit_val = is_in_toggle_mode() ? pb_toggle : pb_pulse;
-            pb_out(pb_bit, pb_bit_val);
+            if (pb_bit) port_b._set_p_out(pb_bit, pb_bit_val);
         }
     };
 
