@@ -20,9 +20,9 @@ namespace NMOS6502 {
     enum Vec { nmi = 0xfffa, rst = 0xfffc, irq = 0xfffe, };
 
     enum Flag : u8 { // nvubdizc, u = unused (bit 5)
-        N = 0x80, V = 0x40, u = 0x20, B = 0x10,
-        D = 0x08, I = 0x04, Z = 0x02, C = 0x01,
-        all = 0xff, none = 0x00
+        N = 0b10000000, V = 0b01000000, u = 0b00100000, B = 0b00010000,
+        D = 0b00001000, I = 0b00000100, Z = 0b00000010, C = 0b00000001,
+        all = 0b11111111,
     };
 
     // 16bit reg indices

@@ -86,6 +86,21 @@ private:
     u8 B() const { return C() ^ 0x1; }
 
     void do_bra() {
+        // mapping: condition code -> flag bit position
+        /*static constexpr u8 cc_flag_pos[8] = { 7, 7, 6, 6, 0, 0, 1, 1 };
+
+        const auto cc = ir >> 5;
+        const bool no_bra = ((p >> cc_flag_pos[cc]) ^ cc) & 0x01;
+
+        if (no_bra) {
+            ++mcp;
+        } else {
+            a1 = a2 = pc;
+            a1l += d;
+            pc += (i8)d;
+            mcp += (pch - a1h ? 3 : 1);
+        }*/
+
         auto cc = ir >> 5;
         switch (cc) {
             case 0x0: if (is_set(Flag::N)) return; break;
