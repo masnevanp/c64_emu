@@ -102,9 +102,9 @@ public:
         because of passive pullups).
     */
     void reset() {
-        set_dd(0xff);
-        p_in     = 0xff;
-        p_out    = 0x00;
+        set_dd(0b00000000);
+        p_in  = 0b11111111;
+        p_out = 0b00000000;
     }
 
     u8   r_dd() const     { return out_bits; }
