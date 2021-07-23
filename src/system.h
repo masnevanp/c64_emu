@@ -380,7 +380,7 @@ public:
         vid_out(),
         vic_out(int_hub, vid_out, host_input, sid, menu.overlay, c1541_status_panel),
         int_hub(cpu),
-        kb_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in),
+        input_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in),
         addr_space(s.ram, rom, cia1, cia2, sid, vic, col_ram),
         host_input(host_input_handlers),
         menu(
@@ -424,7 +424,7 @@ public:
         cia2.reset_cold();
         sid.reset();
         vic.reset();
-        kb_matrix.reset();
+        input_matrix.reset();
         addr_space.reset();
         cpu.reset_cold();
         int_hub.reset();
@@ -485,7 +485,7 @@ private:
 
     IO::Int_hub int_hub;
 
-    IO::Keyboard_matrix kb_matrix;
+    IO::Input_matrix input_matrix;
 
     Address_space addr_space;
 
@@ -498,15 +498,10 @@ private:
 
     /* -------------------- CIA port outputs -------------------- */
     IO::Port::PD_out cia1_port_a_out {
-        [this](u8 state) { kb_matrix.port_a_output(state); }
+        [this](u8 state) { input_matrix.cia1_pa_in(state); }
     };
     IO::Port::PD_out cia1_port_b_out {
-        [this](u8 state) {
-            kb_matrix.port_b_output(state);
-
-            const u8 lp_bit = state & VIC_II::CIA1_PB_LP_BIT;
-            vic.set_lp(VIC::LP_src::cia, lp_bit);
-        }
+        [this](u8 state) { input_matrix.cia1_pb_in(state); }
     };
     IO::Port::PD_out cia2_port_a_out {
         [this](u8 state) {
@@ -524,10 +519,12 @@ private:
 
     /* -------------------- Host input -------------------- */
     Host::Input::Handlers host_input_handlers {
-        // keyboard
-        kb_matrix.handler,
+        // client keyboard & controllers (including lightpen)
+        input_matrix.keyboard,
+        input_matrix.ctrl_port_1,
+        input_matrix.ctrl_port_2,
 
-        // system
+        // system keys
         [this](u8 code, u8 down) {
             using kc = Key_code::System;
 
@@ -547,22 +544,6 @@ private:
                 case kc::menu_up:
                 case kc::menu_down: menu.handle_key(code);        break;
             }
-        },
-
-        // joy1
-        [this](u8 code, u8 down) {
-            const u8 bit_pos = 0x1 << code;
-            const u8 bit_val = down ? 0x0 : bit_pos;
-            cia1.port_b.ext_in(bit_pos, bit_val);
-
-            if (bit_pos == VIC_II::CIA1_PB_LP_BIT) vic.set_lp(VIC::LP_src::ctrl_port, !down);
-        },
-
-        // joy2
-        [this](u8 code, u8 down) {
-            const u8 bit_pos = 0x1 << code;
-            const u8 bit_val = down ? 0x0 : bit_pos;
-            cia1.port_a.ext_in(bit_pos, bit_val);
         }
     };
 

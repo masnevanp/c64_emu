@@ -17,9 +17,9 @@ class Input {
 public:
     struct Handlers {
         Sig_key keyboard;
+        Sig_key controller_1;
+        Sig_key controller_2;
         Sig_key sys;
-        Sig_key joy1;
-        Sig_key joy2;
     };
 
     static const u8 JOY_ID_BIT = 0x10; // included in the joy. key code

@@ -92,7 +92,7 @@ const u8 Input::SC_LU_TBL[] = {
 
 
 Input::Input(Handlers& handlers_)
-    : handlers(handlers_), joy_handler{ &handlers_.joy1, &handlers_.joy2 }
+    : handlers(handlers_), joy_handler{ &handlers_.controller_1, &handlers_.controller_2 }
 {
     // find index of left/right shift
     while (KC_LU_TBL[sh_l_idx] != Key_code::Keyboard::sh_l) ++sh_l_idx;

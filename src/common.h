@@ -109,18 +109,18 @@ namespace Key_code {
     */
 
     enum Keyboard : u8 { // fall into 'keyboard' group
-        del = GK, ret,  crs_r, f7,    f1,    f3,    f5,    crs_d,
-        num_3,    w,    a,     num_4, z,     s,     e,     sh_l,
-        num_5,    r,    d,     num_6, c,     f,     t,     x,
-        num_7,    y,    g,     num_8, b,     h,     u,     v,
-        num_9,    i,    j,     num_0, m,     k,     o,     n,
-        plus,     p,    l,     minus, dot,   colon, at,    comma,
-        pound,    mul,  s_col, home,  sh_r,  eq,    ar_up, div,
-        num_1,    ar_l, ctrl,  num_2, space, cmdre, q,     r_stp,
+        r_stp=GK, q,     cmdre, space, num_2, ctrl,  ar_l, num_1,
+        div,      ar_up, eq,    sh_r,  home,  s_col, mul,  pound,
+        comma,    at,    colon, dot,   minus, l,     p,    plus,
+        n,        o,     k,     m,     num_0, j,     i,    num_9,
+        v,        u,     h,     b,     num_8, g,     y,    num_7,
+        x,        t,     f,     c,     num_6, d,     r,    num_5,
+        sh_l,     e,     s,     z,     num_4, a,     w,    num_3,
+        crs_d,    f5,    f3,    f1,    f7,    crs_r, ret,  del,
     };
 
     enum Keyboard_ext : u8 {
-        crs_l = GE, f8, f2, f4, f6, crs_u, // these translate to left shift + a 'real' key
+        crs_u = GE, f6, f4, f2, f8, crs_l, // these translate to left shift + a 'real' key
         s_lck,
     };
 
