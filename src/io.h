@@ -141,15 +141,15 @@ private:
 
 class Input_matrix {
 public:
-    Input_matrix(Port::PD_in& pa, Port::PD_in& pb) : pa_out(pa), pb_out(pb) {}
+    Input_matrix(Port::PD_in& pa_in_, Port::PD_in& pb_in_) : pa_in(pa_in_), pb_in(pb_in_) {}
 
     void reset() {
         key_states = kb_matrix = 0;
         pa_state = pb_state = cp2_state = cp1_state = 0b11111111;
     }
 
-    void cia1_pa_in(u8 state) { pa_state = state; output(); }
-    void cia1_pb_in(u8 state) { pb_state = state; output(); }
+    void cia1_pa_out(u8 state) { pa_state = state; output(); }
+    void cia1_pb_out(u8 state) { pb_state = state; output(); }
 
     Sig_key keyboard {
         [this](u8 code, u8 down) {
@@ -184,25 +184,26 @@ private:
         auto set_row = [](int n, u64& to, u64 val) { to |= (val << (8 * n)); };
 
         kb_matrix = key_states;
-        // emulate GND propagation in the matrix (can produce 'ghost' keys)
-        for (int ra = 0; ra < 7; ++ra) for (int rb = ra + 1; rb < 8; ++rb) {
-            const u64 a = get_row(ra, kb_matrix);
-            const u64 b = get_row(rb, kb_matrix);
-            if (a & b) {
-                const u64 r = a | b;
-                set_row(ra, kb_matrix, r);
-                set_row(rb, kb_matrix, r);
+
+        //if (kb_matrix) { // any key down?
+            // emulate GND propagation in the matrix (can produce 'ghost' keys)
+            for (int ra = 0; ra < 7; ++ra) for (int rb = ra + 1; rb < 8; ++rb) {
+                const u64 a = get_row(ra, kb_matrix);
+                const u64 b = get_row(rb, kb_matrix);
+                if (a & b) {
+                    const u64 r = a | b;
+                    set_row(ra, kb_matrix, r);
+                    set_row(rb, kb_matrix, r);
+                }
             }
-        }
+        //}
     }
 
     void output() {
-        // if key down: do an AND between the corresponding pa & pb bits
-        // (based on the matrix)
         u8 pa = pa_state & cp2_state;
         u8 pb = pb_state & cp1_state;
 
-        if (kb_matrix) { // any key down?
+        //if (kb_matrix) { // any key down?
             u64 key = 0b1;
             for (int n = 0; n < 64; ++n, key <<= 1) {
                 const bool key_down = kb_matrix & key;
@@ -220,10 +221,10 @@ private:
                     }
                 }
             }
-        }
+        //}
 
-        pa_out(0b11111111, pa);
-        pb_out(0b11111111, pb); // TODO: vic.set_lp(VIC::LP_src::cia, pb & VIC_II::CIA1_PB_LP_BIT);
+        pa_in(0b11111111, pa);
+        pb_in(0b11111111, pb); // TODO: vic.set_lp(VIC::LP_src::cia, pb & VIC_II::CIA1_PB_LP_BIT);
     }
 
     // key states, 8x8 bits (64 keys)
@@ -238,9 +239,8 @@ private:
     u8 cp2_state;
     u8 cp1_state;
 
-    // port in is our out...
-    Port::PD_in& pa_out;
-    Port::PD_in& pb_out;
+    Port::PD_in& pa_in;
+    Port::PD_in& pb_in;
 };
 
 

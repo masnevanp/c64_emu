@@ -113,6 +113,20 @@ Input::Input(Handlers& handlers_)
 }
 
 
+void Input::poll() { // TODO: filtering?
+    while (SDL_PollEvent(&sdl_ev)) {
+        switch (sdl_ev.type) {
+            case SDL_KEYDOWN:       handle_key(true);      break;
+            case SDL_KEYUP:         handle_key(false);     break;
+            case SDL_JOYAXISMOTION: handle_joy_axis();     break;
+            case SDL_JOYBUTTONDOWN: handle_joy_btn(true);  break;
+            case SDL_JOYBUTTONUP:   handle_joy_btn(false); break;
+            case SDL_WINDOWEVENT:   handle_win_ev();       break;
+        }
+    }
+}
+
+
 void Input::swap_joysticks() {
     Sig_key* t = joy_handler[0];
     joy_handler[0] = joy_handler[1];

@@ -498,10 +498,10 @@ private:
 
     /* -------------------- CIA port outputs -------------------- */
     IO::Port::PD_out cia1_port_a_out {
-        [this](u8 state) { input_matrix.cia1_pa_in(state); }
+        [this](u8 state) { input_matrix.cia1_pa_out(state); }
     };
     IO::Port::PD_out cia1_port_b_out {
-        [this](u8 state) { input_matrix.cia1_pb_in(state); }
+        [this](u8 state) { input_matrix.cia1_pb_out(state); }
     };
     IO::Port::PD_out cia2_port_a_out {
         [this](u8 state) {

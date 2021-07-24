@@ -24,18 +24,7 @@ public:
 
     static const u8 JOY_ID_BIT = 0x10; // included in the joy. key code
 
-    void poll() { // TODO: filtering?
-        while (SDL_PollEvent(&sdl_ev)) {
-            switch (sdl_ev.type) {
-                case SDL_KEYDOWN:       handle_key(true);      break;
-                case SDL_KEYUP:         handle_key(false);     break;
-                case SDL_JOYAXISMOTION: handle_joy_axis();     break;
-                case SDL_JOYBUTTONDOWN: handle_joy_btn(true);  break;
-                case SDL_JOYBUTTONUP:   handle_joy_btn(false); break;
-                case SDL_WINDOWEVENT:   handle_win_ev();       break;
-            }
-        }
-    }
+    void poll();
 
     void swap_joysticks();
 
