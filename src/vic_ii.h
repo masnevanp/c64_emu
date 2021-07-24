@@ -961,7 +961,7 @@ public:
 
     void set_ultimax(bool act)    { addr_space.set_ultimax(act); }
     void set_bank(u8 va14_va15)   { addr_space.set_bank(va14_va15); }
-    void set_lp(u8 src, bool bit) { lp.set(src, !bit); }
+    void set_lp(u8 src, u8 bit)   { lp.set(src, bit ^ CIA1_PB_LP_BIT); }
 
     void r(const u8& ri, u8& data) {
         switch (ri) {
