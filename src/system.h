@@ -551,14 +551,14 @@ public:
             vic.tick();
 
             const auto rw = cpu.mrw();
-            if (!s.rdy_low || rw == NMOS6502::MC::RW::w) {
+            if (s.rdy_low && rw == NMOS6502::MC::RW::r) {
+                c1541.tick();
+            } else {
                 // 'Slip in' the C1541 cycle
                 if (rw == NMOS6502::MC::RW::w) c1541.tick();
                 addr_space.access(cpu.mar(), cpu.mdr(), rw);
                 cpu.tick();
                 if (rw == NMOS6502::MC::RW::r) c1541.tick();
-            } else {
-                c1541.tick();
             }
 
             cia1.tick(s.vic.cycle);
