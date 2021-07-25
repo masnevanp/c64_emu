@@ -139,7 +139,7 @@ private:
         }
     }
 
-    IO::Sync::Cycle sync;
+    Cycle_sync sync;
 
     const Sig sig_null = [](){};
 

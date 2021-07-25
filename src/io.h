@@ -8,43 +8,6 @@
 namespace IO {
 
 
-namespace Sync {
-    /*class Master {
-    public:
-        void tick() { sync_ref = !sync_ref; }
-    private:
-        bool sync_ref = false;
-        friend class Slave;
-    };
-
-    class Slave {
-    public:
-        Slave(const Master& m) : sync_ref(m.sync_ref), sync_s(m.sync_ref) {}
-        bool tick() {
-            if (sync_s == sync_ref) return true;
-            sync_s = sync_ref;
-            return false;
-        }
-    private:
-        const bool& sync_ref;
-        bool sync_s;
-    };*/
-
-    class Cycle {
-    public:
-        void tick() { ++cycle; }
-        bool ticked(const u64& system_cycle) {
-            if (cycle == system_cycle) return true;
-            tick();
-            return false;
-        }
-
-    private:
-        u64 cycle = 0;
-    };
-}
-
-
 class Int_hub {
 public:
     // TODO: irq/nmi source: cart./exp. port
