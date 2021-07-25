@@ -71,6 +71,9 @@ public:
         freq = li.QuadPart;
         start();
     }
+    ~Stopwatch() {
+        std::cout << "\nTotal avg: " << (total_elapsed / total_n) << "\n";
+    }
 
     void start() { QueryPerformanceCounter(&li); t0 = li.QuadPart; }
 
@@ -82,30 +85,40 @@ public:
 
     void reset() {
         total_elapsed += cur_elapsed;
+        hist[total_n % hist_len] = cur_elapsed;
         ++total_n;
-        if (cur_elapsed < recent_min_elapsed && cur_elapsed > 1500) recent_min_elapsed = cur_elapsed;
-        if (cur_elapsed < min_elapsed && cur_elapsed > 1500) min_elapsed = cur_elapsed;
-
-        std::cout << cur_elapsed / 100 << ' ';
-        if (total_n % 50 == 0) std::cout << "> avg: " << (total_elapsed / total_n)
-                                            << ", min: " << min_elapsed
-                                            << ", recent min: " << recent_min_elapsed << std::endl;
-
-        if (total_n % 500 == 0) recent_min_elapsed = 999999;
-
         cur_elapsed = 0;
+
+        if ((total_n % 100) == 0) {
+            auto avg = [&](int win_sz) {
+                int64_t sum = 0;
+                for (int i = 1; i <= win_sz; ++i) {
+                    sum += hist[((total_n + hist_len) - i) % hist_len];
+                }
+                return sum / win_sz;
+            };
+            std::cout << avg(100);
+            if ((total_n % 200) == 0) std::cout << ' ' << avg(200);
+            if ((total_n % 400) == 0) std::cout << ' ' << avg(400);
+            if ((total_n % 800) == 0) std::cout << ' ' << avg(800);
+            std::cout << std::endl;
+        }
+
         start();
     }
 
 private:
+    static constexpr int hist_len = 800;
+
     LARGE_INTEGER li;
     decltype(li.QuadPart) t0;
     int freq;
+
     int cur_elapsed = 0;
-    int min_elapsed = 999999;
-    int recent_min_elapsed = 999999;
     int total_n = 0;
     int64_t total_elapsed = 0;
+
+    int hist[hist_len] = {};
 };
 #endif
 
