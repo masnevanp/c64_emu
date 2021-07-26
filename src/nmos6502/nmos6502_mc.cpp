@@ -34,20 +34,6 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
     }
-    namespace FC {
-        static const MOP bra[] = {
-            /* NOTE: branch taken, no page crossing -> request has to come earlier
-                       http://visual6502.org/wiki/index.php?title=6502_State_Machine
-            */
-            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bra      ),  // T1
-            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),  // T2 (no branch)
-            MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::hold_ints),  // T2 (no pg.crs)
-            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),  // T3
-            MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),  // T2 (pg.crs)
-            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),  // T3
-            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),  // T0
-        };
-    }
     namespace RM {
         static const MOP zp[] = {
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -232,6 +218,18 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a4,   R8::a2l,  RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::a2,   R8::pch,  RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+        };
+        static const MOP bra[] = {
+            /* NOTE: branch taken, no page crossing -> request has to come earlier
+                       http://visual6502.org/wiki/index.php?title=6502_State_Machine
+            */
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bra      ),  // T1
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),  // T2 (no branch)
+            MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::hold_ints),  // T2 (no pg.crs)
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),  // T3
+            MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),  // T2 (pg.crs)
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),  // T3
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),  // T0
         };
         static const MOP brk[] = {
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
