@@ -220,10 +220,18 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP bra[] = {
-            /* NOTE: branch taken, no page crossing -> request has to come earlier
-                       http://visual6502.org/wiki/index.php?title=6502_State_Machine
-            */
-            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bra      ),  // T1
+            // these entry MOPs evaluate the relevant branching condition,
+            // and then jump to the main code below (even if branch not taken)
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bpl      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bmi      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bvc      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bvs      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bcc      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bcs      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::beq      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bne      ),  // T1
+            // NOTE: branch taken, no page crossing -> request has to come earlier
+            //       http://visual6502.org/wiki/index.php?title=6502_State_Machine
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),  // T2 (no branch)
             MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::hold_ints),  // T2 (no pg.crs)
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),  // T3
@@ -361,49 +369,49 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
         FC::brk, RM::idx_ind, UD::hlt, UD::rmw_idx_ind, RM::zp, RM::zp, RMW::zp, RMW::zp,
         FC::php, RM::imm, SB::sb, RM::imm, RM::abs, RM::abs, RMW::abs, RMW::abs,
         // 0x10
-        FC::bra, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
+        FC::bra + 0, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
         SB::sb, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
         // 0x20
         FC::jsr, RM::idx_ind, UD::hlt, UD::rmw_idx_ind, RM::zp, RM::zp, RMW::zp, RMW::zp,
         FC::plp, RM::imm, SB::sb, RM::imm, RM::abs, RM::abs, RMW::abs, RMW::abs,
         // 0x30
-        FC::bra, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
+        FC::bra + 1, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
         SB::sb, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
         // 0x40
         FC::rti, RM::idx_ind, UD::hlt, UD::rmw_idx_ind, RM::zp, RM::zp, RMW::zp, RMW::zp,
         FC::pha, RM::imm, SB::sb, RM::imm, FC::jmp_abs, RM::abs, RMW::abs, RMW::abs,
         // 0x50
-        FC::bra, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
+        FC::bra + 2, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
         SB::sb_cli, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
         // 0x60
         FC::rts, RM::idx_ind, UD::hlt, UD::rmw_idx_ind, RM::zp, RM::zp, RMW::zp, RMW::zp,
         FC::pla, RM::imm, SB::sb, RM::imm, FC::jmp_ind, RM::abs, RMW::abs, RMW::abs,
         // 0x70
-        FC::bra, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
+        FC::bra + 3, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
         SB::sb_sei, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
         // 0x80
         RM::imm, ST::idx_ind, RM::imm, ST::idx_ind, ST::zp, ST::zp, ST::zp, ST::zp,
         SB::sb, RM::imm, SB::sb, RM::imm, ST::abs, ST::abs, ST::abs, ST::abs,
         // 0x90
-        FC::bra, ST::ind_y, UD::hlt, UD::st_ind_y, ST::zp_x, ST::zp_x, ST::zp_y, ST::zp_y,
+        FC::bra + 4, ST::ind_y, UD::hlt, UD::st_ind_y, ST::zp_x, ST::zp_x, ST::zp_y, ST::zp_y,
         SB::sb, ST::abs_y, SB::sb, UD::st_abs_y, UD::st_abs_x, ST::abs_x, UD::st_abs_y, UD::st_abs_y,
         // 0xa0
         RM::imm, RM::idx_ind, RM::imm, RM::idx_ind, RM::zp, RM::zp, RM::zp, RM::zp,
         SB::sb, RM::imm, SB::sb, RM::imm, RM::abs, RM::abs, RM::abs, RM::abs,
         // 0xb0
-        FC::bra, RM::ind_idx, UD::hlt, RM::ind_idx, RM::zp_x, RM::zp_x, RM::zp_y, RM::zp_y,
+        FC::bra + 5, RM::ind_idx, UD::hlt, RM::ind_idx, RM::zp_x, RM::zp_x, RM::zp_y, RM::zp_y,
         SB::sb, RM::abs_y, SB::sb, RM::abs_y, RM::abs_x, RM::abs_x, RM::abs_y, RM::abs_y,
         // 0xc0
         RM::imm, RM::idx_ind, RM::imm, UD::rmw_idx_ind, RM::zp, RM::zp, RMW::zp, RMW::zp,
         SB::sb, RM::imm, SB::sb, RM::imm, RM::abs, RM::abs, RMW::abs, RMW::abs,
         // 0xd0
-        FC::bra, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
+        FC::bra + 7, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
         SB::sb, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
         // 0xe0
         RM::imm, RM::idx_ind, RM::imm, UD::rmw_idx_ind, RM::zp, RM::zp, RMW::zp, RMW::zp,
         SB::sb, RM::imm, SB::sb, RM::imm, RM::abs, RM::abs, RMW::abs, RMW::abs,
         // 0xf0
-        FC::bra, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
+        FC::bra + 6, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
         SB::sb, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
 
         // 0x100

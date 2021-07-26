@@ -66,49 +66,12 @@ public:
 
 private:
     static constexpr u8 OPC_brk = 0x00;
+    static constexpr u8 OPC_bne = 0xd0;
     static constexpr u8 NMI_taken = 0x80;
 
     // carry & borrow
     u8 C() const { return p & Flag::C; }
     u8 B() const { return C() ^ 0x1; }
-
-    void do_bra() {
-        // mapping: condition code -> flag bit position
-        /*static constexpr u8 cc_flag_pos[8] = { 7, 7, 6, 6, 0, 0, 1, 1 };
-
-        const auto cc = ir >> 5;
-        const bool no_bra = ((p >> cc_flag_pos[cc]) ^ cc) & 0x01;
-
-        if (no_bra) {
-            ++mcp;
-        } else {
-            a1 = a2 = pc;
-            a1l += d;
-            pc += (i8)d;
-            mcp += (pch - a1h ? 3 : 1);
-        }*/
-
-        auto cc = ir >> 5;
-        switch (cc) {
-            case 0x0: if (is_set(Flag::N)) return; break;
-            case 0x1: if (is_clr(Flag::N)) return; break;
-            case 0x2: if (is_set(Flag::V)) return; break;
-            case 0x3: if (is_clr(Flag::V)) return; break;
-            case 0x4: if (is_set(Flag::C)) return; break;
-            case 0x5: if (is_clr(Flag::C)) return; break;
-            case 0x6: if (is_set(Flag::Z)) return; break;
-            case 0x7: if (is_clr(Flag::Z)) return; break;
-        }
-
-        a2 = pc;
-        pc += (i8)d;
-        mcp += 1;
-        if ((a2 ^ pc) & 0xff00) {
-            mcp += 2;
-            a1 = a2;
-            a1l += d;
-        }
-    }
 
     void do_asl(u8& d) { set(Flag::C, d & 0x80); set_nz(d <<= 1); }
     void do_lsr(u8& d) { clr(Flag::N); set(Flag::C, d & 0x01); set(Flag::Z, !(d >>= 1)); }

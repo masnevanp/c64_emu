@@ -138,7 +138,25 @@ void NMOS6502::Core::tick() {
         case st_idx_ind: zpa += x; a2 = (u8)(zpa + 0x01); // fall through
         case st_reg: st_reg_sel(); return;
         case jmp_ind: ++a1l; return;
-        case bra: do_bra(); return;
+        case bpl: if (is_set(Flag::N)) { mcp += 7; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bmi: if (is_clr(Flag::N)) { mcp += 6; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bvc: if (is_set(Flag::V)) { mcp += 5; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bvs: if (is_clr(Flag::V)) { mcp += 4; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bcc: if (is_set(Flag::C)) { mcp += 3; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bcs: if (is_clr(Flag::C)) { mcp += 2; /*T2 (no bra)*/ return; } else goto bra_take;
+        case beq: if (is_clr(Flag::Z)) { mcp += 1; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bne: if (is_set(Flag::Z)) /*T2 (no bra)*/ return;
+            // fall through
+        bra_take:
+            mcp = MC::OPC_MC[OPC_bne] + 2; // T2 (no page cross)
+            a2 = pc;
+            pc += (i8)d;
+            if ((a2 ^ pc) & 0xff00) {
+                mcp += 2; // T2 (page cross)
+                a1 = a2;
+                a1l += d;
+            }
+            return;
         case hold_ints:
             if (nmi_req == 0x02) nmi_req = 0x01;
             if (irq_req && (irq_req < 0x04)) irq_req = 0x01;
