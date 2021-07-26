@@ -30,8 +30,17 @@ void NMOS6502::Core::reset_cold() {
 }
 
 
-void NMOS6502::Core::exec_cycle() {
+void NMOS6502::Core::tick() {
     using namespace NMOS6502::MC;
+
+    if (nmi_req == 0x01) nmi_req = 0x02;
+    else if (nmi_req == 0x02) {
+        nmi_bit = NMI_BIT;
+        nmi_req = 0x03;
+    }
+
+    if (irq_req & 0x02) irq_bit = IRQ_BIT;
+    irq_req <<= 1;
 
     pc += mcp->pc_inc;
 
