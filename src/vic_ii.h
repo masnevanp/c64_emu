@@ -304,7 +304,7 @@ private:
             u8 shift_delay;
             u8 shift_timer = 0;
 
-            u8 col[4] = { transparent_px, 0, 0, 0 };
+            u8 col[4] = { transparent_px, transparent_px, transparent_px, transparent_px };
         };
 
 
@@ -350,34 +350,21 @@ private:
             }
         }
 
-        void output(u16 x, u16 x_stop, u8* to) {
-            while (x < x_stop) output(x++, to++);
+        void update(u16 x, u16 x_stop) { // update during h-blank
+            for (int mn = 0; mn < mob_count; ++mn) {
+                if (mob[mn].data != MOB::out_of_data) {
+                    _update(mn, x, x_stop);
+                    return;
+                }
+            }
         }
 
-        void update(u16 x, u16 x_stop) { // update during h-blank
-            u8 mmc_total = 0x00; // mob-mob colliders
-
-            for (; x < x_stop; ++x) {
-                bool mmc_on = false; // mob-mob coll. happened
-                u8 mmc = 0x00; // mob-mob colliders (for single pixel)
-                u8 mn = mob_count;
-                u8 mb = 0x80; // mob bit ('id')
-
-                do {
-                    MOB& m = mob[--mn];
-                    if (m.pixel_out(x) != MOB::transparent_px) {
-                        if (mmc != 0x00) mmc_on = true;
-                        mmc |= mb;
-                    }
-                    mb >>= 1;
-                } while (mn > 0);
-
-                if (mmc_on) mmc_total |= mmc;
-            }
-
-            if (mmc_total) {
-                if (reg[R::mnm] == 0x00) irq.req(IRQ::mmc);
-                reg[R::mnm] |= mmc_total;
+        void output(u16 x, u16 x_stop, u8* to) {
+            for (int mn = mob_count - 1; mn >= 0; --mn) {
+                if (mob[mn].data != MOB::out_of_data) {
+                    while (x < x_stop) _output(mn, x++, to++);
+                    return;
+                }
             }
         }
 
@@ -388,35 +375,57 @@ private:
               ba(ba_), irq(irq_) {}
 
     private:
-        void output(u16 x, u8* to) { // also does collision detection
+        void _update(int start_mn, u16 x, u16 x_stop) { // update during h-blank
+            u8 mmc_total = 0b00000000; // mob-mob colliders
+
+            for (; x < x_stop; ++x) {
+                bool mmc_on = false; // mob-mob coll. happened
+                u8 mmc = 0b00000000; // mob-mob colliders (for single pixel)
+
+                for (int mn = start_mn; mn < mob_count; ++mn) {
+                    if (mob[mn].pixel_out(x) != MOB::transparent_px) {
+                        if (mmc != 0b00000000) mmc_on = true;
+                        const u8 mob_bit = (0b1 << mn);
+                        mmc |= mob_bit;
+                    }
+                }
+
+                if (mmc_on) mmc_total |= mmc;
+            }
+
+            if (mmc_total) {
+                if (reg[R::mnm] == 0b00000000) irq.req(IRQ::mmc);
+                reg[R::mnm] |= mmc_total;
+            }
+        }
+
+        void _output(int start_mn, u16 x, u8* to) { // also does collision detection
             const u8 gfx_fg = (*to & GFX::foreground) ? 0xff : 0x00;
-            u8 mdc = 0x00; // mob-gfx colliders
-            u8 mmc = 0x00; // mob-mob colliders
+            u8 mdc = 0b00000000; // mob-gfx colliders
+            u8 mmc = 0b00000000; // mob-mob colliders
             u8 mmc_on = false; // mob-mob coll. happened
             u8 col;
-            u8 src_mb = 0x00; // source mob bit, if 'non-transparent'
-            u8 mn = mob_count;
-            u8 mb = 0x80; // mob bit ('id')
+            u8 src_mb = 0b00000000; // pixel source mob, if 'non-transparent'
 
-            do {
-                MOB& m = mob[--mn];
-                u8 c = m.pixel_out(x);
+            for (int mn = start_mn; mn >= 0; --mn) {
+                u8 c = mob[mn].pixel_out(x);
                 if (c != MOB::transparent_px) {
                     col = c;
-                    src_mb = mb;
+                    src_mb = (0b1 << mn);
 
-                    mdc |= (mb & gfx_fg);
+                    if (gfx_fg) {
+                        mdc |= (src_mb & gfx_fg);
 
-                    if (mmc != 0x00) mmc_on = true;
-                    mmc |= mb;
+                        if (mmc != 0b00000000) mmc_on = true;
+                        mmc |= src_mb;
+                    }
                 }
-                mb >>= 1;
-            } while (mn > 0);
+            }
 
             if (src_mb) {
                 // priority: mob|gfx_fg (based on reg[R::mndp]) > mob > gfx_bg
                 if (gfx_fg) {
-                    if (reg[R::mnd] == 0x00) irq.req(IRQ::mdc);
+                    if (reg[R::mnd] == 0b00000000) irq.req(IRQ::mdc);
                     reg[R::mnd] |= mdc;
 
                     if (!(reg[R::mndp] & src_mb)) *to = col;
@@ -425,7 +434,7 @@ private:
                 }
 
                 if (mmc_on) {
-                    if (reg[R::mnm] == 0x00) irq.req(IRQ::mmc);
+                    if (reg[R::mnm] == 0b00000000) irq.req(IRQ::mmc);
                     reg[R::mnm] |= mmc;
                 }
             }
