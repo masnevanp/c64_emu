@@ -241,50 +241,81 @@ private:
         static constexpr u16 MP_BASE   = 0x3f8; // offset from vm_base
 
         struct MOB {
-            static constexpr u8 transparent_px = 0xff;
-
-            enum : u32 {
-                pristine_data  = 0x00000003,
-                pristine_flip  = 0x00000002,
-                out_of_data    = 0x01000000,
-
-                pixel_mask_sc  = 0x80000000,
-                pixel_mask_mc  = 0xc0000000,
-            };
+            static constexpr u8 transparent   = 0xff;
+            static constexpr u32 data_waiting = 0b1;
 
             void set_x_hi(u8 hi)  { x = hi ? x | 0x100 : x & 0x0ff; }
             void set_x_lo(u8 lo)  { x = (x & 0x100) | lo; }
             void set_ye(bool ye_) { ye = ye_; if (!ye) mdc_base_upd = true; }
-            void set_mc(bool mc)  {
-                pixel_mask = mc ? pixel_mask_mc : pixel_mask_sc;
-                shift_amount = mc ? 2 : 1;
-            }
-            void set_xe(bool xe)  { shift_base_delay = xe ? 2 : 1; }
+            void set_mc(bool mc)  { pixel_mask = 0b10 | mc; shift_amount = 1 + mc; }
+            void set_xe(bool xe)  { shift_base_delay = 1 + xe; }
             void set_c(u8 c)      { col[2] = c; }
             void set_mc0(u8 mc0)  { col[1] = mc0; }
             void set_mc1(u8 mc1)  { col[3] = mc1; }
 
             void load_data(u32 d1, u32 d2, u32 d3) {
-                data = (d1 << 24) | (d2 << 16) | (d3 << 8) | pristine_data;
-                shift_delay = shift_base_delay * shift_amount;
+                data = (d1 << 24) | (d2 << 16) | (d3 << 8) | data_waiting;
             }
 
-            u8 pixel_out(u16 px) {
-                if (data == out_of_data) return transparent_px;
+            // during blanking
+            void update(u16 px, int px_cnt, const u8 mob_bit, u8* mob_presence, u8& mmc)
+            {
+                if (waiting()) {
+                    if (x < px || (x >= (px + px_cnt))) return;
 
-                if ((data & pristine_data) == pristine_data) {
-                    if (px != x) return transparent_px;
-                    data ^= pristine_flip;
+                    go();
+                    px = x - px;
+                } else {
+                    px = 0;
                 }
 
-                u8 p_col = col[(data & pixel_mask) >> 30];
+                const int shift_delay = shift_base_delay * shift_amount;
+                for (; px < px_cnt; ++px) {
+                    const u8 p_col = col[(data >> 30) & pixel_mask];
 
-                if (++shift_timer == shift_delay) {
-                    data <<= shift_amount;
-                    shift_timer = 0;
+                    if (p_col != transparent) {
+                        if (mob_presence[px]) mmc |= (mob_presence[px] | mob_bit);
+                        mob_presence[px] |= mob_bit;
+                    }
+
+                    if ((++shift_timer % shift_delay) == 0) {
+                        data <<= shift_amount;
+                        if (!data) return;
+                    }
+                }
+            }
+
+            void output(u16 px, u16 px_cnt, const u8* gfx_out, const u8 mdp,
+                            const u8 mob_bit, u8* mob_output, u8* mob_presence,
+                            u8& mdc, u8& mmc)
+            {
+                if (waiting()) {
+                    if (x < px || (x >= (px + px_cnt))) return;
+
+                    go();
+                    px = x - px;
+                } else {
+                    px = 0;
                 }
 
-                return p_col;
+                const int shift_delay = shift_base_delay * shift_amount;
+                for (; px < px_cnt; ++px) {
+                    const u8 p_col = col[(data >> 30) & pixel_mask];
+
+                    if (p_col != transparent) {
+                        if (mob_presence[px]) mmc |= (mob_presence[px] | mob_bit);
+                        mob_presence[px] |= mob_bit;
+
+                        if (gfx_out[px] & GFX::foreground) mdc |= mob_bit;
+
+                        mob_output[px] = p_col | mdp;
+                    }
+
+                    if ((++shift_timer % shift_delay) == 0) {
+                        data <<= shift_amount;
+                        if (!data) return;
+                    }
+                }
             }
 
             u8 ye;
@@ -296,15 +327,18 @@ private:
 
             u16 x;
 
-            u32 data = out_of_data;
+            u32 data;
             u32 pixel_mask;
 
             u8 shift_base_delay;
             u8 shift_amount;
-            u8 shift_delay;
-            u8 shift_timer = 0;
+            u8 shift_timer;
 
-            u8 col[4] = { transparent_px, transparent_px, transparent_px, transparent_px };
+            u8 col[4] = { transparent, transparent, transparent, transparent };
+
+        private:
+            bool waiting() const { return data & data_waiting; }
+            void go() { data &= ~data_waiting; shift_timer = 0; }
         };
 
 
@@ -350,19 +384,19 @@ private:
             }
         }
 
-        void update(u16 x, u16 x_stop) { // update during h-blank
+        void update(u16 x, int px_cnt) { // update during h-blank
             for (int mn = 0; mn < mob_count; ++mn) {
-                if (mob[mn].data != MOB::out_of_data) {
-                    _update(mn, x, x_stop);
+                if (mob[mn].data) {
+                    _update(mn, x, px_cnt);
                     return;
                 }
             }
         }
 
-        void output(u16 x, u16 x_stop, u8* to) {
+        void output(u16 x, int px_cnt, u8* to) {
             for (int mn = mob_count - 1; mn >= 0; --mn) {
-                if (mob[mn].data != MOB::out_of_data) {
-                    while (x < x_stop) _output(mn, x++, to++);
+                if (mob[mn].data) {
+                    _output(mn, x, px_cnt, to);
                     return;
                 }
             }
@@ -375,70 +409,63 @@ private:
               ba(ba_), irq(irq_) {}
 
     private:
-        void _update(int start_mn, u16 x, u16 x_stop) { // update during h-blank
-            u8 mmc_total = 0b00000000; // mob-mob colliders
-
-            for (; x < x_stop; ++x) {
-                bool mmc_on = false; // mob-mob coll. happened
-                u8 mmc = 0b00000000; // mob-mob colliders (for single pixel)
-
-                for (int mn = start_mn; mn < mob_count; ++mn) {
-                    if (mob[mn].pixel_out(x) != MOB::transparent_px) {
-                        if (mmc != 0b00000000) mmc_on = true;
-                        const u8 mob_bit = (0b1 << mn);
-                        mmc |= mob_bit;
-                    }
+        void _update(int start_mn, u16 x, int px_cnt) { // update during h-blank
+            for (int mn = start_mn; mn < mob_count; ++mn) {
+                if (mob[mn].data) {
+                    const u8 mob_bit = 0b1 << mn;
+                    mob[mn].update(x, px_cnt, mob_bit, mob_presence, mmc);
                 }
-
-                if (mmc_on) mmc_total |= mmc;
             }
 
-            if (mmc_total) {
+            if (mmc) {
                 if (reg[R::mnm] == 0b00000000) irq.req(IRQ::mmc);
-                reg[R::mnm] |= mmc_total;
+                reg[R::mnm] |= mmc;
+                mmc = 0b00000000;
             }
+
+            for (int p = 0; p < px_cnt; ++p) mob_presence[p] = 0b00000000;
         }
 
-        void _output(int start_mn, u16 x, u8* to) { // also does collision detection
-            const u8 gfx_fg = (*to & GFX::foreground) ? 0xff : 0x00;
-            u8 mdc = 0b00000000; // mob-gfx colliders
-            u8 mmc = 0b00000000; // mob-mob colliders
-            u8 mmc_on = false; // mob-mob coll. happened
-            u8 col;
-            u8 src_mb = 0b00000000; // pixel source mob, if 'non-transparent'
-
+        void _output(int start_mn, u16 x, int px_cnt, u8* to) { // also does collision detection
             for (int mn = start_mn; mn >= 0; --mn) {
-                u8 c = mob[mn].pixel_out(x);
-                if (c != MOB::transparent_px) {
-                    col = c;
-                    src_mb = (0b1 << mn);
-
-                    if (gfx_fg) {
-                        mdc |= (src_mb & gfx_fg);
-
-                        if (mmc != 0b00000000) mmc_on = true;
-                        mmc |= src_mb;
-                    }
+                if (mob[mn].data) {
+                    const u8 mob_bit = 0b1 << mn;
+                    const u8 mdp = (reg[R::mndp] << (7 - mn)) & 0b10000000;
+                    mob[mn].output(x, px_cnt, to, mdp, mob_bit, mob_output, mob_presence, mdc, mmc);
                 }
             }
 
-            if (src_mb) {
-                // priority: mob|gfx_fg (based on reg[R::mndp]) > mob > gfx_bg
-                if (gfx_fg) {
-                    if (reg[R::mnd] == 0b00000000) irq.req(IRQ::mdc);
-                    reg[R::mnd] |= mdc;
+            if (mdc) {
+                if (reg[R::mnd] == 0b00000000) irq.req(IRQ::mdc);
+                reg[R::mnd] |= mdc;
+                mdc = 0b00000000;
+            }
 
-                    if (!(reg[R::mndp] & src_mb)) *to = col;
-                } else {
-                    *to = col;
-                }
+            if (mmc) {
+                if (reg[R::mnm] == 0b00000000) irq.req(IRQ::mmc);
+                reg[R::mnm] |= mmc;
+                mmc = 0b00000000;
+            }
 
-                if (mmc_on) {
-                    if (reg[R::mnm] == 0b00000000) irq.req(IRQ::mmc);
-                    reg[R::mnm] |= mmc;
+            for (int p = 0; p < px_cnt; ++p) {
+                if (mob_output[p] != MOB::transparent) {
+                    if ((to[p] & mob_output[p] & GFX::foreground) == 0b00000000) {
+                        to[p] = mob_output[p];
+                    }
+                    mob_output[p] = MOB::transparent;
+                    mob_presence[p] = 0b00000000;
                 }
             }
         }
+
+        // TODO: MOB state
+        u8 mob_output[8] = {
+            MOB::transparent, MOB::transparent, MOB::transparent, MOB::transparent,
+            MOB::transparent, MOB::transparent, MOB::transparent, MOB::transparent
+        };
+        u8 mob_presence[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+        u8 mdc = 0b00000000; // mob-gfx colliders
+        u8 mmc = 0b00000000; // mob-mob colliders
 
         const Address_space& addr_space;
         u8* reg;
@@ -898,13 +925,13 @@ private:
     // for updating the partially off-screen MOBs so that they are displayed
     // properly on the left screen edge
     void update_mobs() {
-        mobs.update(s.raster_x, s.raster_x + 8);
+        mobs.update(s.raster_x, 8);
         s.raster_x += 8;
     }
 
     void output_start() {
         gfx.output_border(beam_ptr()); // gfx.output(beam_pos);
-        mobs.output(500, 504, beam_ptr());
+        mobs.output(500, 4, beam_ptr());
         mobs.output(0, 4, beam_ptr(4));
         border.output(s.beam_pos + 4);
         s.beam_pos += 8;
@@ -913,7 +940,7 @@ private:
 
     void output_border() {
         gfx.output_border(beam_ptr()); // gfx.output(beam_pos);
-        mobs.output(s.raster_x, s.raster_x + 8, beam_ptr());
+        mobs.output(s.raster_x, 8, beam_ptr());
         border.output(s.beam_pos + 4);
         s.beam_pos += 8;
         s.raster_x += 8;
@@ -921,7 +948,7 @@ private:
 
     void output() {
         gfx.output(beam_ptr());
-        mobs.output(s.raster_x, s.raster_x + 8, beam_ptr());
+        mobs.output(s.raster_x, 8, beam_ptr());
         border.output(s.beam_pos + 4);
         s.beam_pos += 8;
         s.raster_x += 8;
