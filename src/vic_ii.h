@@ -246,7 +246,14 @@ private:
 
             void set_x_hi(u8 hi)  { x = hi ? x | 0x100 : x & 0x0ff; }
             void set_x_lo(u8 lo)  { x = (x & 0x100) | lo; }
-            void set_ye(bool ye_) { ye = ye_; if (!ye) mdc_base_upd = true; }
+            void set_ye_cr(bool ye_) {
+                crunch = (ye ^ ye_) & ye;
+                set_ye(ye_);
+            }
+            void set_ye(bool ye_) {
+                ye = ye_;
+                if (!ye) mdc_base_upd = true;
+            }
             void set_mc(bool mc)  { pixel_mask = 0b10 | mc; shift_amount = 1 + mc; }
             void set_xe(bool xe)  { shift_base_delay = 1 + xe; }
             void set_c(u8 c)      { col[2] = c; }
@@ -319,6 +326,7 @@ private:
             }
 
             u8 ye;
+            u8 crunch = false;
             u8 dma_on = false;
             u8 mdc_base_upd;
 
@@ -344,6 +352,15 @@ private:
 
         MOB (&mob)[mob_count]; // array reference (sweet syntax)
 
+        void set_ye(u8 mnye, const int line_cycle) {
+            const bool no_crunch = line_cycle != 14;
+            if (no_crunch) {
+                for (auto& m : mob) { m.set_ye(mnye & 0b1); mnye >>= 1; }
+            } else {
+                for (auto& m : mob) { m.set_ye_cr(mnye & 0b1); mnye >>= 1; }
+            }
+        }
+
         void check_mdc_base_upd() {
             for(auto&m : mob) if (m.ye) m.mdc_base_upd = !m.mdc_base_upd;
         }
@@ -360,12 +377,19 @@ private:
                 }
             }
         }
-        void load_mdc()       { for (auto& m : mob) m.mdc = m.mdc_base; }
-        void inc_mdc_base_2() { for (auto& m : mob) m.mdc_base += (m.mdc_base_upd * 2); }
-        void inc_mdc_base_1() {
+        void load_mdc() { for (auto& m : mob) m.mdc = m.mdc_base; }
+        void upd_mdc_base() {
             for (auto& m : mob) {
-                m.mdc_base += m.mdc_base_upd;
-                if (m.mdc_base == 63) m.dma_on = false;
+                if (m.dma_on && m.mdc_base_upd) {
+                    if (m.crunch) {
+                        m.crunch = false;
+                        m.mdc_base = ((m.mdc_base & m.mdc) & 0b101010)
+                                            | ((m.mdc_base | m.mdc) & 0b010101);
+                    } else {
+                        m.mdc_base = m.mdc;
+                    }
+                    if (m.mdc_base == 63) m.dma_on = false;
+                }
             }
         }
         void prep_dma(u8 mn) { if (mob[mn].dma_on) ba.mob_start(mn); }
@@ -376,9 +400,12 @@ private:
                 u16 mb = ((reg[R::mptr] & MPTR::vm) << 6) | MP_BASE;
                 u16 mp = addr_space.r(mb | mn);
                 mp <<= 6;
-                u32 d1 = addr_space.r(mp | m.mdc++);
-                u32 d2 = addr_space.r(mp | m.mdc++);
-                u32 d3 = addr_space.r(mp | m.mdc++);
+                u32 d1 = addr_space.r(mp | m.mdc);
+                ++m.mdc;
+                u32 d2 = addr_space.r(mp | (m.mdc & 0b111111));
+                ++m.mdc;
+                u32 d3 = addr_space.r(mp | (m.mdc & 0b111111));
+                ++m.mdc;
                 m.load_data(d1, d2, d3);
                 ba.mob_done(mn);
             }
@@ -1032,7 +1059,7 @@ public:
             case R::cr2: gfx.cr2_upd(d); break;
             case R::ireg: irq.w_ireg(d); break;
             case R::ien:  irq.ien_upd(); break;
-            case R::mnye: for (auto& m : mobs.mob) { m.set_ye(d & 0x1); d >>= 1; } break;
+            case R::mnye: mobs.set_ye(d, s.cycle % LINE_CYCLE_COUNT); break;
             case R::mnmc: for (auto& m : mobs.mob) { m.set_mc(d & 0x1); d >>= 1; } break;
             case R::mnxe: for (auto& m : mobs.mob) { m.set_xe(d & 0x1); d >>= 1; } break;
             case R::mmc0: for (auto& m : mobs.mob) m.set_mc0(d); break;
@@ -1139,7 +1166,6 @@ public:
                     output_border();
                     gfx.read_vm();
                 }
-                mobs.inc_mdc_base_2();
                 return;
             case 15: // 12
                 if (!s.v_blank) {
@@ -1147,7 +1173,7 @@ public:
                     gfx.read_gd();
                     gfx.read_vm();
                 }
-                mobs.inc_mdc_base_1();
+                mobs.upd_mdc_base();
                 return;
             case 16: // 20
                 if (!s.v_blank) {
@@ -1197,7 +1223,7 @@ public:
                     output();
                 }
                 mobs.check_dma();
-                mobs.prep_dma(0);
+                //mobs.prep_dma(0);
                 return;
             case 56: // 340
                 if (!s.v_blank) {
