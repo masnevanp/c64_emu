@@ -198,7 +198,7 @@ private:
         u32 ci = 0;
         Sig notify;
 
-        const auto chosen() const { return choice.choices[ci % choice.choices.size()]; }
+        auto chosen() const { return choice.choices[ci % choice.choices.size()]; }
         const std::string& chosen_str() const { return choice.choices_str[ci % choice.choices_str.size()]; }
     };
 };

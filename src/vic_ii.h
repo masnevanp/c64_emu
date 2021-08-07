@@ -100,6 +100,10 @@ private:
         };
 
         u8 r(const u16& addr) const { // addr is 14bits
+            // silence compiler (we do handle all the cases)
+            #pragma GCC diagnostic push
+            #pragma GCC diagnostic ignored "-Wreturn-type"
+
             switch (layout[addr >> 12]) {
                 case ram_0: return ram[0x0000 | addr];
                 case ram_1: return ram[0x4000 | addr];
@@ -112,6 +116,8 @@ private:
                     return data;
                 }
             }
+
+            #pragma GCC diagnostic push
         }
 
         void set_ultimax(bool act)  { s.ultimax = act; set_layout(); }

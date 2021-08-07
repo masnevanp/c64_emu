@@ -25,7 +25,7 @@ namespace petscii { // TOREDO...
 
 namespace ctrl_ch { // TOREDO...
     static constexpr char rvs_on     = 0x12;
-    static constexpr char del        = 0x14;
+    //static constexpr char del        = 0x14;
 }
 
 

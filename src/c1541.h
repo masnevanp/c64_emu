@@ -1029,7 +1029,7 @@ private:
 
     void insert_blank() {
         // TODO: generate a truly blank disk
-        const std::vector<u8> d64_data(std::size_t(Files::D64::size));
+        const std::vector<u8> d64_data(std::size_t{Files::D64::size});
         Disk* blank_disk = new C1541::D64_disk(Files::D64{d64_data}); // not truly blank...
         disk_carousel.insert(0, blank_disk, "blank"); // TODO: handle 0 free slots case
     }
