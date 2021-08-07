@@ -559,7 +559,7 @@ private:
             if (gs.ba_area) {
                 gs.ba_line = (raster_y & CR1::y_scroll) == gs.y_scroll;
                 if (gs.ba_line) {
-                    u8 line_cycle = cs.cycle % LINE_CYCLE_COUNT;
+                    const u8 line_cycle = cs.line_cycle();
                     if (line_cycle < 14) activate(); // else delayed (see read_vm())
                     if (line_cycle > 10 && line_cycle < 54) ba.gfx_set(line_cycle | 0x80); // store cycle for AEC checking later
                 }
@@ -1001,9 +1001,9 @@ public:
     struct State {
         u8 reg[REG_COUNT];
 
-        u64 cycle = 0; // good for ~595K years...
+        u64 cycle = 1; // good for ~595K years...
         u16 raster_x;
-        u16 raster_y = FRAME_LINE_COUNT - 1;
+        u16 raster_y = 0;
         u8 v_blank = true;
 
         typename Address_space::State addr_space;
@@ -1018,6 +1018,9 @@ public:
         // TODO: move out..?
         u8 cr1(u8 field) const { return reg[R::cr1] & field; }
         u8 cr2(u8 field) const { return reg[R::cr2] & field; }
+
+        int line_cycle() const  { return cycle % LINE_CYCLE_COUNT; }
+        int frame_cycle() const { return cycle % FRAME_CYCLE_COUNT; }
     };
 
     void reset() { for (int r = 0; r < REG_COUNT; ++r) w(r, 0); }
@@ -1059,7 +1062,7 @@ public:
             case R::cr2: gfx.cr2_upd(d); break;
             case R::ireg: irq.w_ireg(d); break;
             case R::ien:  irq.ien_upd(); break;
-            case R::mnye: mobs.set_ye(d, s.cycle % LINE_CYCLE_COUNT); break;
+            case R::mnye: mobs.set_ye(d, s.line_cycle()); break;
             case R::mnmc: for (auto& m : mobs.mob) { m.set_mc(d & 0x1); d >>= 1; } break;
             case R::mnxe: for (auto& m : mobs.mob) { m.set_xe(d & 0x1); d >>= 1; } break;
             case R::mmc0: for (auto& m : mobs.mob) m.set_mc0(d); break;
@@ -1090,39 +1093,41 @@ public:
 
         ++s.cycle;
 
-        switch (auto line_cycle = s.cycle % LINE_CYCLE_COUNT; line_cycle) {
+        switch (s.line_cycle()) {
             case  0:
                 mobs.do_dma(2);
 
-                if (s.raster_y == (FRAME_LINE_COUNT - 1)) {
-                    out.frame(s.frame);
-                    s.raster_y = s.beam_pos = 0;
-                    border.frame_start();
-                    return;
-                }
+                if (s.raster_y < (FRAME_LINE_COUNT - 1)) {
+                    ++s.raster_y;
+                    raster_cmp(s.raster_y);
 
-                ++s.raster_y;
-                out.sync(s.raster_y);
-                raster_cmp(s.raster_y);
-
-                // TODO: reveal the magic numbers....
-                if (!s.v_blank) {
-                    if (s.raster_y == GFX::vma_top_raster_y) {
-                        gfx.vma_start();
-                    } else if (s.raster_y == GFX::vma_bottom_raster_y) {
-                        gfx.vma_done();
-                    } else if (s.raster_y == (250 + BORDER_SZ_H)) {
-                        s.v_blank = true;
-                        lp.reset();
+                    // TODO: reveal the magic numbers....
+                    if (!s.v_blank) {
+                        if (s.raster_y == GFX::vma_top_raster_y) {
+                            gfx.vma_start();
+                        } else if (s.raster_y == GFX::vma_bottom_raster_y) {
+                            gfx.vma_done();
+                        } else if (s.raster_y == (250 + BORDER_SZ_H)) {
+                            s.v_blank = true;
+                            lp.reset();
+                        }
+                    } else if (s.raster_y == (50 - BORDER_SZ_H)) {
+                        s.v_blank = false;
                     }
-                } else if (s.raster_y == (50 - BORDER_SZ_H)) {
-                    s.v_blank = false;
-                }
+
+                    out.sync(s.raster_y);
+                } // else raster_y updated in the next cycle
 
                 return;
             case  1:
                 mobs.prep_dma(5);
-                if (s.raster_y == 0) raster_cmp(0);
+                if (s.frame_cycle() == 1) { // last cycle of the (extended) last line?
+                    s.raster_y = 0;
+                    raster_cmp(0);
+                    s.beam_pos = 0;
+                    border.frame_start();
+                    out.frame(s.frame);
+                }
                 return;
             case  2: mobs.do_dma(3);   return;
             case  3: mobs.prep_dma(6); return;
