@@ -202,7 +202,7 @@ private:
 
         BA(u16& ba_low_) : ba_low(ba_low_) {}
     private:
-        u16& ba_low; // 8 MSBs for MOBs, 8 LSBs for GFX
+        u16& ba_low; // 8 MSBs for MOBs, 8 LSBs for GFX (any bit set ==> active)
     };
 
 
@@ -510,9 +510,9 @@ private:
 
     class GFX {
     public:
-        static const u16 vma_top_raster_y    = 48;
-        static const u16 vma_bottom_raster_y = 248;
-        static const u8  foreground          = 0x80;
+        static const u16 vma_start_ry = 48;
+        static const u16 vma_done_ry  = 248;
+        static const u8  foreground   = 0b10000000;
 
         struct State {
             u8 mode = scm_i;
@@ -540,38 +540,38 @@ private:
             u8  col;
         };
 
-        void cr1_upd(const u8& cr1) {
-            u8 ecm_bmm = (cr1 & (CR1::ecm | CR1::bmm)) >> 3;
-            u8 mcm_act = gs.mode & (mcm_set | act_set);
+        void cr1_upd(const u8& cr1) { // @phi2
+            const u8 ecm_bmm = (cr1 & (CR1::ecm | CR1::bmm)) >> 3;
+            const u8 mcm_act = gs.mode & (mcm_set | act_set);
             gs.mode = ecm_bmm | mcm_act;
 
-            gs.ba_area |= ((raster_y == vma_top_raster_y) && (cr1 & CR1::den));
-            ba_check();
-            gs.y_scroll = cr1 & CR1::y_scroll;
-            ba_check();
-            if (!gs.ba_line) ba.gfx_rel();
-        }
+            gs.ba_area |= ((raster_y == vma_start_ry) && (cr1 & CR1::den));
 
-        void cr2_upd(const u8& cr2) {
-            u8 mcm = (cr2 & CR2::mcm) >> 3;
-            u8 ecm_bmm_act = gs.mode & ~mcm_set;
+            gs.y_scroll = cr1 & CR1::y_scroll;
+
+            gs.ba_line = gs.ba_area && ((raster_y & CR1::y_scroll) == gs.y_scroll);
+            if (gs.ba_line) {
+                const auto lc = cs.line_cycle();
+                if (lc < 14 || lc > 53) activate(); // TODO: actually activated @62-phi2?
+                if (lc >= 11 && lc <= 52) ba.gfx_set(lc); // store lc for AEC checking (TODO)
+            } else {
+                ba.gfx_rel();
+            }
+        }
+        void cr2_upd(const u8& cr2) { // @phi2
+            const u8 mcm = (cr2 & CR2::mcm) >> 3;
+            const u8 ecm_bmm_act = gs.mode & ~mcm_set;
             gs.mode = ecm_bmm_act | mcm;
         }
 
         void vma_start() { gs.ba_area = cs.cr1(CR1::den); gs.vc_base = 0; }
         void vma_done()  { gs.ba_area = gs.ba_line = false;  }
 
-        void ba_check() {
-            if (gs.ba_area) {
-                gs.ba_line = (raster_y & CR1::y_scroll) == gs.y_scroll;
-                if (gs.ba_line) {
-                    const u8 line_cycle = cs.line_cycle();
-                    if (line_cycle < 14) activate(); // else delayed (see read_vm())
-                    if (line_cycle > 10 && line_cycle < 54) ba.gfx_set(line_cycle | 0x80); // store cycle for AEC checking later
-                }
-            }
+        void ba_init() {
+            gs.ba_line = gs.ba_area && ((raster_y & CR1::y_scroll) == gs.y_scroll);
+            if (gs.ba_line) activate();
         }
-
+        void ba_start() { if (gs.ba_line) ba.gfx_set(0b10000000); }
         void ba_done() { ba.gfx_rel(); }
 
         void row_start() {
@@ -581,7 +581,6 @@ private:
             gs.vm[1] = gs.vm[41]; // wrap around (make last one linger...)
             if (gs.ba_line) gs.rc = 0;
         }
-
         void row_done() {
             if (gs.rc == 7) {
                 gs.vc_base = gs.vc;
@@ -595,23 +594,24 @@ private:
 
         void read_vm() {
             if (gs.ba_line) {
-                activate(); // delayed (see ba_check())
                 col_ram.r(gs.vc, gs.vm[gs.vmri].col); // TODO: mask upper bits if 'noise' is implemented
-                u16 vaddr = ((reg[R::mptr] & MPTR::vm) << 6) | gs.vc;
+                const u16 vaddr = ((reg[R::mptr] & MPTR::vm) << 6) | gs.vc;
                 gs.vm[gs.vmri].data = addr_space.r(vaddr);
             }
         }
-
         void read_gd() {
             gs.gdr = addr_space.r(gs.gfx_addr);
-            gs.vc = (gs.vc + active()) & 0x3ff;
-            gs.vmri += active();
+            if (active()) {
+                gs.vc = (gs.vc + 1) & 0x3ff;
+                gs.vmri += 1;
+            } else if (gs.ba_line) {
+                activate();
+            }
         }
-
         void feed_gd() {
-            u8 xs = cs.cr2(CR2::x_scroll);
+            const u8 xs = cs.cr2(CR2::x_scroll);
             gs.gd |= (gs.gdr << (20 - xs));
-            gs.vb |= (0x10 << xs);
+            gs.vb |= ((active() << 4) << xs);
         }
 
         void output(u8* to) {
@@ -620,7 +620,7 @@ private:
             const auto bump = [&bumps, this]() {
                 gs.gd <<= 1;
                 gs.vb >>= 1;
-                gs.vmoi += (gs.vb & active());
+                gs.vmoi += (gs.vb & 1);
                 return --bumps;
             };
             const auto is_aligned = [this]() { return !(cs.cr2(CR2::x_scroll) & 0x1); };
@@ -764,7 +764,7 @@ private:
                             if (aligned) gs.col = (gs.gd >> 24) & 0x80;
                             put(gs.col);
                             gs.gd <<= 1; gs.vb >>= 1;
-                            if (gs.vb & 0x1) {
+                            if (gs.vb & 1) {
                                 ++gs.vmoi;
                                 if (!(gs.vm[gs.vmoi].col & multicolor)) goto _icm_scm;
                             }
@@ -776,7 +776,7 @@ private:
                         do {
                             put((gs.gd >> 24) & 0x80); // sets col.0 & fg-gfx flag
                             gs.gd <<= 1; gs.vb >>= 1;
-                            if (gs.vb & 0x1) {
+                            if (gs.vb & 1) {
                                 ++gs.vmoi;
                                 if (gs.vm[gs.vmoi].col & multicolor) {
                                     aligned = true;
@@ -1108,15 +1108,18 @@ public:
                     raster_cmp(s.raster_y);
 
                     // TODO: reveal the magic numbers....
+                    // TODO: use a 'state'? (compute from ry?)
                     if (!s.v_blank) {
-                        if (s.raster_y == GFX::vma_top_raster_y) {
+                        if (s.raster_y == GFX::vma_start_ry) {
                             gfx.vma_start();
-                        } else if (s.raster_y == GFX::vma_bottom_raster_y) {
+                        } else if (s.raster_y == GFX::vma_done_ry) {
                             gfx.vma_done();
                         } else if (s.raster_y == (250 + BORDER_SZ_H)) {
                             s.v_blank = true;
                             lp.reset();
                         }
+
+                        gfx.ba_init();
                     } else if (s.raster_y == (50 - BORDER_SZ_H)) {
                         s.v_blank = false;
                     }
@@ -1159,7 +1162,7 @@ public:
                 return;
             case 11: // 484
                 if (!s.v_blank) {
-                    gfx.ba_check();
+                    gfx.ba_start();
                     update_mobs();
                 }
                 return;
@@ -1173,35 +1176,32 @@ public:
                 }
                 return;
             case 14: // 4
-                if (!s.v_blank) {
-                    output_border();
-                    gfx.read_vm();
-                }
+                if (!s.v_blank) output_border();
                 return;
             case 15: // 12
                 if (!s.v_blank) {
+                    gfx.read_vm();
                     output();
                     gfx.read_gd();
-                    gfx.read_vm();
                 }
                 mobs.upd_mdc_base();
                 return;
             case 16: // 20
                 if (!s.v_blank) {
+                    gfx.read_vm();
                     gfx.feed_gd();
                     border.check_left(CR2::csel);
                     output();
                     gfx.read_gd();
-                    gfx.read_vm();
                 }
                 return;
             case 17: // 28
                 if (!s.v_blank) {
+                    gfx.read_vm();
                     gfx.feed_gd();
                     border.check_left(CR2::csel ^ CR2::csel);
                     output();
                     gfx.read_gd();
-                    gfx.read_vm();
                 }
                 return;
             case 18: case 19: // 36..
@@ -1210,14 +1210,15 @@ public:
             case 40: case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: case 49:
             case 50: case 51: case 52: case 53: // ..323
                 if (!s.v_blank) {
+                    gfx.read_vm();
                     gfx.feed_gd();
                     output();
                     gfx.read_gd();
-                    gfx.read_vm();
                 }
                 return;
             case 54: // 324
                 if (!s.v_blank) {
+                    gfx.read_vm();
                     gfx.feed_gd();
                     output();
                     gfx.read_gd();
