@@ -233,7 +233,7 @@ private:
         }
 
         void reset() {
-            latch = 0xffff;
+            timer = latch = 0xffff;
             t_ctrl = t_os = pb_bit = pb_pulse = pb_toggle = 0x00;
         }
 
@@ -414,6 +414,7 @@ private:
             time  = Time{0x00, 0x00, 0x00, 0x01};
             alarm = Time{0xff, 0xff, 0xff, 0xff};
             r_src = w_dest = &time;
+            running = false;
             tick_cnt = 0;
         }
 
