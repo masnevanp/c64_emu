@@ -545,6 +545,7 @@ private:
             const u8 mcm_act = gs.mode & (mcm_set | act_set);
             gs.mode = ecm_bmm | mcm_act;
 
+            // TODO: DEN actually detected @62-phi2?
             gs.ba_area |= ((raster_y == vma_start_ry) && (cr1 & CR1::den));
 
             gs.y_scroll = cr1 & CR1::y_scroll;
@@ -552,7 +553,8 @@ private:
             gs.ba_line = gs.ba_area && ((raster_y & CR1::y_scroll) == gs.y_scroll);
             if (gs.ba_line) {
                 const auto lc = cs.line_cycle();
-                if (lc < 14 || lc > 53) activate(); // TODO: actually activated @62-phi2?
+                // TODO: actually activated @62-phi2?
+                if (lc < 14 || lc > 53) activate(); // else 'DMA delay' (see read_vm())
                 if (lc >= 11 && lc <= 52) ba.gfx_set(lc); // store lc for AEC checking (TODO)
             } else {
                 ba.gfx_rel();
@@ -594,6 +596,7 @@ private:
 
         void read_vm() {
             if (gs.ba_line) {
+                activate(); // delayed - possibly (in case 'DMA delay' was triggered)
                 col_ram.r(gs.vc, gs.vm[gs.vmri].col); // TODO: mask upper bits if 'noise' is implemented
                 const u16 vaddr = ((reg[R::mptr] & MPTR::vm) << 6) | gs.vc;
                 gs.vm[gs.vmri].data = addr_space.r(vaddr);
@@ -601,12 +604,8 @@ private:
         }
         void read_gd() {
             gs.gdr = addr_space.r(gs.gfx_addr);
-            if (active()) {
-                gs.vc = (gs.vc + 1) & 0x3ff;
-                gs.vmri += 1;
-            } else if (gs.ba_line) {
-                activate();
-            }
+            gs.vc = (gs.vc + active()) & 0x3ff;
+            gs.vmri += active();
         }
         void feed_gd() {
             const u8 xs = cs.cr2(CR2::x_scroll);
@@ -1176,32 +1175,35 @@ public:
                 }
                 return;
             case 14: // 4
-                if (!s.v_blank) output_border();
+                if (!s.v_blank) {
+                    output_border();
+                    gfx.read_vm();
+                }
                 return;
             case 15: // 12
                 if (!s.v_blank) {
-                    gfx.read_vm();
                     output();
                     gfx.read_gd();
+                    gfx.read_vm();
                 }
                 mobs.upd_mdc_base();
                 return;
             case 16: // 20
                 if (!s.v_blank) {
-                    gfx.read_vm();
                     gfx.feed_gd();
                     border.check_left(CR2::csel);
                     output();
                     gfx.read_gd();
+                    gfx.read_vm();
                 }
                 return;
             case 17: // 28
                 if (!s.v_blank) {
-                    gfx.read_vm();
                     gfx.feed_gd();
                     border.check_left(CR2::csel ^ CR2::csel);
                     output();
                     gfx.read_gd();
+                    gfx.read_vm();
                 }
                 return;
             case 18: case 19: // 36..
@@ -1210,15 +1212,14 @@ public:
             case 40: case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: case 49:
             case 50: case 51: case 52: case 53: // ..323
                 if (!s.v_blank) {
-                    gfx.read_vm();
                     gfx.feed_gd();
                     output();
                     gfx.read_gd();
+                    gfx.read_vm();
                 }
                 return;
             case 54: // 324
                 if (!s.v_blank) {
-                    gfx.read_vm();
                     gfx.feed_gd();
                     output();
                     gfx.read_gd();
