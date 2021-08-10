@@ -574,7 +574,12 @@ private:
             if (gs.ba_line) activate();
         }
         void ba_start() { if (gs.ba_line) ba.gfx_set(0b10000000); }
-        void ba_done() { ba.gfx_rel(); }
+        void ba_done() {
+            if (gs.ba_line) {
+                activate();
+                ba.gfx_rel();
+            }
+        }
 
         void row_start() {
             gs.vc = gs.vc_base;
