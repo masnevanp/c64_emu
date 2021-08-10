@@ -62,12 +62,28 @@ public:
         else irq_req = irq_bit = 0x00;
     }
 
-    void tick();
+    void tick() {
+        if (nmi_req == 0x01) nmi_req = 0x02;
+        else if (nmi_req == 0x02) {
+            nmi_bit = NMI_BIT;
+            nmi_req = 0x03;
+        }
+
+        if (irq_req & 0x02) irq_bit = IRQ_BIT;
+        irq_req <<= 1;
+
+        pc += mcp->pc_inc;
+
+        const auto mop = (mcp++)->mopc;
+        if(mop != NMOS6502::MC::nmop) exec(mop);
+    }
 
 private:
     static constexpr u8 OPC_brk = 0x00;
     static constexpr u8 OPC_bne = 0xd0;
     static constexpr u8 NMI_taken = 0x80;
+
+    void exec(const u8 mop);
 
     // carry & borrow
     u8 C() const { return p & Flag::C; }
