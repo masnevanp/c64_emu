@@ -951,6 +951,15 @@ private:
         State& b;
     };
 
+    void check_raster_irq() { if (s.raster_y == s.raster_y_cmp) irq.req(IRQ::rst); }
+
+    void upd_raster_y_cmp() {
+        const u16 upd = (s.cr1(CR1::rst8) << 1) | s.reg[R::rast];
+        if (s.raster_y_cmp != upd) {
+            s.raster_y_cmp = upd;
+            check_raster_irq();
+        }
+    }
 
     u8* beam_ptr(u32 offset = 0) const { return &s.frame[s.beam_pos + offset]; }
 
@@ -1009,6 +1018,7 @@ public:
         u64 cycle = 1; // good for ~595K years...
         u16 raster_x;
         u16 raster_y = 0;
+        u16 raster_y_cmp = 0;
         u8 v_blank = true;
 
         typename Address_space::State addr_space;
@@ -1063,10 +1073,11 @@ public:
             case R::mnx8:
                 for (auto& m : mobs.mob) { m.set_x_hi(d & 0x1); d >>= 1; }
                 break;
-            case R::cr1: gfx.cr1_upd(d); break;
-            case R::cr2: gfx.cr2_upd(d); break;
-            case R::ireg: irq.w_ireg(d); break;
-            case R::ien:  irq.ien_upd(); break;
+            case R::cr1:  gfx.cr1_upd(d);     // fall through
+            case R::rast: upd_raster_y_cmp(); break;
+            case R::cr2:  gfx.cr2_upd(d);     break;
+            case R::ireg: irq.w_ireg(d);      break;
+            case R::ien:  irq.ien_upd();      break;
             case R::mnye: mobs.set_ye(d, s.line_cycle()); break;
             case R::mnmc: for (auto& m : mobs.mob) { m.set_mc(d & 0x1); d >>= 1; } break;
             case R::mnxe: for (auto& m : mobs.mob) { m.set_xe(d & 0x1); d >>= 1; } break;
@@ -1092,10 +1103,6 @@ public:
         in those cases. */
 
     void tick() {
-        auto raster_cmp = [this](u16 r) {
-            if (((s.cr1(CR1::rst8) << 1) | s.reg[R::rast]) == r) irq.req(IRQ::rst);
-        };
-
         ++s.cycle;
 
         switch (s.line_cycle()) {
@@ -1104,7 +1111,7 @@ public:
 
                 if (s.raster_y < (FRAME_LINE_COUNT - 1)) {
                     ++s.raster_y;
-                    raster_cmp(s.raster_y);
+                    check_raster_irq();
 
                     // TODO: reveal the magic numbers....
                     // TODO: use a 'state'? (compute from ry?)
@@ -1131,7 +1138,7 @@ public:
                 mobs.prep_dma(5);
                 if (s.frame_cycle() == 1) { // last cycle of the (extended) last line?
                     s.raster_y = 0;
-                    raster_cmp(0);
+                    check_raster_irq();
                     s.beam_pos = 0;
                     border.frame_start();
                     out.frame(s.frame);
