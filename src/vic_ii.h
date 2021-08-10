@@ -545,19 +545,19 @@ private:
             const u8 mcm_act = gs.mode & (mcm_set | act_set);
             gs.mode = ecm_bmm | mcm_act;
 
-            // TODO: DEN actually detected @62-phi2?
-            gs.ba_area |= ((raster_y == vma_start_ry) && (cr1 & CR1::den));
-
             gs.y_scroll = cr1 & CR1::y_scroll;
 
-            gs.ba_line = gs.ba_area && ((raster_y & CR1::y_scroll) == gs.y_scroll);
-            if (gs.ba_line) {
-                const auto lc = cs.line_cycle();
-                // TODO: actually activated @62-phi2?
-                if (lc < 14 || lc > 53) activate(); // else 'DMA delay' (see read_vm())
-                if (lc >= 11 && lc <= 52) ba.gfx_set(lc); // store lc for AEC checking (TODO)
-            } else {
-                ba.gfx_rel();
+            const auto cycle = cs.line_cycle();
+            if (cycle < 62) {
+                gs.ba_area |= ((raster_y == vma_start_ry) && (cr1 & CR1::den));
+
+                gs.ba_line = gs.ba_area && ((raster_y & CR1::y_scroll) == gs.y_scroll);
+                if (gs.ba_line) {
+                    if (cycle < 14 || cycle > 53) activate(); // else 'DMA delay' (see read_vm())
+                    if (cycle >= 11 && cycle <= 52) ba.gfx_set(cycle); // store cycle for AEC checking (TODO)
+                } else {
+                    ba.gfx_rel();
+                }
             }
         }
         void cr2_upd(const u8& cr2) { // @phi2
