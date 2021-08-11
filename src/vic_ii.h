@@ -25,7 +25,7 @@ static const double FRAME_MS       = 1000.0 / (CPU_FREQ / (312.0 * 63));
 
 
 // TODO: parameterize frame/border size (all fixed for now)
-static const int BORDER_SZ_V       = 28;
+static const int BORDER_SZ_V       = 32;
 static const int BORDER_SZ_H       = 20;
 
 static const int FRAME_WIDTH        = 320 + 2 * BORDER_SZ_V;
@@ -614,8 +614,8 @@ private:
         }
         void feed_gd() {
             const u8 xs = cs.cr2(CR2::x_scroll);
-            gs.gd |= (gs.gdr << (20 - xs));
-            gs.vb |= ((active() << 4) << xs);
+            gs.gd |= (gs.gdr << (16 - xs));
+            gs.vb |= ((active() << 8) << xs);
         }
 
         void output(u8* to) {
@@ -898,36 +898,37 @@ private:
 
     class Border {
     public:
-        static constexpr u32 not_set = 0xffffffff;
+        enum : u32 {
+            not_set = 0xfffffffe,
+            never   = 0xffffffff
+        };
 
         struct State {
             // indicate beam_pos at which border should start/end
-            u32 on_at = not_set;
+            u32 on_at  = not_set;
             u32 off_at = not_set;
-
-            u8 locked_on;
         };
 
         void check_left(u8 cmp_csel) {
             if (cs.cr2(CR2::csel) == cmp_csel) {
-                if (bottom()) b.locked_on = true;
-                else if (top() && cs.cr1(CR1::den)) b.locked_on = false;
-                if (!b.locked_on && is_on()) {
-                    b.off_at = cs.beam_pos + (3 + (cmp_csel >> 3));
+                if (bottom()) lock();
+                else if (top() && cs.cr1(CR1::den)) unlock();
+                if (!locked() && is_on()) {
+                    b.off_at = cs.beam_pos + (7 + (cmp_csel >> 3));
                 }
             }
         }
 
         void check_right(u8 cmp_csel) {
             if (!is_on() && cs.cr2(CR2::csel) == cmp_csel) {
-                b.on_at = cs.beam_pos + (3 + (cmp_csel >> 3));
+                b.on_at = cs.beam_pos + (7 + (cmp_csel >> 3));
                 b.off_at = not_set;
             }
         }
 
         void line_done() {
-            if (bottom()) b.locked_on = true;
-            else if (top() && cs.cr1(CR1::den)) b.locked_on = false;
+            if (bottom()) lock();
+            else if (top() && cs.cr1(CR1::den)) unlock();
         }
 
         void frame_start() { if (is_on()) b.on_at = 0; }
@@ -946,8 +947,12 @@ private:
         Border(Core::State& cs_) : cs(cs_), b(cs_.border) {}
 
     private:
-        bool is_on()      const { return  b.on_at != not_set; }
-        bool going_off()  const { return b.off_at != not_set; }
+        bool is_on()     const { return  b.on_at < not_set; }
+        bool going_off() const { return b.off_at < not_set; }
+        bool locked()    const { return b.off_at == never;  }
+
+        void lock()   { b.off_at = never;   }
+        void unlock() { b.off_at = not_set; }
 
         bool top()    const { return cs.raster_y == ( 55 - (cs.cr1(CR1::rsel) >> 1)); }
         bool bottom() const { return cs.raster_y == (247 + (cs.cr1(CR1::rsel) >> 1)); }
@@ -975,32 +980,21 @@ private:
         s.raster_x += 8;
     }
 
-    void output_start() {
-        gfx.output_border(beam_ptr()); // gfx.output(beam_pos);
-        mobs.output(500, 4, beam_ptr());
-        mobs.output(0, 4, beam_ptr(4));
-        border.output(s.beam_pos + 4);
-        s.beam_pos += 8;
-        s.raster_x = 4;
-    }
-
-    void output_border() {
+    void output_border() { // TODO: ditch this? (measure if it even makes a difference...)
         gfx.output_border(beam_ptr()); // gfx.output(beam_pos);
         mobs.output(s.raster_x, 8, beam_ptr());
-        border.output(s.beam_pos + 4);
         s.beam_pos += 8;
         s.raster_x += 8;
+        border.output(s.beam_pos);
     }
 
     void output() {
         gfx.output(beam_ptr());
         mobs.output(s.raster_x, 8, beam_ptr());
-        border.output(s.beam_pos + 4);
         s.beam_pos += 8;
         s.raster_x += 8;
+        border.output(s.beam_pos);
     }
-
-    void output_end() { border.output(s.beam_pos); }
 
     State& s;
 
@@ -1154,45 +1148,46 @@ public:
             case  4: mobs.do_dma(4);   return;
             case  5: mobs.prep_dma(7); return;
             case  6: mobs.do_dma(5);   return;
-            case  7: // 452
+            case  7: // 448
                 if (!s.v_blank) {
-                    s.raster_x = 452;
+                    s.raster_x = 448;
                     update_mobs();
                 }
                 return;
-            case  8: // 460
+            case  8: // 456
                 if (!s.v_blank) update_mobs();
                 mobs.do_dma(6);
                 return;
-            case  9: // 468
+            case  9: // 464
                 if (!s.v_blank) update_mobs();
                 return;
-            case 10: // 476
+            case 10: // 472
                 if (!s.v_blank) update_mobs();
                 mobs.do_dma(7);
                 return;
-            case 11: // 484
+            case 11: // 480
                 if (!s.v_blank) {
                     gfx.ba_start();
                     update_mobs();
                 }
                 return;
-            case 12: // 492
+            case 12: // 488
                 if (!s.v_blank) update_mobs();
                 return;
-            case 13: // 500
+            case 13: // 496
                 if (!s.v_blank) {
-                    output_start();
+                    output_border();
                     gfx.row_start();
                 }
                 return;
-            case 14: // 4
+            case 14: // 0
                 if (!s.v_blank) {
+                    s.raster_x = 0;
                     output_border();
                     gfx.read_vm();
                 }
                 return;
-            case 15: // 12
+            case 15: // 8
                 if (!s.v_blank) {
                     output();
                     gfx.read_gd();
@@ -1200,7 +1195,7 @@ public:
                 }
                 mobs.upd_mdc_base();
                 return;
-            case 16: // 20
+            case 16: // 16
                 if (!s.v_blank) {
                     gfx.feed_gd();
                     border.check_left(CR2::csel);
@@ -1209,7 +1204,7 @@ public:
                     gfx.read_vm();
                 }
                 return;
-            case 17: // 28
+            case 17: // 24
                 if (!s.v_blank) {
                     gfx.feed_gd();
                     border.check_left(CR2::csel ^ CR2::csel);
@@ -1218,7 +1213,7 @@ public:
                     gfx.read_vm();
                 }
                 return;
-            case 18: case 19: // 36..
+            case 18: case 19: // 32..
             case 20: case 21: case 22: case 23: case 24: case 25: case 26: case 27: case 28: case 29:
             case 30: case 31: case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39:
             case 40: case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: case 49:
@@ -1230,7 +1225,7 @@ public:
                     gfx.read_vm();
                 }
                 return;
-            case 54: // 324
+            case 54: // 320
                 if (!s.v_blank) {
                     gfx.feed_gd();
                     output();
@@ -1241,7 +1236,7 @@ public:
                 mobs.check_dma();
                 mobs.prep_dma(0);
                 return;
-            case 55: // 332
+            case 55: // 328
                 if (!s.v_blank) {
                     gfx.feed_gd();
                     border.check_right(CR2::csel ^ CR2::csel);
@@ -1250,33 +1245,35 @@ public:
                 mobs.check_dma();
                 //mobs.prep_dma(0);
                 return;
-            case 56: // 340
+            case 56: // 336
                 if (!s.v_blank) {
                     border.check_right(CR2::csel);
                     output();
                 }
                 mobs.prep_dma(1);
                 return;
-            case 57: // 348
+            case 57: // 344
                 if (!s.v_blank) {
                     output();
                     gfx.row_done();
                 }
                 mobs.load_mdc();
                 return;
-            case 58: // 356
+            case 58: // 352
                 if (!s.v_blank) output_border();
                 mobs.prep_dma(2);
                 return;
-            case 59: // 364
+            case 59: // 360
                 if (!s.v_blank) output_border();
                 mobs.do_dma(0);
                 return;
-            case 60: // 372
-                if (!s.v_blank) output_end();
+            case 60: // 368
+                if (!s.v_blank) output_border();
                 mobs.prep_dma(3);
                 return;
-            case 61: mobs.do_dma(1); return;
+            case 61: // 376
+                mobs.do_dma(1);
+                return;
             case 62:
                 border.line_done();
                 mobs.prep_dma(4);
