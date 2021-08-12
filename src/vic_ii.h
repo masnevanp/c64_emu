@@ -514,6 +514,12 @@ private:
         static const u16 vma_done_ry  = 248;
         static const u8  foreground   = 0b10000000;
 
+        enum Mode_bit : u8 {
+            ecm_set = 0b01000, bmm_set = 0b00100, mcm_set = 0b00010, act_set = 0b00001,
+            not_set = 0b00000,
+            blocked = 0b10000, // if blocked, only output bg col (toggled by border unit)
+        };
+
         struct State {
             u8 mode = scm_i;
 
@@ -542,8 +548,8 @@ private:
 
         void cr1_upd(const u8& cr1) { // @phi2
             const u8 ecm_bmm = (cr1 & (CR1::ecm | CR1::bmm)) >> 3;
-            const u8 mcm_act = gs.mode & (mcm_set | act_set);
-            gs.mode = ecm_bmm | mcm_act;
+            const u8 bl_mcm_act = gs.mode & (blocked | mcm_set | act_set);
+            gs.mode = ecm_bmm | bl_mcm_act;
 
             gs.y_scroll = cr1 & CR1::y_scroll;
 
@@ -562,8 +568,8 @@ private:
         }
         void cr2_upd(const u8& cr2) { // @phi2
             const u8 mcm = (cr2 & CR2::mcm) >> 3;
-            const u8 ecm_bmm_act = gs.mode & ~mcm_set;
-            gs.mode = ecm_bmm_act | mcm;
+            const u8 bl_ecm_bmm_act = gs.mode & ~mcm_set;
+            gs.mode = bl_ecm_bmm_act | mcm;
         }
 
         void vma_start() { gs.ba_area = cs.cr1(CR1::den); gs.vc_base = 0; }
@@ -820,6 +826,11 @@ private:
                                 & addr_ecm_mask;
                     return;
                 }
+
+                default: // TODO: actual labels
+                    do put(reg[R::bgc0]); while (bump());
+                    gs.gfx_addr = addr_idle; // TODO: proper address if not idle
+                    return;
             }
         }
 
@@ -842,7 +853,10 @@ private:
                     put(reg[R::bgc0 + (gs.vm[gs.vmoi].data >> 6)]);
                     return;
                 case icm_i: case icm: case ibmm1_i: case ibmm1: case ibmm2_i: case ibmm2:
-                    put(0x0);
+                    put(Color::black);
+                    return;
+                default:
+                    put(reg[R::bgc0]);
                     return;
             }
         }
@@ -854,10 +868,6 @@ private:
             raster_y(cs.raster_y), ba(ba_) {}
 
     private:
-        enum Mode_bit : u8 {
-            ecm_set = 0x8, bmm_set = 0x4, mcm_set = 0x2, act_set = 0x1,
-            not_set = 0x0
-        };
         enum Mode : u8 {
         /*  mode    = ECM-bit | BMM-bit | MCM-bit | active  */
             scm_i   = not_set | not_set | not_set | not_set, // standard character mode
@@ -898,10 +908,8 @@ private:
 
     class Border {
     public:
-        enum : u32 {
-            not_set = 0xfffffffe,
-            never   = 0xffffffff
-        };
+        static constexpr u32 not_set = 0xffffffff;
+        static constexpr u8  locked  = GFX::Mode_bit::blocked;
 
         struct State {
             // indicate beam_pos at which border should start/end
@@ -911,9 +919,8 @@ private:
 
         void check_left(u8 cmp_csel) {
             if (cs.cr2(CR2::csel) == cmp_csel) {
-                if (bottom()) lock();
-                else if (top() && cs.cr1(CR1::den)) unlock();
-                if (!locked() && is_on()) {
+                check_lock();
+                if (!is_locked() && is_on()) {
                     b.off_at = cs.beam_pos + (7 + (cmp_csel >> 3));
                 }
             }
@@ -926,10 +933,7 @@ private:
             }
         }
 
-        void line_done() {
-            if (bottom()) lock();
-            else if (top() && cs.cr1(CR1::den)) unlock();
-        }
+        void line_done() { check_lock(); }
 
         void frame_start() { if (is_on()) b.on_at = 0; }
 
@@ -947,15 +951,21 @@ private:
         Border(Core::State& cs_) : cs(cs_), b(cs_.border) {}
 
     private:
-        bool is_on()     const { return  b.on_at < not_set; }
-        bool going_off() const { return b.off_at < not_set; }
-        bool locked()    const { return b.off_at == never;  }
+        bool is_on()     const { return b.on_at != not_set; }
+        bool going_off() const { return b.off_at != not_set; }
+        bool is_locked() const { return cs.gfx.mode & locked; }
 
-        void lock()   { b.off_at = never;   }
-        void unlock() { b.off_at = not_set; }
+        // (if border 'locked', gfx unit shall output only bg color)
+        void lock()   { cs.gfx.mode |= locked; }
+        void unlock() { cs.gfx.mode &= ~locked; }
 
         bool top()    const { return cs.raster_y == ( 55 - (cs.cr1(CR1::rsel) >> 1)); }
         bool bottom() const { return cs.raster_y == (247 + (cs.cr1(CR1::rsel) >> 1)); }
+
+        void check_lock() {
+            if (bottom()) lock();
+            else if (top() && cs.cr1(CR1::den)) unlock();
+        }
 
         Core::State& cs;
         State& b;
