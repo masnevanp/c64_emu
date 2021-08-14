@@ -638,7 +638,9 @@ private:
 
             switch (gs.mode) {
                 case scm_i:
-                    do put(gs.gd & 0x80000000 ? 0x0 | foreground : reg[R::bgc0]);
+                    do put(gs.gd & 0x80000000
+                            ? Color::black | foreground
+                            : reg[R::bgc0]);
                     while (bump());
                     gs.gfx_addr = addr_idle;
                     return;
@@ -652,7 +654,9 @@ private:
                     return;
 
                 case mccm_i:
-                    do put(gs.gd & 0x80000000 ? 0x0 | foreground : reg[R::bgc0]);
+                    do put(gs.gd & 0x80000000
+                            ? Color::black | foreground
+                            : reg[R::bgc0]);
                     while (bump());
                     gs.gfx_addr = addr_idle;
                     return;
@@ -701,7 +705,7 @@ private:
                 }
 
                 case sbmm_i:
-                    do put(gs.gd & 0x80000000 ? 0x0 | foreground : 0x0);
+                    do put((gs.gd >> 24) & 0x80); // sets col.0 & fg-gfx flag
                     while (bump());
                     gs.gfx_addr = addr_idle;
                     return;
@@ -719,10 +723,10 @@ private:
                     do {
                         if (aligned) {
                             switch (gs.gd >> 30) {
-                                case 0x0: gs.col = reg[R::bgc0];     break;
-                                case 0x1: gs.col = 0x0;              break;
-                                case 0x2: gs.col = 0x0 | foreground; break;
-                                case 0x3: gs.col = 0x0 | foreground; break;
+                                case 0x0: gs.col = reg[R::bgc0];              break;
+                                case 0x1: gs.col = Color::black;              break;
+                                case 0x2: gs.col = Color::black | foreground; break;
+                                case 0x3: gs.col = Color::black | foreground; break;
                             }
                         }
                         put(gs.col);
@@ -751,7 +755,9 @@ private:
                 }
 
                 case ecm_i:
-                    do put(gs.gd & 0x80000000 ? 0x0 | foreground : reg[R::bgc0]);
+                    do put(gs.gd & 0x80000000
+                                ? Color::black | foreground
+                                : reg[R::bgc0]);
                     while (bump());
                     gs.gfx_addr = addr_idle & addr_ecm_mask;
                     return;
@@ -827,36 +833,97 @@ private:
                     return;
                 }
 
-                default: // TODO: actual labels
+                case blocked | scm_i:
                     do put(reg[R::bgc0]); while (bump());
-                    gs.gfx_addr = addr_idle; // TODO: proper address if not idle
+                    gs.gfx_addr = addr_idle;
+                    return;
+                case blocked | scm:
+                    do put(reg[R::bgc0]); while (bump());
+                    gs.gfx_addr = c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc;
+                    return;
+                case blocked | mccm_i:
+                    do put(reg[R::bgc0]); while (bump());
+                    gs.gfx_addr = addr_idle;
+                    return;
+                case blocked | mccm:
+                    do put(reg[R::bgc0]); while (bump());
+                    gs.gfx_addr = c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc;
+                    return;
+                case blocked | sbmm_i:
+                    do put(Color::black); while (bump());
+                    gs.gfx_addr = addr_idle;
+                    return;
+                case blocked | sbmm: {
+                    const auto col = gs.vm[gs.vmoi].data & 0xf;
+                    do put(col); while (bump());
+                    gs.gfx_addr = (c_base() & 0x2000) | (gs.vc << 3) | gs.rc;
+                    return; }
+                case blocked | mcbmm_i:
+                    do put(reg[R::bgc0]); while (bump());
+                    gs.gfx_addr = addr_idle;
+                    return;
+                case blocked | mcbmm:
+                    do put(reg[R::bgc0]); while (bump());
+                    gs.gfx_addr = (c_base() & 0x2000) | (gs.vc << 3) | gs.rc;
+                    return;
+                case blocked | ecm_i:
+                    do put(reg[R::bgc0]); while (bump());
+                    gs.gfx_addr = addr_idle & addr_ecm_mask;
+                    return;
+                case blocked | ecm: { 
+                    const auto col = reg[R::bgc0 + (gs.vm[gs.vmoi].data >> 6)];
+                    do put(col); while (bump());
+                    gs.gfx_addr = (c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc) & addr_ecm_mask;
+                    return; }
+                case blocked | icm_i:
+                    do put(Color::black); while (bump());
+                    gs.gfx_addr = addr_idle & addr_ecm_mask;
+                    return;
+                case blocked | icm:
+                    do put(Color::black); while (bump());
+                    gs.gfx_addr = (c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc) & addr_ecm_mask;
+                    return;
+                case blocked | ibmm1_i:
+                    do put(Color::black); while (bump());
+                    gs.gfx_addr = addr_idle & addr_ecm_mask;
+                    return;
+                case blocked | ibmm1:
+                    do put(Color::black); while (bump());
+                    gs.gfx_addr = ((c_base() & 0x2000) | (gs.vc << 3) | gs.rc) & addr_ecm_mask;
+                    return;
+                case blocked | ibmm2_i:
+                    do put(Color::black); while (bump());
+                    gs.gfx_addr = addr_idle & addr_ecm_mask;
+                    return;
+                case blocked | ibmm2:
+                    do put(Color::black); while (bump());
+                    gs.gfx_addr = ((c_base() & 0x2000) | (gs.vc << 3) | gs.rc) & addr_ecm_mask;
                     return;
             }
         }
 
         void output_border(u8* to) {
-            const auto put = [&to](const u8 px) {
+            const auto put8 = [&to](const u8 px) {
                 to[0] = to[1] = to[2] = to[3] = to[4] = to[5] = to[6] = to[7] = px;
             };
 
-            switch (gs.mode) {
+            // no gfx data anyway ==> can ignore 'blocked'
+            const auto mode = gs.mode & (ecm_set | bmm_set | mcm_set | act_set);
+            switch (mode) {
                 case scm_i: case scm: case mccm_i: case mccm:
-                    put(reg[R::bgc0]);
+                    put8(reg[R::bgc0]);
                     return;
                 case sbmm_i: case sbmm:
-                    put(gs.vm[gs.vmoi].data & 0xf);
+                    put8(gs.vm[gs.vmoi].data & 0xf);
                     return;
                 case mcbmm_i: case mcbmm:
-                    put(reg[R::bgc0]);
+                    put8(reg[R::bgc0]);
                     return;
                 case ecm_i: case ecm:
-                    put(reg[R::bgc0 + (gs.vm[gs.vmoi].data >> 6)]);
+                    put8(reg[R::bgc0 + (gs.vm[gs.vmoi].data >> 6)]);
                     return;
                 case icm_i: case icm: case ibmm1_i: case ibmm1: case ibmm2_i: case ibmm2:
-                    put(Color::black);
-                    return;
-                default:
-                    put(reg[R::bgc0]);
+                    put8(Color::black);
                     return;
             }
         }
@@ -990,8 +1057,8 @@ private:
         s.raster_x += 8;
     }
 
-    void output_border() { // TODO: ditch this? (measure if it even makes a difference...)
-        gfx.output_border(beam_ptr()); // gfx.output(beam_pos);
+    void output_border() { // in left/right border area
+        gfx.output_border(beam_ptr());
         mobs.output(s.raster_x, 8, beam_ptr());
         s.beam_pos += 8;
         s.raster_x += 8;
