@@ -25,8 +25,8 @@ static const double FRAME_MS       = 1000.0 / (CPU_FREQ / (312.0 * 63));
 
 
 // TODO: parameterize frame/border size (all fixed for now)
-static const int BORDER_SZ_V       = 32;
-static const int BORDER_SZ_H       = 20;
+static const int BORDER_SZ_V       = 31;
+static const int BORDER_SZ_H       = 24;
 
 static const int FRAME_WIDTH        = 320 + 2 * BORDER_SZ_V;
 static const int FRAME_HEIGHT       = 200 + 2 * BORDER_SZ_H;
@@ -514,14 +514,8 @@ private:
         static const u16 vma_done_ry  = 248;
         static const u8  foreground   = 0b10000000;
 
-        enum Mode_bit : u8 {
-            ecm_set = 0b01000, bmm_set = 0b00100, mcm_set = 0b00010, act_set = 0b00001,
-            not_set = 0b00000,
-            blocked = 0b10000, // if blocked, only output bg col (toggled by border unit)
-        };
-
         struct State {
-            u8 mode = scm_i;
+            u8 mode = scm;
 
             u8 y_scroll;
 
@@ -532,24 +526,28 @@ private:
                 u8 data = 0; // 'screen memory' data
                 u8 col = 0;  // color-ram data
             };
-            VM_data vm[42]; // vm row buffer
+            VM_data vm[40]; // vm row buffer
 
+            u64 pipeline;
             u16 vc_base;
             u16 vc;
             u16 rc;
-            u16 vb;   // vmoi bump timer
             u16 gfx_addr;
-            u32 gd;
-            u8  gdr;
+            u16 gfx_addr_idle;
+            VM_data vmd;
+            u8  gd;
+            u8  blocked; // if blocked, only output bg col (toggled by border unit)
             u8  vmri; // vm read index
             u8  vmoi; // vm output index
             u8  col;
         };
 
         void cr1_upd(const u8& cr1) { // @phi2
-            const u8 ecm_bmm = (cr1 & (CR1::ecm | CR1::bmm)) >> 3;
-            const u8 bl_mcm_act = gs.mode & (blocked | mcm_set | act_set);
-            gs.mode = ecm_bmm | bl_mcm_act;
+            const u8 ecm_bmm = (cr1 & (CR1::ecm | CR1::bmm)) >> 4;
+            const u8 mcm = gs.mode & mcm_set;
+            gs.mode = ecm_bmm | mcm;
+
+            gs.gfx_addr_idle = (cr1 & CR1::ecm) ? (addr_idle & addr_ecm_mask) : addr_idle;
 
             gs.y_scroll = cr1 & CR1::y_scroll;
 
@@ -567,9 +565,9 @@ private:
             }
         }
         void cr2_upd(const u8& cr2) { // @phi2
-            const u8 mcm = (cr2 & CR2::mcm) >> 3;
-            const u8 bl_ecm_bmm_act = gs.mode & ~mcm_set;
-            gs.mode = bl_ecm_bmm_act | mcm;
+            const u8 mcm = (cr2 & CR2::mcm) >> 4;
+            const u8 ecm_bmm = gs.mode & ~mcm_set;
+            gs.mode = ecm_bmm | mcm;
         }
 
         void vma_start() { gs.ba_area = cs.cr1(CR1::den); gs.vc_base = 0; }
@@ -589,12 +587,13 @@ private:
 
         void row_start() {
             gs.vc = gs.vc_base;
-            gs.vmri = 1 + active();
-            gs.vmoi = gs.vmri - 1; // if idle, we stay at index zero (with zeroed data)
-            gs.vm[1] = gs.vm[41]; // wrap around (make last one linger...)
+            gs.vmri = 0;
+            gs.vmoi = 0;
             if (gs.ba_line) gs.rc = 0;
         }
         void row_done() {
+            gs.pipeline = 0;
+
             if (gs.rc == 7) {
                 gs.vc_base = gs.vc;
                 if (!gs.ba_line) {
@@ -605,6 +604,8 @@ private:
             gs.rc = (gs.rc + active()) & 0x7;
         }
 
+        void init_vmd() { if (!active()) gs.vmd = {0, 0}; }
+
         void read_vm() {
             if (gs.ba_line) {
                 activate(); // delayed - possibly (in case 'DMA delay' was triggered)
@@ -614,316 +615,203 @@ private:
             }
         }
         void read_gd() {
-            gs.gdr = addr_space.r(gs.gfx_addr);
-            gs.vc = (gs.vc + active()) & 0x3ff;
-            gs.vmri += active();
+            if (active()) {
+                gs.gd = addr_space.r(gs.gfx_addr);
+                gs.vc = (gs.vc + 1) & 0x3ff;
+                gs.vmri += 1;
+            } else {
+                gs.gd = addr_space.r(gs.gfx_addr_idle);
+            }
         }
-        void feed_gd() {
+
+        void feed_pipeline() {
             const u8 xs = cs.cr2(CR2::x_scroll);
-            gs.gd |= (gs.gdr << (16 - xs));
-            gs.vb |= ((active() << 8) << xs);
+            const u64 gd_bits = u64(0x00000000000000ff) << (49 - xs);
+            gs.pipeline &= ~gd_bits; // clear leftovers (in case xs was decremented)
+            gs.pipeline |= (u64(gs.gd) << (49 - xs)); // feed gd
+            gs.pipeline |= (active() << (8 - xs)); // feed vmd timer
         }
 
         void output(u8* to) {
-            u8 bumps = 8;
+            static constexpr u64 vmd_timer = u64(0b1) << 15;
+
+            u8 shifts = 8;
             const auto put = [&to](const u8 px) { *to++ = px; };
-            const auto bump = [&bumps, this]() {
-                gs.gd <<= 1;
-                gs.vb >>= 1;
-                gs.vmoi += (gs.vb & 1);
-                return --bumps;
+            const auto shift = [&shifts, this]() {
+                gs.pipeline <<= 1;
+                if (gs.pipeline & vmd_timer) {
+                    gs.pipeline &= 0xfffff00000007fff;
+                    gs.pipeline |= 0x0000000000010000;
+                    gs.vmd = gs.vm[gs.vmoi++];
+                }
+                return --shifts;
             };
-            const auto is_aligned = [this]() { return !(cs.cr2(CR2::x_scroll) & 0x1); };
-            const auto c_base =     [this]() { return (reg[R::mptr] & MPTR::cg) << 10; };
+            const auto shifted_even = [this]() { return gs.pipeline & 0x0000000055550000; };
+            const auto c_base =       [this]() { return (reg[R::mptr] & MPTR::cg) << 10; };
+
+            if (gs.blocked) gs.pipeline &= 0x00000000ffffffff;
 
             switch (gs.mode) {
-                case scm_i:
-                    do put(gs.gd & 0x80000000
-                            ? Color::black | foreground
-                            : reg[R::bgc0]);
-                    while (bump());
-                    gs.gfx_addr = addr_idle;
-                    return;
-
                 case scm:
-                    do put(gs.gd & 0x80000000
-                            ? gs.vm[gs.vmoi].col | foreground
+                    do put(gs.pipeline & 0x8000000000000000
+                            ? gs.vmd.col | foreground
                             : reg[R::bgc0]);
-                    while (bump());
+                    while (shift());
+
                     gs.gfx_addr = c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc;
                     return;
 
-                case mccm_i:
-                    do put(gs.gd & 0x80000000
-                            ? Color::black | foreground
-                            : reg[R::bgc0]);
-                    while (bump());
-                    gs.gfx_addr = addr_idle;
-                    return;
-
-                case mccm: {
-                    bool aligned;
-                    if (gs.vm[gs.vmoi].col & multicolor) {
-                        aligned = is_aligned();
+                case mccm:
+                    if (gs.vmd.col & multicolor) {
                         do {
-                            if (aligned) {
-                                u8 gd = (gs.gd >> 24) & 0xc0;
-                                u8 c = (gd == 0xc0)
-                                            ? gs.vm[gs.vmoi].col & 0x7
-                                            : reg[R::bgc0 + (gd >> 6)];
+                            if (shifted_even()) {
+                                const u8 gd = (gs.pipeline >> 56) & 0xc0;
+                                const u8 c = (gd == 0xc0)
+                                                    ? gs.vmd.col & 0x7
+                                                    : reg[R::bgc0 + (gd >> 6)];
                                 gs.col = (c | gd); // sets also fg-gfx flag
                             }
                             put(gs.col);
-                            gs.gd <<= 1; gs.vb >>= 1;
-                            if (gs.vb & 0x1) {
-                                ++gs.vmoi;
-                                if (!(gs.vm[gs.vmoi].col & multicolor)) goto _scm;
+
+                            gs.pipeline <<= 1;
+                            if (gs.pipeline & vmd_timer) {
+                                gs.pipeline &= 0xfffff00000007fff;
+                                gs.pipeline |= 0x0000000000010000;
+                                gs.vmd = gs.vm[gs.vmoi++];
+                                if (!(gs.vmd.col & multicolor)) goto _scm;
                             }
-                            aligned = !aligned;
                             _mccm:
-                            --bumps;
-                        } while (bumps);
+                            --shifts;
+                        } while (shifts);
                     } else {
                         do {
-                            put(gs.gd & 0x80000000
-                                    ? gs.vm[gs.vmoi].col | foreground
+                            put(gs.pipeline & 0x8000000000000000
+                                    ? gs.vmd.col | foreground
                                     : reg[R::bgc0]);
-                            gs.gd <<= 1; gs.vb >>= 1;
-                            if (gs.vb & 0x1) {
-                                ++gs.vmoi;
-                                if (gs.vm[gs.vmoi].col & multicolor) {
-                                    aligned = true;
-                                    goto _mccm;
-                                }
+
+                            gs.pipeline <<= 1;
+                            if (gs.pipeline & vmd_timer) {
+                                gs.pipeline &= 0xfffff00000007fff;
+                                gs.pipeline |= 0x0000000000010000;
+                                gs.vmd = gs.vm[gs.vmoi++];
+                                if (gs.vmd.col & multicolor) goto _mccm;
                             }
                             _scm:
-                            --bumps;
-                        } while (bumps);
+                            --shifts;
+                        } while (shifts);
                     }
-                    gs.gfx_addr = c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc;
-                    return;
-                }
 
-                case sbmm_i:
-                    do put((gs.gd >> 24) & 0x80); // sets col.0 & fg-gfx flag
-                    while (bump());
-                    gs.gfx_addr = addr_idle;
+                    gs.gfx_addr = c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc;
                     return;
 
                 case sbmm:
-                    do put(gs.gd & 0x80000000
-                                ? (gs.vm[gs.vmoi].data >> 4) | foreground
-                                : (gs.vm[gs.vmoi].data & 0xf));
-                    while (bump());
+                    do put(gs.pipeline & 0x8000000000000000
+                                ? (gs.vmd.data >> 4) | foreground
+                                : (gs.vmd.data & 0xf));
+                    while (shift());
+
                     gs.gfx_addr = (c_base() & 0x2000) | (gs.vc << 3) | gs.rc;
                     return;
 
-                case mcbmm_i: {
-                    bool aligned = is_aligned();
+                case mcbmm:
                     do {
-                        if (aligned) {
-                            switch (gs.gd >> 30) {
-                                case 0x0: gs.col = reg[R::bgc0];              break;
-                                case 0x1: gs.col = Color::black;              break;
-                                case 0x2: gs.col = Color::black | foreground; break;
-                                case 0x3: gs.col = Color::black | foreground; break;
+                        if (shifted_even()) {
+                            switch ((gs.pipeline >> 62) & 0b11) {
+                                case 0b00: gs.col = reg[R::bgc0];                     break;
+                                case 0b01: gs.col = (gs.vmd.data >> 4);               break;
+                                case 0b10: gs.col = (gs.vmd.data & 0xf) | foreground; break;
+                                case 0b11: gs.col = gs.vmd.col | foreground;          break;
                             }
                         }
                         put(gs.col);
-                        aligned = !aligned;
-                    } while (bump());
-                    gs.gfx_addr = addr_idle;
-                    return;
-                }
+                    } while (shift());
 
-                case mcbmm: {
-                    bool aligned = is_aligned();
-                    do {
-                        if (aligned) {
-                            switch (gs.gd >> 30) {
-                                case 0x0: gs.col = reg[R::bgc0];                             break;
-                                case 0x1: gs.col = (gs.vm[gs.vmoi].data >> 4);               break;
-                                case 0x2: gs.col = (gs.vm[gs.vmoi].data & 0xf) | foreground; break;
-                                case 0x3: gs.col = gs.vm[gs.vmoi].col | foreground;          break;
-                            }
-                        }
-                        put(gs.col);
-                        aligned = !aligned;
-                    } while (bump());
                     gs.gfx_addr = (c_base() & 0x2000) | (gs.vc << 3) | gs.rc;
-                    return;
-                }
-
-                case ecm_i:
-                    do put(gs.gd & 0x80000000
-                                ? Color::black | foreground
-                                : reg[R::bgc0]);
-                    while (bump());
-                    gs.gfx_addr = addr_idle & addr_ecm_mask;
                     return;
 
                 case ecm:
-                    do put(gs.gd & 0x80000000
-                                ? gs.vm[gs.vmoi].col | foreground
-                                : reg[R::bgc0 + (gs.vm[gs.vmoi].data >> 6)]);
-                    while (bump());
+                    do put(gs.pipeline & 0x8000000000000000
+                                ? gs.vmd.col | foreground
+                                : reg[R::bgc0 + (gs.vmd.data >> 6)]);
+                    while (shift());
+
                     gs.gfx_addr = (c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc)
                                         & addr_ecm_mask;
                     return;
 
-                case icm_i: case icm: {
-                    bool aligned;
-                    if (gs.vm[gs.vmoi].col & multicolor) {
-                        aligned = is_aligned();
+                case icm:
+                    if (gs.vmd.col & multicolor) {
                         do {
-                            // sets col.0 & fg-gfx flag
-                            if (aligned) gs.col = (gs.gd >> 24) & 0x80;
+                            if (shifted_even()) gs.col = (gs.pipeline >> 56) & 0x80; // sets col.0 & fg-gfx flag
                             put(gs.col);
-                            gs.gd <<= 1; gs.vb >>= 1;
-                            if (gs.vb & 1) {
-                                ++gs.vmoi;
-                                if (!(gs.vm[gs.vmoi].col & multicolor)) goto _icm_scm;
+
+                            gs.pipeline <<= 1;
+                            if (gs.pipeline & vmd_timer) {
+                                gs.pipeline &= 0xfffff00000007fff;
+                                gs.pipeline |= 0x0000000000010000;
+                                gs.vmd = gs.vm[gs.vmoi++];
+                                if (!(gs.vmd.col & multicolor)) goto _icm_scm;
                             }
-                            aligned = !aligned;
                             _icm_mccm:
-                            --bumps;
-                        } while (bumps);
+                            --shifts;
+                        } while (shifts);
                     } else {
                         do {
-                            put((gs.gd >> 24) & 0x80); // sets col.0 & fg-gfx flag
-                            gs.gd <<= 1; gs.vb >>= 1;
-                            if (gs.vb & 1) {
-                                ++gs.vmoi;
-                                if (gs.vm[gs.vmoi].col & multicolor) {
-                                    aligned = true;
-                                    goto _icm_mccm;
-                                }
+                            put((gs.pipeline >> 56) & 0x80); // sets col.0 & fg-gfx flag
+
+                            gs.pipeline <<= 1;
+                            if (gs.pipeline & vmd_timer) {
+                                gs.pipeline &= 0xfffff00000007fff;
+                                gs.pipeline |= 0x0000000000010000;
+                                gs.vmd = gs.vm[gs.vmoi++];
+                                if (gs.vmd.col & multicolor) goto _icm_mccm;
                             }
                             _icm_scm:
-                            --bumps;
-                        } while (bumps);
+                            --shifts;
+                        } while (shifts);
                     }
-                    gs.gfx_addr = (gs.mode == icm_i
-                        ? addr_idle
-                        : (c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc))
-                                & addr_ecm_mask;
-                    return;
-                }
 
-                case ibmm1_i: case ibmm1:
-                    do put((gs.gd >> 24) & 0x80); while (bump()); // sets col.0 & fg-gfx flag
-                    gs.gfx_addr = (gs.mode == ibmm2_i
-                        ? addr_idle
-                        : ((c_base() & 0x2000) | (gs.vc << 3) | gs.rc))
-                                & addr_ecm_mask;
+                    gs.gfx_addr = (c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc)
+                                        & addr_ecm_mask;
                     return;
 
-                case ibmm2_i: case ibmm2: {
-                    bool aligned = is_aligned();
+                case ibmm1:
+                    do put((gs.pipeline >> 56) & 0x80); while (shift()); // sets col.0 & fg-gfx flag
+
+                    gs.gfx_addr = ((c_base() & 0x2000) | (gs.vc << 3) | gs.rc)
+                                        & addr_ecm_mask;
+                    return;
+
+                case ibmm2:
                     do {
-                        // sets col.0 & fg-gfx flag
-                        if (aligned) gs.col = (gs.gd >> 24) & 0x80;
+                        if (shifted_even()) gs.col = (gs.pipeline >> 56) & 0x80; // sets col.0 & fg-gfx flag
                         put(gs.col);
-                        aligned = !aligned;
-                    } while (bump());
-                    gs.gfx_addr = (gs.mode == ibmm2_i
-                        ? addr_idle
-                        : ((c_base() & 0x2000) | (gs.vc << 3) | gs.rc))
-                                & addr_ecm_mask;
-                    return;
-                }
+                    } while (shift());
 
-                case blocked | scm_i:
-                    do put(reg[R::bgc0]); while (bump());
-                    gs.gfx_addr = addr_idle;
-                    return;
-                case blocked | scm:
-                    do put(reg[R::bgc0]); while (bump());
-                    gs.gfx_addr = c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc;
-                    return;
-                case blocked | mccm_i:
-                    do put(reg[R::bgc0]); while (bump());
-                    gs.gfx_addr = addr_idle;
-                    return;
-                case blocked | mccm:
-                    do put(reg[R::bgc0]); while (bump());
-                    gs.gfx_addr = c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc;
-                    return;
-                case blocked | sbmm_i:
-                    do put(Color::black); while (bump());
-                    gs.gfx_addr = addr_idle;
-                    return;
-                case blocked | sbmm: {
-                    const auto col = gs.vm[gs.vmoi].data & 0xf;
-                    do put(col); while (bump());
-                    gs.gfx_addr = (c_base() & 0x2000) | (gs.vc << 3) | gs.rc;
-                    return; }
-                case blocked | mcbmm_i:
-                    do put(reg[R::bgc0]); while (bump());
-                    gs.gfx_addr = addr_idle;
-                    return;
-                case blocked | mcbmm:
-                    do put(reg[R::bgc0]); while (bump());
-                    gs.gfx_addr = (c_base() & 0x2000) | (gs.vc << 3) | gs.rc;
-                    return;
-                case blocked | ecm_i:
-                    do put(reg[R::bgc0]); while (bump());
-                    gs.gfx_addr = addr_idle & addr_ecm_mask;
-                    return;
-                case blocked | ecm: { 
-                    const auto col = reg[R::bgc0 + (gs.vm[gs.vmoi].data >> 6)];
-                    do put(col); while (bump());
-                    gs.gfx_addr = (c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc) & addr_ecm_mask;
-                    return; }
-                case blocked | icm_i:
-                    do put(Color::black); while (bump());
-                    gs.gfx_addr = addr_idle & addr_ecm_mask;
-                    return;
-                case blocked | icm:
-                    do put(Color::black); while (bump());
-                    gs.gfx_addr = (c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc) & addr_ecm_mask;
-                    return;
-                case blocked | ibmm1_i:
-                    do put(Color::black); while (bump());
-                    gs.gfx_addr = addr_idle & addr_ecm_mask;
-                    return;
-                case blocked | ibmm1:
-                    do put(Color::black); while (bump());
-                    gs.gfx_addr = ((c_base() & 0x2000) | (gs.vc << 3) | gs.rc) & addr_ecm_mask;
-                    return;
-                case blocked | ibmm2_i:
-                    do put(Color::black); while (bump());
-                    gs.gfx_addr = addr_idle & addr_ecm_mask;
-                    return;
-                case blocked | ibmm2:
-                    do put(Color::black); while (bump());
-                    gs.gfx_addr = ((c_base() & 0x2000) | (gs.vc << 3) | gs.rc) & addr_ecm_mask;
+                    gs.gfx_addr = ((c_base() & 0x2000) | (gs.vc << 3) | gs.rc)
+                                        & addr_ecm_mask;
                     return;
             }
         }
 
-        void output_border(u8* to) {
-            const auto put8 = [&to](const u8 px) {
-                to[0] = to[1] = to[2] = to[3] = to[4] = to[5] = to[6] = to[7] = px;
-            };
+        void output_border(u8* to, int n) {
+            const auto put_em = [&](const u8 c) { while (--n >= 0) to[n] = c; };
 
-            // no gfx data anyway ==> can ignore 'blocked'
-            const auto mode = gs.mode & (ecm_set | bmm_set | mcm_set | act_set);
-            switch (mode) {
-                case scm_i: case scm: case mccm_i: case mccm:
-                    put8(reg[R::bgc0]);
+            switch (gs.mode) {
+                case scm: case mccm:
+                    put_em(reg[R::bgc0]);
                     return;
-                case sbmm_i: case sbmm:
-                    put8(gs.vm[gs.vmoi].data & 0xf);
+                case sbmm:
+                    put_em(gs.vmd.data & 0xf);
                     return;
-                case mcbmm_i: case mcbmm:
-                    put8(reg[R::bgc0]);
+                case mcbmm:
+                    put_em(reg[R::bgc0]);
                     return;
-                case ecm_i: case ecm:
-                    put8(reg[R::bgc0 + (gs.vm[gs.vmoi].data >> 6)]);
+                case ecm:
+                    put_em(reg[R::bgc0 + (gs.vmd.data >> 6)]);
                     return;
-                case icm_i: case icm: case ibmm1_i: case ibmm1: case ibmm2_i: case ibmm2:
-                    put8(Color::black);
+                case icm: case ibmm1: case ibmm2:
+                    put_em(Color::black);
                     return;
             }
         }
@@ -935,33 +823,31 @@ private:
             raster_y(cs.raster_y), ba(ba_) {}
 
     private:
+        enum Mode_bit : u8 {
+            ecm_set = 0b100, bmm_set = 0b010, mcm_set = 0b001,
+            not_set = 0b000,
+        };
+
         enum Mode : u8 {
-        /*  mode    = ECM-bit | BMM-bit | MCM-bit | active  */
-            scm_i   = not_set | not_set | not_set | not_set, // standard character mode
-            scm     = not_set | not_set | not_set | act_set,
-            mccm_i  = not_set | not_set | mcm_set | not_set, // multi-color character mode
-            mccm    = not_set | not_set | mcm_set | act_set,
-            sbmm_i  = not_set | bmm_set | not_set | not_set, // standard bit map mode
-            sbmm    = not_set | bmm_set | not_set | act_set,
-            mcbmm_i = not_set | bmm_set | mcm_set | not_set, // multi-color bit map mode
-            mcbmm   = not_set | bmm_set | mcm_set | act_set,
-            ecm_i   = ecm_set | not_set | not_set | not_set, // extended color mode
-            ecm     = ecm_set | not_set | not_set | act_set,
-            icm_i   = ecm_set | not_set | mcm_set | not_set, // invalid character mode
-            icm     = ecm_set | not_set | mcm_set | act_set,
-            ibmm1_i = ecm_set | bmm_set | not_set | not_set, // invalid bit map mode 1
-            ibmm1   = ecm_set | bmm_set | not_set | act_set,
-            ibmm2_i = ecm_set | bmm_set | mcm_set | not_set, // invalid bit map mode 2
-            ibmm2   = ecm_set | bmm_set | mcm_set | act_set,
+        /*  mode    = ECM-bit | BMM-bit | MCM-bit */
+            scm     = not_set | not_set | not_set, // standard character mode
+            mccm    = not_set | not_set | mcm_set, // multi-color character mode
+            sbmm    = not_set | bmm_set | not_set, // standard bit map mode
+            mcbmm   = not_set | bmm_set | mcm_set, // multi-color bit map mode
+            ecm     = ecm_set | not_set | not_set, // extended color mode
+            icm     = ecm_set | not_set | mcm_set, // invalid character mode
+            ibmm1   = ecm_set | bmm_set | not_set, // invalid bit map mode 1
+            ibmm2   = ecm_set | bmm_set | mcm_set, // invalid bit map mode 2
         };
 
         static const u8  multicolor    = 0x8;
         static const u16 addr_idle     = 0x3fff;
         static const u16 addr_ecm_mask = 0x39ff;
 
-        void activate()     { gs.mode |= Mode_bit::act_set; }
-        void deactivate()   { gs.mode &= ~Mode_bit::act_set; }
-        bool active() const { return gs.mode & Mode_bit::act_set; }
+        u8 act; // TODO: encode in something else?
+        void activate()     { act = true; }
+        void deactivate()   { act = false; }
+        bool active() const { return act; }
 
         const Core::State& cs;
         State& gs;
@@ -976,7 +862,6 @@ private:
     class Border {
     public:
         static constexpr u32 not_set = 0xffffffff;
-        static constexpr u8  locked  = GFX::Mode_bit::blocked;
 
         struct State {
             // indicate beam_pos at which border should start/end
@@ -988,14 +873,14 @@ private:
             if (cs.cr2(CR2::csel) == cmp_csel) {
                 check_lock();
                 if (!is_locked() && is_on()) {
-                    b.off_at = cs.beam_pos + (7 + (cmp_csel >> 3));
+                    b.off_at = cs.beam_pos + (6 + (cmp_csel >> 3));
                 }
             }
         }
 
         void check_right(u8 cmp_csel) {
             if (!is_on() && cs.cr2(CR2::csel) == cmp_csel) {
-                b.on_at = cs.beam_pos + (7 + (cmp_csel >> 3));
+                b.on_at = cs.beam_pos + (6 + (cmp_csel >> 3));
                 b.off_at = not_set;
             }
         }
@@ -1020,11 +905,11 @@ private:
     private:
         bool is_on()     const { return b.on_at != not_set; }
         bool going_off() const { return b.off_at != not_set; }
-        bool is_locked() const { return cs.gfx.mode & locked; }
+        bool is_locked() const { return cs.gfx.blocked; }
 
         // (if border 'locked', gfx unit shall output only bg color)
-        void lock()   { cs.gfx.mode |= locked; }
-        void unlock() { cs.gfx.mode &= ~locked; }
+        void lock()   { cs.gfx.blocked = true; }
+        void unlock() { cs.gfx.blocked = false; }
 
         bool top()    const { return cs.raster_y == ( 55 - (cs.cr1(CR1::rsel) >> 1)); }
         bool bottom() const { return cs.raster_y == (247 + (cs.cr1(CR1::rsel) >> 1)); }
@@ -1048,7 +933,7 @@ private:
         }
     }
 
-    u8* beam_ptr(u32 offset = 0) const { return &s.frame[s.beam_pos + offset]; }
+    u8* beam_ptr() const { return &s.frame[s.beam_pos]; }
 
     // for updating the partially off-screen MOBs so that they are displayed
     // properly on the left screen edge
@@ -1057,11 +942,20 @@ private:
         s.raster_x += 8;
     }
 
-    void output_border() { // in left/right border area
-        gfx.output_border(beam_ptr());
-        mobs.output(s.raster_x, 8, beam_ptr());
+    void output_start() { // after h-blank
+        gfx.output_border(beam_ptr(), 8);
+        mobs.output(497, 7, beam_ptr());
+        mobs.output(0, 1, beam_ptr() + 7);
         s.beam_pos += 8;
-        s.raster_x += 8;
+        s.raster_x = 1;
+        border.output(s.beam_pos);
+    }
+
+    void output_border(int cnt = 8) { // in left/right border area
+        gfx.output_border(beam_ptr(), cnt);
+        mobs.output(s.raster_x, cnt, beam_ptr());
+        s.beam_pos += cnt;
+        s.raster_x += cnt;
         border.output(s.beam_pos);
     }
 
@@ -1225,46 +1119,46 @@ public:
             case  4: mobs.do_dma(4);   return;
             case  5: mobs.prep_dma(7); return;
             case  6: mobs.do_dma(5);   return;
-            case  7: // 448
+            case  7:
                 if (!s.v_blank) {
-                    s.raster_x = 448;
+                    s.raster_x = 449;
                     update_mobs();
                 }
                 return;
-            case  8: // 456
+            case  8:
                 if (!s.v_blank) update_mobs();
                 mobs.do_dma(6);
                 return;
-            case  9: // 464
+            case  9:
                 if (!s.v_blank) update_mobs();
                 return;
-            case 10: // 472
+            case 10:
                 if (!s.v_blank) update_mobs();
                 mobs.do_dma(7);
                 return;
-            case 11: // 480
+            case 11:
                 if (!s.v_blank) {
                     gfx.ba_start();
                     update_mobs();
                 }
                 return;
-            case 12: // 488
+            case 12:
                 if (!s.v_blank) update_mobs();
                 return;
-            case 13: // 496
+            case 13:
                 if (!s.v_blank) {
-                    output_border();
+                    output_start();
                     gfx.row_start();
                 }
                 return;
-            case 14: // 0
+            case 14:
                 if (!s.v_blank) {
-                    s.raster_x = 0;
                     output_border();
+                    gfx.init_vmd();
                     gfx.read_vm();
                 }
                 return;
-            case 15: // 8
+            case 15:
                 if (!s.v_blank) {
                     output();
                     gfx.read_gd();
@@ -1272,39 +1166,39 @@ public:
                 }
                 mobs.upd_mdc_base();
                 return;
-            case 16: // 16
+            case 16:
                 if (!s.v_blank) {
-                    gfx.feed_gd();
+                    gfx.feed_pipeline();
                     border.check_left(CR2::csel);
                     output();
                     gfx.read_gd();
                     gfx.read_vm();
                 }
                 return;
-            case 17: // 24
+            case 17:
                 if (!s.v_blank) {
-                    gfx.feed_gd();
+                    gfx.feed_pipeline();
                     border.check_left(CR2::csel ^ CR2::csel);
                     output();
                     gfx.read_gd();
                     gfx.read_vm();
                 }
                 return;
-            case 18: case 19: // 32..
+            case 18: case 19:
             case 20: case 21: case 22: case 23: case 24: case 25: case 26: case 27: case 28: case 29:
             case 30: case 31: case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39:
             case 40: case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: case 49:
-            case 50: case 51: case 52: case 53: // ..323
+            case 50: case 51: case 52: case 53:
                 if (!s.v_blank) {
-                    gfx.feed_gd();
+                    gfx.feed_pipeline();
                     output();
                     gfx.read_gd();
                     gfx.read_vm();
                 }
                 return;
-            case 54: // 320
+            case 54:
                 if (!s.v_blank) {
-                    gfx.feed_gd();
+                    gfx.feed_pipeline();
                     output();
                     gfx.read_gd();
                     gfx.ba_done();
@@ -1313,42 +1207,42 @@ public:
                 mobs.check_dma();
                 mobs.prep_dma(0);
                 return;
-            case 55: // 328
+            case 55:
                 if (!s.v_blank) {
-                    gfx.feed_gd();
+                    gfx.feed_pipeline();
                     border.check_right(CR2::csel ^ CR2::csel);
                     output();
                 }
                 mobs.check_dma();
                 //mobs.prep_dma(0);
                 return;
-            case 56: // 336
+            case 56:
                 if (!s.v_blank) {
                     border.check_right(CR2::csel);
                     output();
                 }
                 mobs.prep_dma(1);
                 return;
-            case 57: // 344
+            case 57:
                 if (!s.v_blank) {
-                    output();
+                    output(); // TODO: output_border, right?
                     gfx.row_done();
                 }
                 mobs.load_mdc();
                 return;
-            case 58: // 352
+            case 58:
                 if (!s.v_blank) output_border();
                 mobs.prep_dma(2);
                 return;
-            case 59: // 360
+            case 59:
                 if (!s.v_blank) output_border();
                 mobs.do_dma(0);
                 return;
-            case 60: // 368
-                if (!s.v_blank) output_border();
+            case 60:
+                if (!s.v_blank) output_border(6);
                 mobs.prep_dma(3);
                 return;
-            case 61: // 376
+            case 61:
                 mobs.do_dma(1);
                 return;
             case 62:
