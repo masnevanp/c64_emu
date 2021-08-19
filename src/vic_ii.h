@@ -592,8 +592,6 @@ private:
             if (gs.ba_line) gs.rc = 0;
         }
         void row_done() {
-            gs.pipeline = 0;
-
             if (gs.rc == 7) {
                 gs.vc_base = gs.vc;
                 if (!gs.ba_line) {
@@ -629,27 +627,29 @@ private:
             const u64 gd_bits = u64(0x00000000000000ff) << (49 - xs);
             gs.pipeline &= ~gd_bits; // clear leftovers (in case xs was decremented)
             gs.pipeline |= (u64(gs.gd) << (49 - xs)); // feed gd
-            gs.pipeline |= (active() << (8 - xs)); // feed vmd timer
+            gs.pipeline |= (active() << (9 - xs)); // feed vmd timer
         }
 
         void output(u8* to) {
-            static constexpr u64 vmd_timer = u64(0b1) << 15;
+            static constexpr u64 vmd_timer = u64(0b1) << 16;
+
+            const auto put = [&to](const u8 px) { *to++ = px; };
 
             u8 shifts = 8;
-            const auto put = [&to](const u8 px) { *to++ = px; };
             const auto shift = [&shifts, this]() {
                 gs.pipeline <<= 1;
                 if (gs.pipeline & vmd_timer) {
-                    gs.pipeline &= 0xfffff00000007fff;
-                    gs.pipeline |= 0x0000000000010000;
+                    // 'vmd_timer' bit continues travel as an 'even shift' indicator
+                    gs.pipeline &= 0xfffffc000001ffff; //  (also, old one gets cleared)
                     gs.vmd = gs.vm[gs.vmoi++];
                 }
                 return --shifts;
             };
             const auto shifted_even = [this]() { return gs.pipeline & 0x0000000055550000; };
-            const auto c_base =       [this]() { return (reg[R::mptr] & MPTR::cg) << 10; };
 
-            if (gs.blocked) gs.pipeline &= 0x00000000ffffffff;
+            const u16 c_base = (reg[R::mptr] & MPTR::cg) << 10;
+
+            if (gs.blocked) gs.pipeline &= 0x00000000ffffffff; // flush gd
 
             switch (gs.mode) {
                 case scm:
@@ -658,7 +658,7 @@ private:
                             : reg[R::bgc0]);
                     while (shift());
 
-                    gs.gfx_addr = c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc;
+                    gs.gfx_addr = c_base | (gs.vm[gs.vmri].data << 3) | gs.rc;
                     return;
 
                 case mccm:
@@ -675,8 +675,7 @@ private:
 
                             gs.pipeline <<= 1;
                             if (gs.pipeline & vmd_timer) {
-                                gs.pipeline &= 0xfffff00000007fff;
-                                gs.pipeline |= 0x0000000000010000;
+                                gs.pipeline &= 0xfffffc000001ffff;
                                 gs.vmd = gs.vm[gs.vmoi++];
                                 if (!(gs.vmd.col & multicolor)) goto _scm;
                             }
@@ -691,8 +690,7 @@ private:
 
                             gs.pipeline <<= 1;
                             if (gs.pipeline & vmd_timer) {
-                                gs.pipeline &= 0xfffff00000007fff;
-                                gs.pipeline |= 0x0000000000010000;
+                                gs.pipeline &= 0xfffffc000001ffff;
                                 gs.vmd = gs.vm[gs.vmoi++];
                                 if (gs.vmd.col & multicolor) goto _mccm;
                             }
@@ -701,7 +699,7 @@ private:
                         } while (shifts);
                     }
 
-                    gs.gfx_addr = c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc;
+                    gs.gfx_addr = c_base | (gs.vm[gs.vmri].data << 3) | gs.rc;
                     return;
 
                 case sbmm:
@@ -710,7 +708,7 @@ private:
                                 : (gs.vmd.data & 0xf));
                     while (shift());
 
-                    gs.gfx_addr = (c_base() & 0x2000) | (gs.vc << 3) | gs.rc;
+                    gs.gfx_addr = (c_base & 0x2000) | (gs.vc << 3) | gs.rc;
                     return;
 
                 case mcbmm:
@@ -726,7 +724,7 @@ private:
                         put(gs.col);
                     } while (shift());
 
-                    gs.gfx_addr = (c_base() & 0x2000) | (gs.vc << 3) | gs.rc;
+                    gs.gfx_addr = (c_base & 0x2000) | (gs.vc << 3) | gs.rc;
                     return;
 
                 case ecm:
@@ -735,7 +733,7 @@ private:
                                 : reg[R::bgc0 + (gs.vmd.data >> 6)]);
                     while (shift());
 
-                    gs.gfx_addr = (c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc)
+                    gs.gfx_addr = (c_base | (gs.vm[gs.vmri].data << 3) | gs.rc)
                                         & addr_ecm_mask;
                     return;
 
@@ -747,8 +745,7 @@ private:
 
                             gs.pipeline <<= 1;
                             if (gs.pipeline & vmd_timer) {
-                                gs.pipeline &= 0xfffff00000007fff;
-                                gs.pipeline |= 0x0000000000010000;
+                                gs.pipeline &= 0xfffffc000001ffff;
                                 gs.vmd = gs.vm[gs.vmoi++];
                                 if (!(gs.vmd.col & multicolor)) goto _icm_scm;
                             }
@@ -761,8 +758,7 @@ private:
 
                             gs.pipeline <<= 1;
                             if (gs.pipeline & vmd_timer) {
-                                gs.pipeline &= 0xfffff00000007fff;
-                                gs.pipeline |= 0x0000000000010000;
+                                gs.pipeline &= 0xfffffc000001ffff;
                                 gs.vmd = gs.vm[gs.vmoi++];
                                 if (gs.vmd.col & multicolor) goto _icm_mccm;
                             }
@@ -771,14 +767,14 @@ private:
                         } while (shifts);
                     }
 
-                    gs.gfx_addr = (c_base() | (gs.vm[gs.vmri].data << 3) | gs.rc)
+                    gs.gfx_addr = (c_base | (gs.vm[gs.vmri].data << 3) | gs.rc)
                                         & addr_ecm_mask;
                     return;
 
                 case ibmm1:
                     do put((gs.pipeline >> 56) & 0x80); while (shift()); // sets col.0 & fg-gfx flag
 
-                    gs.gfx_addr = ((c_base() & 0x2000) | (gs.vc << 3) | gs.rc)
+                    gs.gfx_addr = ((c_base & 0x2000) | (gs.vc << 3) | gs.rc)
                                         & addr_ecm_mask;
                     return;
 
@@ -788,7 +784,7 @@ private:
                         put(gs.col);
                     } while (shift());
 
-                    gs.gfx_addr = ((c_base() & 0x2000) | (gs.vc << 3) | gs.rc)
+                    gs.gfx_addr = ((c_base & 0x2000) | (gs.vc << 3) | gs.rc)
                                         & addr_ecm_mask;
                     return;
             }
@@ -1225,7 +1221,7 @@ public:
                 return;
             case 57:
                 if (!s.v_blank) {
-                    output(); // TODO: output_border, right?
+                    output();
                     gfx.row_done();
                 }
                 mobs.load_mdc();
