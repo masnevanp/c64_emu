@@ -26,7 +26,7 @@ static const double FRAME_MS       = 1000.0 / (CPU_FREQ / (312.0 * 63));
 
 // TODO: parameterize frame/border size (all fixed for now)
 static const int BORDER_SZ_V       = 31;
-static const int BORDER_SZ_H       = 24;
+static const int BORDER_SZ_H       = 23;
 
 static const int FRAME_WIDTH        = 320 + 2 * BORDER_SZ_V;
 static const int FRAME_HEIGHT       = 200 + 2 * BORDER_SZ_H;
