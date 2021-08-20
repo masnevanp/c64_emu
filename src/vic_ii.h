@@ -539,7 +539,7 @@ private:
             u8  blocked; // if blocked, only output bg col (toggled by border unit)
             u8  vmri; // vm read index
             u8  vmoi; // vm output index
-            u8  col;
+            u8  px; // for storing 2bit pixels across 'output()' runs
         };
 
         void cr1_upd(const u8& cr1) { // @phi2
@@ -624,10 +624,10 @@ private:
 
         void feed_pipeline() {
             const u8 xs = cs.cr2(CR2::x_scroll);
-            const u64 gd_bits = u64(0x00000000000000ff) << (49 - xs);
-            gs.pipeline &= ~gd_bits; // clear leftovers (in case xs was decremented)
+            const u64 gd_slot = u64(0x000000000000ffff) << (41 - xs);
+            gs.pipeline &= ~gd_slot; // clear leftovers (in case xs was decremented)
             gs.pipeline |= (u64(gs.gd) << (49 - xs)); // feed gd
-            gs.pipeline |= (active() << (9 - xs)); // feed vmd timer
+            gs.pipeline |= (0b1 << (9 - xs)); // feed timer
         }
 
         void output(u8* to) {
@@ -639,9 +639,9 @@ private:
             const auto shift = [&shifts, this]() {
                 gs.pipeline <<= 1;
                 if (gs.pipeline & vmd_timer) {
-                    // 'vmd_timer' bit continues travel as an 'even shift' indicator
-                    gs.pipeline &= 0xfffffc000001ffff; //  (also, old one gets cleared)
-                    gs.vmd = gs.vm[gs.vmoi++];
+                    // 'timer' bit continues travel as an 'even shift' indicator
+                    gs.pipeline &= 0xfffff8000001ffff; // (also, old one gets cleared)
+                    if (active()) gs.vmd = gs.vm[gs.vmoi++];
                 }
                 return --shifts;
             };
@@ -649,7 +649,7 @@ private:
 
             const u16 c_base = (reg[R::mptr] & MPTR::cg) << 10;
 
-            if (gs.blocked) gs.pipeline &= 0x00000000ffffffff; // flush gd
+            if (gs.blocked) gs.pipeline &= 0x00ffffffffffffff; // flush gd (just the upcoming 8 bits)
 
             switch (gs.mode) {
                 case scm:
@@ -664,19 +664,19 @@ private:
                 case mccm:
                     if (gs.vmd.col & multicolor) {
                         do {
-                            if (shifted_even()) {
-                                const u8 gd = (gs.pipeline >> 56) & 0xc0;
-                                const u8 c = (gd == 0xc0)
-                                                    ? gs.vmd.col & 0x7
-                                                    : reg[R::bgc0 + (gd >> 6)];
-                                gs.col = (c | gd); // sets also fg-gfx flag
+                            if (shifted_even()) gs.px = gs.pipeline >> 62;
+
+                            {
+                                const u8 col = gs.px == 0b11
+                                                ? gs.vmd.col & 0x7
+                                                : reg[R::bgc0 + (gs.px)];
+                                put(col | (gs.px << 6)); // sets also fg-gfx flag
                             }
-                            put(gs.col);
 
                             gs.pipeline <<= 1;
                             if (gs.pipeline & vmd_timer) {
-                                gs.pipeline &= 0xfffffc000001ffff;
-                                gs.vmd = gs.vm[gs.vmoi++];
+                                gs.pipeline &= 0xfffff8000001ffff;
+                                if (active()) gs.vmd = gs.vm[gs.vmoi++];
                                 if (!(gs.vmd.col & multicolor)) goto _scm;
                             }
                             _mccm:
@@ -690,8 +690,8 @@ private:
 
                             gs.pipeline <<= 1;
                             if (gs.pipeline & vmd_timer) {
-                                gs.pipeline &= 0xfffffc000001ffff;
-                                gs.vmd = gs.vm[gs.vmoi++];
+                                gs.pipeline &= 0xfffff8000001ffff;
+                                if (active()) gs.vmd = gs.vm[gs.vmoi++];
                                 if (gs.vmd.col & multicolor) goto _mccm;
                             }
                             _scm:
@@ -713,15 +713,14 @@ private:
 
                 case mcbmm:
                     do {
-                        if (shifted_even()) {
-                            switch ((gs.pipeline >> 62) & 0b11) {
-                                case 0b00: gs.col = reg[R::bgc0];                     break;
-                                case 0b01: gs.col = (gs.vmd.data >> 4);               break;
-                                case 0b10: gs.col = (gs.vmd.data & 0xf) | foreground; break;
-                                case 0b11: gs.col = gs.vmd.col | foreground;          break;
-                            }
+                        if (shifted_even()) gs.px = gs.pipeline >> 62;
+
+                        switch (gs.px) {
+                            case 0b00: put(reg[R::bgc0]);                     break;
+                            case 0b01: put(gs.vmd.data >> 4);                 break;
+                            case 0b10: put((gs.vmd.data & 0xf) | foreground); break;
+                            case 0b11: put(gs.vmd.col | foreground);          break;
                         }
-                        put(gs.col);
                     } while (shift());
 
                     gs.gfx_addr = (c_base & 0x2000) | (gs.vc << 3) | gs.rc;
@@ -740,13 +739,14 @@ private:
                 case icm:
                     if (gs.vmd.col & multicolor) {
                         do {
-                            if (shifted_even()) gs.col = (gs.pipeline >> 56) & 0x80; // sets col.0 & fg-gfx flag
-                            put(gs.col);
+                            if (shifted_even()) gs.px = gs.pipeline >> 62;
+
+                            put(gs.px << 6); // sets col.0 & fg-gfx flag
 
                             gs.pipeline <<= 1;
                             if (gs.pipeline & vmd_timer) {
-                                gs.pipeline &= 0xfffffc000001ffff;
-                                gs.vmd = gs.vm[gs.vmoi++];
+                                gs.pipeline &= 0xfffff8000001ffff;
+                                if (active()) gs.vmd = gs.vm[gs.vmoi++];
                                 if (!(gs.vmd.col & multicolor)) goto _icm_scm;
                             }
                             _icm_mccm:
@@ -758,8 +758,8 @@ private:
 
                             gs.pipeline <<= 1;
                             if (gs.pipeline & vmd_timer) {
-                                gs.pipeline &= 0xfffffc000001ffff;
-                                gs.vmd = gs.vm[gs.vmoi++];
+                                gs.pipeline &= 0xfffff8000001ffff;
+                                if (active()) gs.vmd = gs.vm[gs.vmoi++];
                                 if (gs.vmd.col & multicolor) goto _icm_mccm;
                             }
                             _icm_scm:
@@ -780,8 +780,9 @@ private:
 
                 case ibmm2:
                     do {
-                        if (shifted_even()) gs.col = (gs.pipeline >> 56) & 0x80; // sets col.0 & fg-gfx flag
-                        put(gs.col);
+                        if (shifted_even()) gs.px = gs.pipeline >> 62;
+
+                        put(gs.px << 6); // sets col.0 & fg-gfx flag
                     } while (shift());
 
                     gs.gfx_addr = ((c_base & 0x2000) | (gs.vc << 3) | gs.rc)
