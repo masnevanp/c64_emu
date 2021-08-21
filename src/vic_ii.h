@@ -533,7 +533,6 @@ private:
             u16 vc;
             u16 rc;
             u16 gfx_addr;
-            u16 gfx_addr_idle;
             VM_data vmd;
             u8  gd;
             u8  blocked; // if blocked, only output bg col (toggled by border unit)
@@ -546,8 +545,6 @@ private:
             const u8 ecm_bmm = (cr1 & (CR1::ecm | CR1::bmm)) >> 4;
             const u8 mcm = gs.mode & mcm_set;
             gs.mode = ecm_bmm | mcm;
-
-            gs.gfx_addr_idle = (cr1 & CR1::ecm) ? (addr_idle & addr_ecm_mask) : addr_idle;
 
             gs.y_scroll = cr1 & CR1::y_scroll;
 
@@ -571,7 +568,7 @@ private:
         }
 
         void vma_start() { gs.ba_area = cs.cr1(CR1::den); gs.vc_base = 0; }
-        void vma_done()  { gs.ba_area = gs.ba_line = false;  }
+        void vma_done()  { gs.ba_area = false;  }
 
         void ba_init() {
             gs.ba_line = gs.ba_area && ((raster_y & CR1::y_scroll) == gs.y_scroll);
@@ -599,7 +596,8 @@ private:
                     return;
                 }
 			}
-            gs.rc = (gs.rc + active()) & 0x7;
+
+            if (active()) gs.rc = (gs.rc + 1) & 0x7;
         }
 
         void init_vmd() { if (!active()) gs.vmd = {0, 0}; }
@@ -618,12 +616,13 @@ private:
                 gs.vc = (gs.vc + 1) & 0x3ff;
                 gs.vmri += 1;
             } else {
-                gs.gd = addr_space.r(gs.gfx_addr_idle);
+                const u16 addr = cs.cr1(CR1::ecm) ? (addr_idle & addr_ecm_mask) : addr_idle;
+                gs.gd = addr_space.r(addr);
             }
         }
 
         void feed_pipeline() {
-            const u8 xs = cs.cr2(CR2::x_scroll);
+            const auto xs = cs.cr2(CR2::x_scroll);
             const u64 gd_slot = u64(0x000000000000ffff) << (41 - xs);
             gs.pipeline &= ~gd_slot; // clear leftovers (in case xs was decremented)
             gs.pipeline |= (u64(gs.gd) << (49 - xs)); // feed gd
@@ -635,7 +634,7 @@ private:
 
             const auto put = [&to](const u8 px) { *to++ = px; };
 
-            u8 shifts = 8;
+            int shifts = 8;
             const auto shift = [&shifts, this]() {
                 gs.pipeline <<= 1;
                 if (gs.pipeline & vmd_timer) {
@@ -645,7 +644,10 @@ private:
                 }
                 return --shifts;
             };
-            const auto shifted_even = [this]() { return gs.pipeline & 0x0000000055550000; };
+
+            const auto latch_2bit_px = [this]() {
+                if (gs.pipeline & 0x0000000001550000) gs.px = gs.pipeline >> 62;
+            };
 
             const u16 c_base = (reg[R::mptr] & MPTR::cg) << 10;
 
@@ -664,7 +666,7 @@ private:
                 case mccm:
                     if (gs.vmd.col & multicolor) {
                         do {
-                            if (shifted_even()) gs.px = gs.pipeline >> 62;
+                            latch_2bit_px();
 
                             {
                                 const u8 col = gs.px == 0b11
@@ -713,7 +715,7 @@ private:
 
                 case mcbmm:
                     do {
-                        if (shifted_even()) gs.px = gs.pipeline >> 62;
+                        latch_2bit_px();
 
                         switch (gs.px) {
                             case 0b00: put(reg[R::bgc0]);                     break;
@@ -739,7 +741,7 @@ private:
                 case icm:
                     if (gs.vmd.col & multicolor) {
                         do {
-                            if (shifted_even()) gs.px = gs.pipeline >> 62;
+                            latch_2bit_px();
 
                             put(gs.px << 6); // sets col.0 & fg-gfx flag
 
@@ -780,8 +782,7 @@ private:
 
                 case ibmm2:
                     do {
-                        if (shifted_even()) gs.px = gs.pipeline >> 62;
-
+                        latch_2bit_px();
                         put(gs.px << 6); // sets col.0 & fg-gfx flag
                     } while (shift());
 
