@@ -234,7 +234,7 @@ private:
 
         void trigger() {
             // TODO: need to adjust the x for CIA originated ones?
-            s.reg[R::lpx] = s.raster_x >> 1;
+            s.reg[R::lpx] = s.raster_x() >> 1;
             s.reg[R::lpy] = s.raster_y;
             irq.req(IRQ::lp);
         }
@@ -945,8 +945,7 @@ private:
     // for updating the partially off-screen MOBs so that they are displayed
     // properly on the left screen edge
     void update_mobs() {
-        mobs.update(s.raster_x, 8);
-        s.raster_x += 8;
+        mobs.update(s.raster_x(), 8);
     }
 
     void output_start() { // after h-blank
@@ -954,23 +953,20 @@ private:
         mobs.output(497, 7, beam_ptr());
         mobs.output(0, 1, beam_ptr() + 7);
         s.beam_pos += 8;
-        s.raster_x = 1;
         border.output(s.beam_pos);
     }
 
     void output_border(int cnt = 8) { // in left/right border area
         gfx.output_border(beam_ptr(), cnt);
-        mobs.output(s.raster_x, cnt, beam_ptr());
+        mobs.output(s.raster_x(), cnt, beam_ptr());
         s.beam_pos += cnt;
-        s.raster_x += cnt;
         border.output(s.beam_pos);
     }
 
     void output() {
         gfx.output(beam_ptr());
-        mobs.output(s.raster_x, 8, beam_ptr());
+        mobs.output(s.raster_x(), 8, beam_ptr());
         s.beam_pos += 8;
-        s.raster_x += 8;
         border.output(s.beam_pos);
     }
 
@@ -993,7 +989,6 @@ public:
         u8 reg[REG_COUNT];
 
         u64 cycle = 1; // good for ~595K years...
-        u16 raster_x;
         u16 raster_y = 0;
         u16 raster_y_cmp = 0;
         u8 raster_y_cmp_edge;
@@ -1014,6 +1009,8 @@ public:
 
         int line_cycle() const  { return cycle % LINE_CYCLE_COUNT; }
         int frame_cycle() const { return cycle % FRAME_CYCLE_COUNT; }
+
+        u16 raster_x() const { return (393 + (line_cycle() * 8)) % (LINE_CYCLE_COUNT * 8); }
     };
 
     void reset() { for (int r = 0; r < REG_COUNT; ++r) w(r, 0); }
@@ -1128,10 +1125,7 @@ public:
             case  5: mobs.prep_dma(7); return;
             case  6: mobs.do_dma(5);   return;
             case  7:
-                if (!s.v_blank) {
-                    s.raster_x = 449;
-                    update_mobs();
-                }
+                if (!s.v_blank) update_mobs();
                 return;
             case  8:
                 if (!s.v_blank) update_mobs();
