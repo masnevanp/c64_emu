@@ -921,13 +921,22 @@ private:
         State& b;
     };
 
-    void check_raster_irq() { if (s.raster_y == s.raster_y_cmp) irq.req(IRQ::rst); }
+    void check_raster_irq() {
+        if (s.raster_y != s.raster_y_cmp) {
+            s.raster_y_cmp_edge = true;
+        } else {
+            if (s.raster_y_cmp_edge) {
+                s.raster_y_cmp_edge = false;
+                irq.req(IRQ::rst);
+            }
+        }
+    }
 
     void upd_raster_y_cmp() {
         const u16 upd = (s.cr1(CR1::rst8) << 1) | s.reg[R::rast];
         if (s.raster_y_cmp != upd) {
             s.raster_y_cmp = upd;
-            check_raster_irq();
+            if (s.line_cycle() < 62) check_raster_irq();
         }
     }
 
@@ -987,6 +996,7 @@ public:
         u16 raster_x;
         u16 raster_y = 0;
         u16 raster_y_cmp = 0;
+        u8 raster_y_cmp_edge;
         u8 v_blank = true;
 
         typename Address_space::State addr_space;
