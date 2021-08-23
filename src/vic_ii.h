@@ -534,11 +534,12 @@ private:
             u16 rc;
             u16 gfx_addr;
             VM_data vmd;
-            u8  gd;
-            u8  blocked; // if blocked, only output bg col (toggled by border unit)
-            u8  vmri; // vm read index
-            u8  vmoi; // vm output index
-            u8  px; // for storing 2bit pixels across 'output()' runs
+            u8 act;
+            u8 gd;
+            u8 blocked; // if blocked, only output bg col (toggled by border unit)
+            u8 vmri; // vm read index
+            u8 vmoi; // vm output index
+            u8 px; // for storing 2bit pixels across 'output()' runs
         };
 
         void cr1_upd(const u8& cr1) { // @phi2
@@ -842,10 +843,9 @@ private:
         static const u16 addr_idle     = 0x3fff;
         static const u16 addr_ecm_mask = 0x39ff;
 
-        u8 act; // TODO: encode in something else?
-        void activate()     { act = true; }
-        void deactivate()   { act = false; }
-        bool active() const { return act; }
+        void activate()     { gs.act = true; }
+        void deactivate()   { gs.act = false; }
+        bool active() const { return gs.act; }
 
         const Core::State& cs;
         State& gs;
