@@ -253,7 +253,7 @@ private:
             void set_x_hi(u8 hi)  { x = hi ? x | 0x100 : x & 0x0ff; }
             void set_x_lo(u8 lo)  { x = (x & 0x100) | lo; }
             void set_ye_cr(bool ye_) {
-                crunch = (ye ^ ye_) & ye;
+                crunch = dma_on && ((ye ^ ye_) & ye);
                 set_ye(ye_);
             }
             void set_ye(bool ye_) {
@@ -374,27 +374,32 @@ private:
             for (u8 mn = 0, mb = 0x01; mn < mob_count; ++mn, mb <<= 1) {
                 MOB& m = mob[mn];
                 if (!m.dma_on) {
-                    if ((reg[R::mne] & mb) && (reg[R::m0y + (mn * 2)]
-                                                        == (raster_y & 0xff))) {
+                    if ((reg[R::mne] & mb)
+                                && (reg[R::m0y + (mn * 2)] == (raster_y & 0xff)))
+                    {
                         m.dma_on = true;
                         m.mdc_base = 0;
-                        if (m.ye) m.mdc_base_upd = false;
+                        m.mdc_base_upd = !m.ye;
                     }
                 }
             }
         }
-        void load_mdc() { for (auto& m : mob) m.mdc = m.mdc_base; }
-        void upd_mdc_base() {
+        void load_mdc() {
+            for (auto& m : mob) m.mdc = m.mdc_base;
+        }
+        void upd_dma() {
             for (auto& m : mob) {
-                if (m.dma_on && m.mdc_base_upd) {
+                if (m.dma_on) {
                     if (m.crunch) {
                         m.crunch = false;
                         m.mdc_base = ((m.mdc_base & m.mdc) & 0b101010)
                                             | ((m.mdc_base | m.mdc) & 0b010101);
-                    } else {
+                        if (m.mdc_base == 63) m.dma_on = false;
+                    } else if (m.mdc_base_upd) {
                         m.mdc_base = m.mdc;
+                        if (m.mdc_base == 63) m.dma_on = false;
                     }
-                    if (m.mdc_base == 63) m.dma_on = false;
+
                 }
             }
         }
@@ -407,17 +412,17 @@ private:
                 u16 mp = addr_space.r(mb | mn);
                 mp <<= 6;
                 u32 d1 = addr_space.r(mp | m.mdc);
-                ++m.mdc;
-                u32 d2 = addr_space.r(mp | (m.mdc & 0b111111));
-                ++m.mdc;
-                u32 d3 = addr_space.r(mp | (m.mdc & 0b111111));
-                ++m.mdc;
+                m.mdc = (m.mdc + 1) & 0b111111;
+                u32 d2 = addr_space.r(mp | m.mdc);
+                m.mdc = (m.mdc + 1) & 0b111111;
+                u32 d3 = addr_space.r(mp | m.mdc);
+                m.mdc = (m.mdc + 1) & 0b111111;
                 m.load_data(d1, d2, d3);
                 ba.mob_done(mn);
             }
         }
 
-        void update(u16 x, int px_cnt) { // update during h-blank
+        void update(u16 x, int px_cnt) { // update during blanks
             for (int mn = 0; mn < mob_count; ++mn) {
                 if (mob[mn].data) {
                     _update(mn, x, px_cnt);
@@ -442,7 +447,7 @@ private:
               ba(ba_), irq(irq_) {}
 
     private:
-        void _update(int start_mn, u16 x, int px_cnt) { // update during h-blank
+        void _update(int start_mn, u16 x, int px_cnt) {
             for (int mn = start_mn; mn < mob_count; ++mn) {
                 if (mob[mn].data) {
                     const u8 mob_bit = 0b1 << mn;
@@ -986,13 +991,15 @@ public:
     enum LP_src { cia = 0x1, ctrl_port = 0x2, };
 
     struct State {
+        enum V_blank : u8 { vb_off = 0, vb_on = 63 };
+
         u8 reg[REG_COUNT];
 
         u64 cycle = 1; // good for ~595K years...
         u16 raster_y = 0;
         u16 raster_y_cmp = 0;
         u8 raster_y_cmp_edge;
-        u8 v_blank = true;
+        V_blank v_blank = V_blank::vb_on;
 
         typename Address_space::State addr_space;
         typename Light_pen::State lp;
@@ -1078,38 +1085,157 @@ public:
         in those cases. */
 
     void tick() {
+        using V_blank = typename State::V_blank;
+
         ++s.cycle;
 
-        switch (s.line_cycle()) {
+        switch (s.line_cycle() + s.v_blank) {
             case  0:
+                mobs.do_dma(2);
+
+                ++s.raster_y;
+                check_raster_irq();
+
+                // TODO: reveal the magic numbers....
+                if (s.raster_y == GFX::vma_start_ry) {
+                    gfx.vma_start();
+                } else if (s.raster_y == GFX::vma_done_ry) {
+                    gfx.vma_done();
+                } else if (s.raster_y == (250 + BORDER_SZ_H)) {
+                    s.v_blank = V_blank::vb_on;
+                    lp.reset();
+                }
+
+                gfx.ba_init();
+
+                out.sync(s.raster_y);
+
+                return;
+            case  1: mobs.prep_dma(5); return;
+            case  2: mobs.do_dma(3);   return;
+            case  3: mobs.prep_dma(6); return;
+            case  4: mobs.do_dma(4);   return;
+            case  5: mobs.prep_dma(7); return;
+            case  6: mobs.do_dma(5);   return;
+            case  7:
+                update_mobs();
+                return;
+            case  8:
+                mobs.do_dma(6);
+                // fall through
+            case  9:
+                update_mobs();
+                return;
+            case 10:
+                mobs.do_dma(7);
+                update_mobs();
+                return;
+            case 11:
+                gfx.ba_start();
+                update_mobs();
+                return;
+            case 12:
+                update_mobs();
+                return;
+            case 13:
+                output_start();
+                gfx.row_start();
+                return;
+            case 14:
+                output_border();
+                gfx.init_vmd();
+                gfx.read_vm();
+                return;
+            case 15:
+                output();
+                gfx.read_gd();
+                gfx.read_vm();
+                mobs.upd_dma();
+                return;
+            case 16:
+                gfx.feed_pipeline();
+                border.check_left(CR2::csel);
+                output();
+                gfx.read_gd();
+                gfx.read_vm();
+                return;
+            case 17:
+                gfx.feed_pipeline();
+                border.check_left(CR2::csel ^ CR2::csel);
+                output();
+                gfx.read_gd();
+                gfx.read_vm();
+                return;
+            case 18: case 19:
+            case 20: case 21: case 22: case 23: case 24: case 25: case 26: case 27: case 28: case 29:
+            case 30: case 31: case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39:
+            case 40: case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: case 49:
+            case 50: case 51: case 52: case 53:
+                gfx.feed_pipeline();
+                output();
+                gfx.read_gd();
+                gfx.read_vm();
+                return;
+            case 54:
+                gfx.feed_pipeline();
+                output();
+                gfx.read_gd();
+                gfx.ba_done();
+                mobs.check_mdc_base_upd();
+                mobs.check_dma();
+                mobs.prep_dma(0);
+                return;
+            case 55:
+                gfx.feed_pipeline();
+                border.check_right(CR2::csel ^ CR2::csel);
+                output();
+                mobs.check_dma();
+                mobs.load_mdc();
+                return;
+            case 56:
+                border.check_right(CR2::csel);
+                output();
+                mobs.prep_dma(1);
+                return;
+            case 57:
+                output();
+                gfx.row_done();
+                return;
+            case 58:
+                output_border();
+                mobs.prep_dma(2);
+                return;
+            case 59:
+                output_border();
+                mobs.do_dma(0);
+                return;
+            case 60:
+                output_border(6);
+                mobs.prep_dma(3);
+                return;
+            case 61:
+                mobs.do_dma(1);
+                return;
+            case 62:
+                border.line_done();
+                mobs.prep_dma(4);
+                return;
+            case  0 + V_blank::vb_on:
                 mobs.do_dma(2);
 
                 if (s.raster_y < (FRAME_LINE_COUNT - 1)) {
                     ++s.raster_y;
                     check_raster_irq();
 
-                    // TODO: reveal the magic numbers....
-                    // TODO: use a 'state'? (compute from ry?)
-                    if (!s.v_blank) {
-                        if (s.raster_y == GFX::vma_start_ry) {
-                            gfx.vma_start();
-                        } else if (s.raster_y == GFX::vma_done_ry) {
-                            gfx.vma_done();
-                        } else if (s.raster_y == (250 + BORDER_SZ_H)) {
-                            s.v_blank = true;
-                            lp.reset();
-                        }
-
-                        gfx.ba_init();
-                    } else if (s.raster_y == (50 - BORDER_SZ_H)) {
-                        s.v_blank = false;
+                    if (s.raster_y == (50 - BORDER_SZ_H)) {
+                        s.v_blank = V_blank::vb_off;
                     }
 
                     out.sync(s.raster_y);
                 } // else raster_y updated in the next cycle
 
                 return;
-            case  1:
+            case  1 + V_blank::vb_on:
                 mobs.prep_dma(5);
                 if (s.frame_cycle() == 1) { // last cycle of the (extended) last line?
                     s.raster_y = 0;
@@ -1119,135 +1245,58 @@ public:
                     out.frame(s.frame);
                 }
                 return;
-            case  2: mobs.do_dma(3);   return;
-            case  3: mobs.prep_dma(6); return;
-            case  4: mobs.do_dma(4);   return;
-            case  5: mobs.prep_dma(7); return;
-            case  6: mobs.do_dma(5);   return;
-            case  7:
-                if (!s.v_blank) update_mobs();
-                return;
-            case  8:
-                if (!s.v_blank) update_mobs();
+            case  2 + V_blank::vb_on: mobs.do_dma(3);   return;
+            case  3 + V_blank::vb_on: mobs.prep_dma(6); return;
+            case  4 + V_blank::vb_on: mobs.do_dma(4);   return;
+            case  5 + V_blank::vb_on: mobs.prep_dma(7); return;
+            case  6 + V_blank::vb_on: mobs.do_dma(5);   return;
+            case  7 + V_blank::vb_on:                   return;
+            case  8 + V_blank::vb_on:
                 mobs.do_dma(6);
                 return;
-            case  9:
-                if (!s.v_blank) update_mobs();
+            case  9 + V_blank::vb_on:
                 return;
-            case 10:
-                if (!s.v_blank) update_mobs();
+            case 10 + V_blank::vb_on:
                 mobs.do_dma(7);
                 return;
-            case 11:
-                if (!s.v_blank) {
-                    gfx.ba_start();
-                    update_mobs();
-                }
+            case 11 + V_blank::vb_on: case 12 + V_blank::vb_on: case 13 + V_blank::vb_on: case 14 + V_blank::vb_on:
                 return;
-            case 12:
-                if (!s.v_blank) update_mobs();
+            case 15 + V_blank::vb_on:
+                mobs.upd_dma();
                 return;
-            case 13:
-                if (!s.v_blank) {
-                    output_start();
-                    gfx.row_start();
-                }
+            case 16 + V_blank::vb_on: case 17 + V_blank::vb_on: case 18 + V_blank::vb_on: case 19 + V_blank::vb_on:
+            case 20 + V_blank::vb_on: case 21 + V_blank::vb_on: case 22 + V_blank::vb_on: case 23 + V_blank::vb_on: case 24 + V_blank::vb_on: case 25 + V_blank::vb_on: case 26 + V_blank::vb_on: case 27 + V_blank::vb_on: case 28 + V_blank::vb_on: case 29 + V_blank::vb_on:
+            case 30 + V_blank::vb_on: case 31 + V_blank::vb_on: case 32 + V_blank::vb_on: case 33 + V_blank::vb_on: case 34 + V_blank::vb_on: case 35 + V_blank::vb_on: case 36 + V_blank::vb_on: case 37 + V_blank::vb_on: case 38 + V_blank::vb_on: case 39 + V_blank::vb_on:
+            case 40 + V_blank::vb_on: case 41 + V_blank::vb_on: case 42 + V_blank::vb_on: case 43 + V_blank::vb_on: case 44 + V_blank::vb_on: case 45 + V_blank::vb_on: case 46 + V_blank::vb_on: case 47 + V_blank::vb_on: case 48 + V_blank::vb_on: case 49 + V_blank::vb_on:
+            case 50 + V_blank::vb_on: case 51 + V_blank::vb_on: case 52 + V_blank::vb_on: case 53 + V_blank::vb_on:
                 return;
-            case 14:
-                if (!s.v_blank) {
-                    output_border();
-                    gfx.init_vmd();
-                    gfx.read_vm();
-                }
-                return;
-            case 15:
-                if (!s.v_blank) {
-                    output();
-                    gfx.read_gd();
-                    gfx.read_vm();
-                }
-                mobs.upd_mdc_base();
-                return;
-            case 16:
-                if (!s.v_blank) {
-                    gfx.feed_pipeline();
-                    border.check_left(CR2::csel);
-                    output();
-                    gfx.read_gd();
-                    gfx.read_vm();
-                }
-                return;
-            case 17:
-                if (!s.v_blank) {
-                    gfx.feed_pipeline();
-                    border.check_left(CR2::csel ^ CR2::csel);
-                    output();
-                    gfx.read_gd();
-                    gfx.read_vm();
-                }
-                return;
-            case 18: case 19:
-            case 20: case 21: case 22: case 23: case 24: case 25: case 26: case 27: case 28: case 29:
-            case 30: case 31: case 32: case 33: case 34: case 35: case 36: case 37: case 38: case 39:
-            case 40: case 41: case 42: case 43: case 44: case 45: case 46: case 47: case 48: case 49:
-            case 50: case 51: case 52: case 53:
-                if (!s.v_blank) {
-                    gfx.feed_pipeline();
-                    output();
-                    gfx.read_gd();
-                    gfx.read_vm();
-                }
-                return;
-            case 54:
-                if (!s.v_blank) {
-                    gfx.feed_pipeline();
-                    output();
-                    gfx.read_gd();
-                    gfx.ba_done();
-                }
+            case 54 + V_blank::vb_on:
                 mobs.check_mdc_base_upd();
                 mobs.check_dma();
                 mobs.prep_dma(0);
                 return;
-            case 55:
-                if (!s.v_blank) {
-                    gfx.feed_pipeline();
-                    border.check_right(CR2::csel ^ CR2::csel);
-                    output();
-                }
+            case 55 + V_blank::vb_on:
                 mobs.check_dma();
-                //mobs.prep_dma(0);
-                return;
-            case 56:
-                if (!s.v_blank) {
-                    border.check_right(CR2::csel);
-                    output();
-                }
-                mobs.prep_dma(1);
-                return;
-            case 57:
-                if (!s.v_blank) {
-                    output();
-                    gfx.row_done();
-                }
                 mobs.load_mdc();
                 return;
-            case 58:
-                if (!s.v_blank) output_border();
+            case 56 + V_blank::vb_on:
+                mobs.prep_dma(1);
+                return;
+            case 57 + V_blank::vb_on:
+                return;
+            case 58 + V_blank::vb_on:
                 mobs.prep_dma(2);
                 return;
-            case 59:
-                if (!s.v_blank) output_border();
+            case 59 + V_blank::vb_on:
                 mobs.do_dma(0);
                 return;
-            case 60:
-                if (!s.v_blank) output_border(6);
+            case 60 + V_blank::vb_on:
                 mobs.prep_dma(3);
                 return;
-            case 61:
+            case 61 + V_blank::vb_on:
                 mobs.do_dma(1);
                 return;
-            case 62:
+            case 62 + V_blank::vb_on:
                 border.line_done();
                 mobs.prep_dma(4);
                 return;
