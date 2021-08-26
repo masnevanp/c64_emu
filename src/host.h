@@ -113,7 +113,7 @@ public:
         };
         // TODO: fullscreen_scale?
         Param<double> window_scale{3.00, 0.5, 8.00, 0.05}; // init, min, max, step
-        Param<double> aspect_ratio{0.912, 0.5, 1.25, 0.002}; // PAL actual: ~0.935
+        Param<double> aspect_ratio{0.918, 0.5, 1.25, 0.002}; // PAL actual: ~0.935
 
         Param<u8> sharpness{0, 0, 3, 1};
 

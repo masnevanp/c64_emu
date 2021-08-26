@@ -25,8 +25,8 @@ static const double FRAME_MS       = 1000.0 / (CPU_FREQ / (312.0 * 63));
 
 
 // TODO: parameterize frame/border size (all fixed for now)
-static const int BORDER_SZ_V       = 31;
-static const int BORDER_SZ_H       = 23;
+static const int BORDER_SZ_V       = 32;
+static const int BORDER_SZ_H       = 24;
 
 static const int FRAME_WIDTH        = 320 + 2 * BORDER_SZ_V;
 static const int FRAME_HEIGHT       = 200 + 2 * BORDER_SZ_H;
@@ -271,10 +271,10 @@ private:
             }
 
             // during blanking
-            void update(u16 px, int px_cnt, const u8 mob_bit, u8* mob_presence, u8& mmc)
+            void update(u16 px, const u8 mob_bit, u8* mob_presence, u8& mmc)
             {
                 if (waiting()) {
-                    if (x < px || (x >= (px + px_cnt))) return;
+                    if (x < px || (x >= (px + 8))) return;
 
                     go();
                     px = x - px;
@@ -283,7 +283,7 @@ private:
                 }
 
                 const int shift_delay = shift_base_delay * shift_amount;
-                for (; px < px_cnt; ++px) {
+                for (; px < 8; ++px) {
                     const u8 p_col = col[(data >> 30) & pixel_mask];
 
                     if (p_col != transparent) {
@@ -298,12 +298,12 @@ private:
                 }
             }
 
-            void output(u16 px, u16 px_cnt, const u8* gfx_out, const u8 mdp,
+            void output(u16 px, const u8* gfx_out, const u8 mdp,
                             const u8 mob_bit, u8* mob_output, u8* mob_presence,
                             u8& mdc, u8& mmc)
             {
                 if (waiting()) {
-                    if (x < px || (x >= (px + px_cnt))) return;
+                    if (x < px || (x >= (px + 8))) return;
 
                     go();
                     px = x - px;
@@ -312,7 +312,7 @@ private:
                 }
 
                 const int shift_delay = shift_base_delay * shift_amount;
-                for (; px < px_cnt; ++px) {
+                for (; px < 8; ++px) {
                     const u8 p_col = col[(data >> 30) & pixel_mask];
 
                     if (p_col != transparent) {
@@ -422,19 +422,19 @@ private:
             }
         }
 
-        void update(u16 x, int px_cnt) { // update during blanks
+        void update(u16 x) { // update during blanks
             for (int mn = 0; mn < mob_count; ++mn) {
                 if (mob[mn].data) {
-                    _update(mn, x, px_cnt);
+                    _update(mn, x);
                     return;
                 }
             }
         }
 
-        void output(u16 x, int px_cnt, u8* to) {
+        void output(u16 x, u8* to) {
             for (int mn = mob_count - 1; mn >= 0; --mn) {
                 if (mob[mn].data) {
-                    _output(mn, x, px_cnt, to);
+                    _output(mn, x, to);
                     return;
                 }
             }
@@ -447,11 +447,11 @@ private:
               ba(ba_), irq(irq_) {}
 
     private:
-        void _update(int start_mn, u16 x, int px_cnt) {
+        void _update(int start_mn, u16 x) {
             for (int mn = start_mn; mn < mob_count; ++mn) {
                 if (mob[mn].data) {
                     const u8 mob_bit = 0b1 << mn;
-                    mob[mn].update(x, px_cnt, mob_bit, mob_presence, mmc);
+                    mob[mn].update(x, mob_bit, mob_presence, mmc);
                 }
             }
 
@@ -461,15 +461,15 @@ private:
                 mmc = 0b00000000;
             }
 
-            for (int p = 0; p < px_cnt; ++p) mob_presence[p] = 0b00000000;
+            for (int p = 0; p < 8; ++p) mob_presence[p] = 0b00000000;
         }
 
-        void _output(int start_mn, u16 x, int px_cnt, u8* to) { // also does collision detection
+        void _output(int start_mn, u16 x, u8* to) { // also does collision detection
             for (int mn = start_mn; mn >= 0; --mn) {
                 if (mob[mn].data) {
                     const u8 mob_bit = 0b1 << mn;
                     const u8 mdp = (reg[R::mndp] << (7 - mn)) & 0b10000000;
-                    mob[mn].output(x, px_cnt, to, mdp, mob_bit, mob_output, mob_presence, mdc, mmc);
+                    mob[mn].output(x, to, mdp, mob_bit, mob_output, mob_presence, mdc, mmc);
                 }
             }
 
@@ -485,7 +485,7 @@ private:
                 mmc = 0b00000000;
             }
 
-            for (int p = 0; p < px_cnt; ++p) {
+            for (int p = 0; p < 8; ++p) {
                 if (mob_output[p] != MOB::transparent) {
                     if ((to[p] & mob_output[p] & GFX::foreground) == 0b00000000) {
                         to[p] = mob_output[p];
@@ -629,10 +629,10 @@ private:
 
         void feed_pipeline() {
             const auto xs = cs.cr2(CR2::x_scroll);
-            const u64 gd_slot = u64(0x000000000000ffff) << (41 - xs);
+            const u64 gd_slot = u64(0x000000000000ffff) << (40 - xs);
             gs.pipeline &= ~gd_slot; // clear leftovers (in case xs was decremented)
-            gs.pipeline |= (u64(gs.gd) << (49 - xs)); // feed gd
-            gs.pipeline |= (0b1 << (9 - xs)); // feed timer
+            gs.pipeline |= (u64(gs.gd) << (48 - xs)); // feed gd
+            gs.pipeline |= (0b1 << (8 - xs)); // feed timer
         }
 
         void output(u8* to) {
@@ -798,24 +798,26 @@ private:
             }
         }
 
-        void output_border(u8* to, int n) {
-            const auto put_em = [&](const u8 c) { while (--n >= 0) to[n] = c; };
+        void output_border(u8* to) {
+            const auto put = [&](const u8 c) {
+                to[0] = to[1] = to[2] = to[3] = to[4] = to[5] = to[6] = to[7] = c;
+            };
 
             switch (gs.mode) {
                 case scm: case mccm:
-                    put_em(reg[R::bgc0]);
+                    put(reg[R::bgc0]);
                     return;
                 case sbmm:
-                    put_em(gs.vmd.data & 0xf);
+                    put(gs.vmd.data & 0xf);
                     return;
                 case mcbmm:
-                    put_em(reg[R::bgc0]);
+                    put(reg[R::bgc0]);
                     return;
                 case ecm:
-                    put_em(reg[R::bgc0 + (gs.vmd.data >> 6)]);
+                    put(reg[R::bgc0 + (gs.vmd.data >> 6)]);
                     return;
                 case icm: case ibmm1: case ibmm2:
-                    put_em(Color::black);
+                    put(Color::black);
                     return;
             }
         }
@@ -876,14 +878,14 @@ private:
             if (cs.cr2(CR2::csel) == cmp_csel) {
                 check_lock();
                 if (!is_locked() && is_on()) {
-                    b.off_at = cs.beam_pos + (6 + (cmp_csel >> 3));
+                    b.off_at = cs.beam_pos + (7 + (cmp_csel >> 3));
                 }
             }
         }
 
         void check_right(u8 cmp_csel) {
             if (!is_on() && cs.cr2(CR2::csel) == cmp_csel) {
-                b.on_at = cs.beam_pos + (6 + (cmp_csel >> 3));
+                b.on_at = cs.beam_pos + (7 + (cmp_csel >> 3));
                 b.off_at = not_set;
             }
         }
@@ -947,30 +949,19 @@ private:
 
     u8* beam_ptr() const { return &s.frame[s.beam_pos]; }
 
-    // for updating the partially off-screen MOBs so that they are displayed
-    // properly on the left screen edge
-    void update_mobs() {
-        mobs.update(s.raster_x(), 8);
-    }
+    // during blanking periods
+    void update_mobs() { mobs.update(s.raster_x()); }
 
-    void output_start() { // after h-blank
-        gfx.output_border(beam_ptr(), 8);
-        mobs.output(497, 7, beam_ptr());
-        mobs.output(0, 1, beam_ptr() + 7);
+    void output_border() { // in left/right border area
+        gfx.output_border(beam_ptr());
+        mobs.output(s.raster_x(), beam_ptr());
         s.beam_pos += 8;
-        border.output(s.beam_pos);
-    }
-
-    void output_border(int cnt = 8) { // in left/right border area
-        gfx.output_border(beam_ptr(), cnt);
-        mobs.output(s.raster_x(), cnt, beam_ptr());
-        s.beam_pos += cnt;
         border.output(s.beam_pos);
     }
 
     void output() {
         gfx.output(beam_ptr());
-        mobs.output(s.raster_x(), 8, beam_ptr());
+        mobs.output(s.raster_x(), beam_ptr());
         s.beam_pos += 8;
         border.output(s.beam_pos);
     }
@@ -1017,7 +1008,7 @@ public:
         int line_cycle() const  { return cycle % LINE_CYCLE_COUNT; }
         int frame_cycle() const { return cycle % FRAME_CYCLE_COUNT; }
 
-        u16 raster_x() const { return (393 + (line_cycle() * 8)) % (LINE_CYCLE_COUNT * 8); }
+        u16 raster_x() const { return (392 + (line_cycle() * 8)) % (LINE_CYCLE_COUNT * 8); }
     };
 
     void reset() { for (int r = 0; r < REG_COUNT; ++r) w(r, 0); }
@@ -1138,7 +1129,7 @@ public:
                 update_mobs();
                 return;
             case 13:
-                output_start();
+                output_border();
                 gfx.row_start();
                 return;
             case 14:
@@ -1210,7 +1201,7 @@ public:
                 mobs.do_dma(0);
                 return;
             case 60:
-                output_border(6);
+                output_border();
                 mobs.prep_dma(3);
                 return;
             case 61:
