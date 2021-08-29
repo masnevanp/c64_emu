@@ -247,10 +247,10 @@ private:
         static constexpr u16 MP_BASE   = 0x3f8; // offset from vm_base
 
         struct MOB {
-            static constexpr u8 transparent   = 0xff;
-            static constexpr u32 data_waiting = 0b1;
+            static constexpr u8 transparent     = 0xff;
+            static constexpr u32 data_waiting   = 0b01;
+            static constexpr u32 data_scheduled = 0b10;
 
-            void set_x_hi(u8 hi)  { x = hi ? x | 0x100 : x & 0x0ff; }
             void set_x_lo(u8 lo)  { x = (x & 0x100) | lo; }
             void set_ye(bool ye_) {
                 ye = ye_;
@@ -267,18 +267,20 @@ private:
             }
 
             // during blanking
-            void update(u16 px, const u8 mob_bit, u8* mob_presence, u8& mmc)
-            {
+            void update(u16 px, const u8 mob_bit, u8* mob_presence, u8& mmc) {
                 if (waiting()) {
-                    if (x < px || (x >= (px + 8))) return;
-
-                    go();
-                    px = x - px;
+                    if (!scheduled()) {
+                        if (x < px || (x >= (px + 8))) return;
+                        schedule(x - px);
+                        return;
+                    } else {
+                        px = shift_timer;
+                        release();
+                    }
                 } else {
                     px = 0;
                 }
 
-                const int shift_delay = shift_base_delay * shift_amount;
                 for (; px < 8; ++px) {
                     const u8 p_col = col[(data >> 30) & pixel_mask];
 
@@ -292,6 +294,8 @@ private:
                         if (!data) return;
                     }
                 }
+
+                shift_delay = shift_base_delay * shift_amount;
             }
 
             void output(u16 px, const u8* gfx_out, const u8 mdp,
@@ -299,15 +303,18 @@ private:
                             u8& mdc, u8& mmc)
             {
                 if (waiting()) {
-                    if (x < px || (x >= (px + 8))) return;
-
-                    go();
-                    px = x - px;
+                    if (!scheduled()) {
+                        if (x < px || (x >= (px + 8))) return;
+                        schedule(x - px);
+                        return;
+                    } else {
+                        px = shift_timer;
+                        release();
+                    }
                 } else {
                     px = 0;
                 }
 
-                const int shift_delay = shift_base_delay * shift_amount;
                 for (; px < 8; ++px) {
                     const u8 p_col = col[(data >> 30) & pixel_mask];
 
@@ -325,6 +332,10 @@ private:
                         if (!data) return;
                     }
                 }
+
+                // NOTE: this comes a few pixels late (should be done
+                //       inside the loop above, but meh..)
+                shift_delay = shift_base_delay * shift_amount;
             }
 
             u8 dma_on = false;
@@ -342,19 +353,36 @@ private:
             u32 pixel_mask;
 
             u8 shift_base_delay;
+            u8 shift_delay;
             u8 shift_amount;
             u8 shift_timer;
 
             u8 col[4] = { transparent, transparent, transparent, transparent };
 
         private:
-            bool waiting() const { return data & data_waiting; }
-            void go() { data &= ~data_waiting; shift_timer = 0; }
+            bool waiting() const   { return data & data_waiting; }
+            bool scheduled() const { return data & data_scheduled; }
+            void schedule(u8 x_offset) {
+                data |= data_scheduled;
+                shift_timer = x_offset; // use as temp storage
+                shift_delay = shift_base_delay * shift_amount;
+            }
+            void release() {
+                data &= ~(data_waiting | data_scheduled);
+                shift_timer = 0;
+            }
         };
 
 
         MOB (&mob)[mob_count]; // array reference (sweet syntax)
 
+        void set_x_hi(u8 mnx8) {
+            auto hi_bits = mnx8 << 8;
+            for (auto& m : mob) {
+                m.x = (hi_bits & 0x100) | (m.x & 0x0ff);
+                hi_bits >>= 1;
+            }
+        }
         void set_ye(u8 mnye, const int line_cycle) {
             const bool no_crunch = line_cycle != 14;
             if (no_crunch) {
@@ -1020,7 +1048,8 @@ public:
         int line_cycle() const  { return cycle % LINE_CYCLE_COUNT; }
         int frame_cycle() const { return cycle % FRAME_CYCLE_COUNT; }
 
-        u16 raster_x() const { return (392 + (line_cycle() * 8)) % (LINE_CYCLE_COUNT * 8); }
+        // TODO: apply an offset in LP usage (this value is good for mob timinig...)
+        u16 raster_x() const { return (400 + (line_cycle() * 8)) % (LINE_CYCLE_COUNT * 8); }
     };
 
     void reset() { for (int r = 0; r < REG_COUNT; ++r) w(r, 0); }
@@ -1055,9 +1084,7 @@ public:
             case R::m4x: case R::m5x: case R::m6x: case R::m7x:
                 mobs.mob[ri >> 1].set_x_lo(d);
                 break;
-            case R::mnx8:
-                for (auto& m : mobs.mob) { m.set_x_hi(d & 0x1); d >>= 1; }
-                break;
+            case R::mnx8: mobs.set_x_hi(d);   break;
             case R::cr1:  gfx.cr1_upd(d);     // fall through
             case R::rast: upd_raster_y_cmp(); break;
             case R::cr2:  gfx.cr2_upd(d);     break;
