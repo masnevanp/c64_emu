@@ -208,7 +208,10 @@ private:
 
     class Light_pen {
     public:
-        struct State { u8 triggered = 0; };
+        struct State {
+            u8 triggered = 0;
+            u8 trigger_at_phi1 = false;
+        };
 
         void reset() {
             if (s.lp.triggered & ~per_frame) trigger();
@@ -216,9 +219,15 @@ private:
         }
 
         // TODO: set lp x/y (mouse event)
-        void set(u8 src, bool low) {
+        void tick() {
+            if (s.lp.trigger_at_phi1) {
+                s.lp.trigger_at_phi1 = false;
+                trigger();
+            }
+        }
+        void set(u8 src, bool low) { // @phi2
             if (low) {
-                if (!s.lp.triggered) trigger();
+                if (!s.lp.triggered) s.lp.trigger_at_phi1 = true;
                 s.lp.triggered |= (src | per_frame);
             } else {
                 s.lp.triggered &= ~src;
@@ -233,8 +242,7 @@ private:
         IRQ& irq;
 
         void trigger() {
-            // TODO: need to adjust the x for CIA originated ones?
-            s.reg[R::lpx] = s.raster_x() >> 1;
+            s.reg[R::lpx] = (s.raster_x() + 4) >> 1;
             s.reg[R::lpy] = s.raster_y;
             irq.req(IRQ::lp);
         }
@@ -1080,6 +1088,8 @@ public:
 
         ++s.cycle;
 
+        lp.tick();
+
         switch (s.line_cycle() + s.v_blank) {
             case  0:
                 mobs.do_dma(2);
@@ -1094,7 +1104,6 @@ public:
                     gfx.vma_done();
                 } else if (s.raster_y == (250 + BORDER_SZ_H)) {
                     s.v_blank = V_blank::vb_on;
-                    lp.reset();
                 }
 
                 gfx.ba_init();
@@ -1233,6 +1242,7 @@ public:
                     check_raster_irq();
                     s.beam_pos = 0;
                     border.frame_start();
+                    lp.reset();
                     out.frame(s.frame);
                 }
                 return;
