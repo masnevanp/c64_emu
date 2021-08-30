@@ -938,9 +938,16 @@ private:
             }
         }
 
+        void check_right_vb(u8 cmp_csel) { // v-blank
+            if (!is_on() && cs.cr2(CR2::csel) == cmp_csel) {
+                b.on_at = 0;
+                b.off_at = not_set;
+            }
+        }
+
         void line_done() { check_lock(); }
 
-        void frame_start() { if (is_on()) b.on_at = 0; }
+        void vb_end() { if (is_on()) b.on_at = 0; }
 
         void output(u32 upto_pos) {
             if (is_on()) {
@@ -1267,6 +1274,7 @@ public:
 
                     if (s.raster_y == (50 - BORDER_SZ_H)) {
                         s.v_blank = V_blank::vb_off;
+                        border.vb_end();
                     }
 
                     out.sync(s.raster_y);
@@ -1280,7 +1288,6 @@ public:
                     s.raster_y = 0;
                     check_raster_irq();
                     s.beam_pos = 0;
-                    border.frame_start();
                     lp.reset();
                     out.frame(s.frame);
                 }
@@ -1318,12 +1325,14 @@ public:
                 return;
             case 55 + V_blank::vb_on:
                 update_mobs();
+                border.check_right_vb(CR2::csel ^ CR2::csel);
                 mobs.check_dma_start();
                 // mobs.prep_dma(0); ???
                 return;
             case 56 + V_blank::vb_on:
                 mobs.prep_dma(1);
                 update_mobs();
+                border.check_right_vb(CR2::csel);
                 return;
             case 57 + V_blank::vb_on:
                 mobs.check_disp();
@@ -1346,7 +1355,6 @@ public:
                 update_mobs();
                 return;
             case 62 + V_blank::vb_on:
-                border.line_done();
                 mobs.prep_dma(4);
                 update_mobs();
                 return;
