@@ -270,6 +270,14 @@ private:
             void set_mc0(u8 mc0)  { col[1] = mc0; }
             void set_mc1(u8 mc1)  { col[3] = mc1; }
 
+            bool dma_on() const   { return mdc_base < 63; }
+            bool dma_done() const { return mdc_base == 63; }
+            bool dma_off() const  { return mdc_base == 0xff; }
+            void set_dma_off() {
+                mdc_base = 0xff;
+                data = 0;
+            }
+
             void load_data(u32 d1, u32 d2, u32 d3) {
                 data = (d1 << 24) | (d2 << 16) | (d3 << 8) | data_waiting;
             }
@@ -346,13 +354,12 @@ private:
                 shift_delay = shift_base_delay * shift_amount;
             }
 
-            u8 dma_on = false;
             u8 disp_on = false;
 
             u8 ye;
             u8 mdc_base_upd;
 
-            u8 mdc_base;
+            u8 mdc_base = 0xff;
             u8 mdc;
 
             u16 x;
@@ -398,7 +405,7 @@ private:
             } else {
                 for (auto& m : mob) {
                     const bool ye_new = mnye & 0b1;
-                    if (m.dma_on) {
+                    if (m.dma_on()) {
                         const bool crunch_mob = (m.ye & (m.ye ^ ye_new));
                         if (crunch_mob) {
                             m.mdc = ((m.mdc_base & m.mdc) & 0b101010)
@@ -411,62 +418,58 @@ private:
             }
         }
 
-        void check_mdc_base_upd() {
+        void check_dma_ye() {
             for (auto&m : mob) if (m.ye) m.mdc_base_upd = !m.mdc_base_upd;
         }
         void check_dma_start() {
             for (u8 mn = 0, mb = 0x01; mn < mob_count; ++mn, mb <<= 1) {
                 MOB& m = mob[mn];
-                if ((reg[R::mne] & mb) && !m.dma_on) {
+                if ((reg[R::mne] & mb) && !m.dma_on()) {
                     if (reg[R::m0y + (mn * 2)] == (raster_y & 0xff)) {
-                        m.dma_on = true;
-                        m.mdc_base = 0;
+                        m.mdc_base = 0; // initiates dma
                         m.mdc_base_upd = !m.ye;
                     }
                 }
             }
         }
         void check_disp() {
-            for (u8 mn = 0, mb = 0x01; mn < mob_count; ++mn, mb <<= 1) {
+            for (u8 mn = 0; mn < mob_count; ++mn) {
                 MOB& m = mob[mn];
-                m.mdc = m.mdc_base;
-                if (m.dma_on) {
+                if (m.dma_on()) {
+                    m.mdc = m.mdc_base;
                     const bool ry_match = (reg[R::m0y + (mn * 2)] == (raster_y & 0xff));
-                    if (ry_match && (reg[R::mne] & mb)) {
+                    if (ry_match && (reg[R::mne] & (0b1 << mn))) {
                         m.disp_on = true;
                     }
-                } else {
-                    m.disp_on = false;
-                    m.data = 0; // TODO: needed?
                 }
             }
         }
-        void check_dma_end() {
+        void upd_dma() {
             for(auto&m : mob) {
-                if (m.dma_on) {
-                    if (m.mdc_base_upd) {
-                        m.mdc_base = m.mdc;
-                        if (m.mdc_base == 63) m.dma_on = false;
-                    }
-                }
+                if (m.dma_on() && m.mdc_base_upd) m.mdc_base = m.mdc;
             }
         }
-        void prep_dma(u8 mn) { if (mob[mn].dma_on) ba.mob_start(mn); }
+        void prep_dma(u8 mn) { if (mob[mn].dma_on()) ba.mob_start(mn); }
         void do_dma(u8 mn)  { // do p&s -accesses
             MOB& m = mob[mn];
             // if dma_on, then cpu has already been stopped --> safe to read all at once (1p + 3s)
-            if (m.dma_on) {
-                if (m.disp_on) {
-                    const u16 mb = ((reg[R::mptr] & MPTR::vm) << 6) | MP_BASE;
-                    const u16 mp = addr_space.r(mb | mn) << 6;
-                    m.load_data(
-                        addr_space.r(mp | ((m.mdc + 0) & 63)),
-                        addr_space.r(mp | ((m.mdc + 1) & 63)),
-                        addr_space.r(mp | ((m.mdc + 2) & 63))
-                    );
+            if (!m.dma_off()) {
+                if (m.dma_on()) {
+                    if (m.disp_on) {
+                        const u16 mb = ((reg[R::mptr] & MPTR::vm) << 6) | MP_BASE;
+                        const u16 mp = addr_space.r(mb | mn) << 6;
+                        m.load_data(
+                            addr_space.r(mp | ((m.mdc + 0) & 63)),
+                            addr_space.r(mp | ((m.mdc + 1) & 63)),
+                            addr_space.r(mp | ((m.mdc + 2) & 63))
+                        );
+                    }
+                    m.mdc = (m.mdc + 3) & 63;
+                    ba.mob_done(mn);
+                } else { // in 'dma done' mode
+                    m.set_dma_off();
+                    m.disp_on = false;
                 }
-                m.mdc = (m.mdc + 3) & 63;
-                ba.mob_done(mn);
             }
         }
 
@@ -1191,7 +1194,7 @@ public:
                 output();
                 gfx.read_gd();
                 gfx.read_vm();
-                mobs.check_dma_end();
+                mobs.upd_dma();
                 return;
             case 16:
                 gfx.feed_pipeline();
@@ -1222,7 +1225,7 @@ public:
                 output();
                 gfx.read_gd();
                 gfx.ba_done();
-                mobs.check_mdc_base_upd();
+                mobs.check_dma_ye();
                 mobs.check_dma_start();
                 mobs.prep_dma(0);
                 return;
@@ -1308,7 +1311,7 @@ public:
                 update_mobs();
                 return;
             case 15 + V_blank::vb_on:
-                mobs.check_dma_end();
+                mobs.upd_dma();
                 // fall through
             case 16 + V_blank::vb_on: case 17 + V_blank::vb_on: case 18 + V_blank::vb_on: case 19 + V_blank::vb_on:
             case 20 + V_blank::vb_on: case 21 + V_blank::vb_on: case 22 + V_blank::vb_on: case 23 + V_blank::vb_on: case 24 + V_blank::vb_on: case 25 + V_blank::vb_on: case 26 + V_blank::vb_on: case 27 + V_blank::vb_on: case 28 + V_blank::vb_on: case 29 + V_blank::vb_on:
@@ -1319,7 +1322,7 @@ public:
                 return;
             case 54 + V_blank::vb_on:
                 update_mobs();
-                mobs.check_mdc_base_upd();
+                mobs.check_dma_ye();
                 mobs.check_dma_start();
                 mobs.prep_dma(0);
                 return;
