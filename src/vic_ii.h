@@ -193,16 +193,24 @@ private:
     };
 
 
-    class BA {
+    class BA_phi2 {
     public:
-        void mob_start(u8 mn)  { ba_low |=  (0x100 << mn); }
-        void mob_done(u8 mn)   { ba_low &= ~(0x100 << mn); }
-        void gfx_set(u8 b)     { ba_low = (ba_low & 0xff00) | b; }
-        void gfx_rel()         { gfx_set(0); }
+        void mob_start(u8 mn) { ba_low |=  (0x100 << mn); }
+        void mob_done(u8 mn)  { ba_low &= ~(0x100 << mn); }
 
-        BA(u16& ba_low_) : ba_low(ba_low_) {}
+        void gfx_start(u8 aec_low_cycle) {
+            if ((ba_low & 0x00ff) == 0) ba_low = (ba_low & 0xff00) | aec_low_cycle;
+        }
+        void gfx_done() { ba_low &= 0xff00; }
+
+        bool phi2_aec_high(u8 current_cycle) const {
+            return current_cycle < (ba_low & 0x00ff); // called only on ba lines (so it is correct in those cases)
+        }
+
+        BA_phi2(u16& ba_low_) : ba_low(ba_low_) {}
     private:
-        u16& ba_low; // 8 MSBs for MOBs, 8 LSBs for GFX (any bit set ==> active)
+        // 8 MSBs for MOBs, 8 LSBs for GFX (stores the 'PHI2 AEC stays low' cycle),
+        u16& ba_low; // any bit set ==> ba low
     };
 
 
@@ -493,7 +501,7 @@ private:
 
         MOBs(
               State& s, Address_space& addr_space_,
-              BA& ba_, IRQ& irq_)
+              BA_phi2& ba_, IRQ& irq_)
             : mob(s.mob), addr_space(addr_space_), reg(s.reg), raster_y(s.raster_y),
               ba(ba_), irq(irq_) {}
 
@@ -559,7 +567,7 @@ private:
         const Address_space& addr_space;
         u8* reg;
         const u16& raster_y;
-        BA& ba;
+        BA_phi2& ba;
         IRQ& irq;
     };
 
@@ -612,9 +620,9 @@ private:
                 gs.ba_line = gs.ba_area && ((raster_y & CR1::y_scroll) == gs.y_scroll);
                 if (gs.ba_line) {
                     if (cycle < 14 || cycle > 53) activate(); // else 'DMA delay' (see read_vm())
-                    if (cycle >= 11 && cycle <= 52) ba.gfx_set(cycle); // store cycle for AEC checking (TODO)
+                    if (cycle >= 11 && cycle <= 52) ba.gfx_start(cycle + 4); // it would be '+3' at the next phi1
                 } else {
-                    ba.gfx_rel();
+                    ba.gfx_done();
                 }
             }
         }
@@ -631,11 +639,11 @@ private:
             gs.ba_line = gs.ba_area && ((raster_y & CR1::y_scroll) == gs.y_scroll);
             if (gs.ba_line) activate();
         }
-        void ba_start() { if (gs.ba_line) ba.gfx_set(0b10000000); }
+        void ba_start() { if (gs.ba_line) ba.gfx_start(14); }
         void ba_done() {
             if (gs.ba_line) {
                 activate();
-                ba.gfx_rel();
+                ba.gfx_done();
             }
         }
 
@@ -662,9 +670,25 @@ private:
         void read_vm() {
             if (gs.ba_line) {
                 activate(); // delayed - possibly (in case 'DMA delay' was triggered)
-                col_ram.r(gs.vc, gs.vm[gs.vmri].col); // TODO: mask upper bits if 'noise' is implemented
-                const u16 vaddr = ((reg[R::mptr] & MPTR::vm) << 6) | gs.vc;
-                gs.vm[gs.vmri].data = addr_space.r(vaddr);
+                if (ba.phi2_aec_high(cs.line_cycle())) {
+                    gs.vm[gs.vmri].data = 0xff;
+                    /*
+                    'The MOS 6567/6569 video controller (VIC-II) and its application in the Commodore 64 (by Christian Bauer)' states:
+                        In the first three cycles after BA went low, the VIC reads $ff as character pointers
+                        and as color information the lower 4 bits of the opcode after the access to $d011.
+                        Not until then, regular video matrix data is read.
+
+                    'The C64 PLA Dissected (by Thomas ’skoe’ Giese)' elaborates:
+                        If write accesses by the CPU address the I/O area during this phase, the PLA selects
+                        the I/O chips accordingly. But to make sure that the (dummy) read cycles in this
+                        phase will never accidentally acknowledge an interrupt, the PLA redirects them to RAM.
+                    */
+                    gs.vm[gs.vmri].col = 0; // TODO: 'col = ram[cpu.mar()] & 0b1111'
+                } else {
+                    col_ram.r(gs.vc, gs.vm[gs.vmri].col); // TODO: mask upper bits if 'noise' is implemented
+                    const u16 vaddr = ((reg[R::mptr] & MPTR::vm) << 6) | gs.vc;
+                    gs.vm[gs.vmri].data = addr_space.r(vaddr);
+                }
             }
         }
         void read_gd() {
@@ -691,13 +715,15 @@ private:
 
             const auto put = [&to](const u8 px) { *to++ = px; };
 
+            const auto vma_started = [this]() { return gs.vmri > 0; };
+
             int shifts = 8;
-            const auto shift = [&shifts, this]() {
+            const auto shift = [&, this]() {
                 gs.pipeline <<= 1;
                 if (gs.pipeline & vmd_timer) {
                     // 'timer' bit continues travel as an 'even shift' indicator
                     gs.pipeline &= 0xfffff8000001ffff; // (also, old one gets cleared)
-                    if (active()) gs.vmd = gs.vm[gs.vmoi++];
+                    if (vma_started()) gs.vmd = gs.vm[gs.vmoi++];
                 }
                 return --shifts;
             };
@@ -735,7 +761,7 @@ private:
                             gs.pipeline <<= 1;
                             if (gs.pipeline & vmd_timer) {
                                 gs.pipeline &= 0xfffff8000001ffff;
-                                if (active()) gs.vmd = gs.vm[gs.vmoi++];
+                                if (vma_started()) gs.vmd = gs.vm[gs.vmoi++];
                                 if (!(gs.vmd.col & multicolor)) goto _scm;
                             }
                             _mccm:
@@ -750,7 +776,7 @@ private:
                             gs.pipeline <<= 1;
                             if (gs.pipeline & vmd_timer) {
                                 gs.pipeline &= 0xfffff8000001ffff;
-                                if (active()) gs.vmd = gs.vm[gs.vmoi++];
+                                if (vma_started()) gs.vmd = gs.vm[gs.vmoi++];
                                 if (gs.vmd.col & multicolor) goto _mccm;
                             }
                             _scm:
@@ -805,7 +831,7 @@ private:
                             gs.pipeline <<= 1;
                             if (gs.pipeline & vmd_timer) {
                                 gs.pipeline &= 0xfffff8000001ffff;
-                                if (active()) gs.vmd = gs.vm[gs.vmoi++];
+                                if (vma_started()) gs.vmd = gs.vm[gs.vmoi++];
                                 if (!(gs.vmd.col & multicolor)) goto _icm_scm;
                             }
                             _icm_mccm:
@@ -818,7 +844,7 @@ private:
                             gs.pipeline <<= 1;
                             if (gs.pipeline & vmd_timer) {
                                 gs.pipeline &= 0xfffff8000001ffff;
-                                if (active()) gs.vmd = gs.vm[gs.vmoi++];
+                                if (vma_started()) gs.vmd = gs.vm[gs.vmoi++];
                                 if (gs.vmd.col & multicolor) goto _icm_mccm;
                             }
                             _icm_scm:
@@ -875,7 +901,7 @@ private:
 
         GFX(
             Core::State& cs_, Address_space& addr_space_,
-            const Color_RAM& col_ram_, BA& ba_)
+            const Color_RAM& col_ram_, BA_phi2& ba_)
           : cs(cs_), gs(cs_.gfx), addr_space(addr_space_), col_ram(col_ram_), reg(cs.reg),
             raster_y(cs.raster_y), ba(ba_) {}
 
@@ -911,7 +937,7 @@ private:
         const Color_RAM& col_ram;
         const u8* reg;
         const u16& raster_y;
-        BA& ba;
+        BA_phi2& ba;
     };
 
 
@@ -1028,7 +1054,7 @@ private:
 
     Address_space addr_space;
     IRQ irq;
-    BA ba;
+    BA_phi2 ba;
     Light_pen lp;
     MOBs mobs;
     GFX gfx;
