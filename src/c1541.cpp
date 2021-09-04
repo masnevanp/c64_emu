@@ -9,6 +9,14 @@ TODO:
     - 'power off' feature? (just keep in idle mode, until powerd on (and do a reset at that point))
 */
 
+void C1541::System::tick() {
+    address_space_op(cpu.mar(), cpu.mdr(), cpu.mrw());
+    cpu.tick();
+    iec.tick();
+    dc.tick();
+    check_irq();
+}
+
 /*
 void C1541::System::install_idle_trap() {
 

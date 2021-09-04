@@ -945,13 +945,7 @@ public:
         //idle = false;
     }
 
-    void tick() {
-        address_space_op(cpu.mar(), cpu.mdr(), cpu.mrw());
-        cpu.tick();
-        iec.tick();
-        dc.tick();
-        check_irq();
-    }
+    void tick();
 
     //bool idle;
     CPU cpu;
