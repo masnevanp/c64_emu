@@ -18,7 +18,7 @@ SDL_LIBS := `sdl2-config --libs`
 SDL_CFLAGS := `sdl2-config --cflags`
 
 
-SRC := $(wildcard src/**.cpp src/*/*.cpp)
+SRC := $(wildcard src/**.cpp src/*/*.cpp src/*/*/*.cpp)
 OBJ := $(SRC:src/%.cpp=obj/$(BUILD)/%.o)
 DEP := $(OBJ:%.o=%.d)
 

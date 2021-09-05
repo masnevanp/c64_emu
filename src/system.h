@@ -27,7 +27,7 @@ class VIC_out;
 
 using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Address_space)
 using CIA = CIA::Core;
-using TheSID = reSID_Wrapper; // 'The' due to nameclash
+using TheSID = reSIDfp_Wrapper; // 'The' due to nameclash
 using VIC = VIC_II::Core<VIC_out>;
 using Color_RAM = VIC_II::Color_RAM;
 
