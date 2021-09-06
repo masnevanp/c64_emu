@@ -62,7 +62,7 @@ public:
     }
 
     void reset() {
-        io_port_state = 0x00;
+        io_port_pd = io_port_state = 0x00;
         w_dd(0x00); // all inputs
     }
 
@@ -124,9 +124,9 @@ private:
 
     u8 r_dd() const { return io_port_dd; }
     u8 r_pd() const {
-        static const u8 pull_up = IO_bits::loram_hiram_charen_bits | IO_bits::cassette_switch_sense;
-        u8 pulled_up = ~io_port_dd & pull_up;
-        u8 cmc = ~cassette_motor_control | io_port_dd; // dd input -> 0
+        static constexpr u8 pull_up = IO_bits::loram_hiram_charen_bits | IO_bits::cassette_switch_sense;
+        const u8 pulled_up = ~io_port_dd & pull_up;
+        const u8 cmc = ~cassette_motor_control | io_port_dd; // dd input -> 0
         return (io_port_state | pulled_up) & cmc;
     }
 
