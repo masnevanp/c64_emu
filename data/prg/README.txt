@@ -1,2 +1,0 @@
-Tape/disk/cartridge support is not yet implemented, but there is a hack that allows programs to be loaded directly to RAM:
-place a 'raw' C64 binary (with first 2 bytes holding the target address) to 'data/prg/' and name it 'bin.prg'. Then in runtime press F11 to load the binary.
