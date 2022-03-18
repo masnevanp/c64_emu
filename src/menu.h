@@ -187,9 +187,19 @@ private:
         _Choice(T& choice_, Sig notify_) : Item(""), choice(choice_), notify(notify_) { notify(); }
         virtual ~_Choice() {}
 
-        virtual Item* done() { choice.chosen = chosen(); notify(); return nullptr; }
-        virtual void  up()   { ++ci; }
-        virtual void  down() { --ci; }
+        virtual Item* done() {
+            choice.chosen = chosen();
+            notify();
+            return nullptr;
+        }
+        virtual void up()   {
+            ++ci;
+            if (ci == choice.choices.size()) ci = 0;
+        }
+        virtual void down() {
+            if (ci == 0) ci = choice.choices.size();
+            --ci;
+        }
 
         virtual std::string state() const { return "  @ " + chosen_str(); }
 
