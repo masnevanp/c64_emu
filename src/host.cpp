@@ -470,7 +470,7 @@ void Video_out::upd_mode() {
             }
             break;
         case Mode::fullscr: { // TODO: cycle through supported modes?
-            auto fr = int(FRAME_RATE);
+            auto fr = int(frame_rate_in);
             SDL_DisplayMode sdm = { pixel_format, 1920, 1080, fr, 0 };
             if (SDL_SetWindowDisplayMode(window, &sdm) != 0) {
                 SDL_Log("Failed to SDL_SetWindowDisplayMode: %s", SDL_GetError());
@@ -492,7 +492,7 @@ void Video_out::upd_mode() {
 
     if (renderer) SDL_DestroyRenderer(renderer);
 
-    u32 v_sync_flag = sdl_mode.refresh_rate == FRAME_RATE ? SDL_RENDERER_PRESENTVSYNC : 0;
+    const u32 v_sync_flag = v_synced() ? SDL_RENDERER_PRESENTVSYNC : 0;
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | v_sync_flag);
     if (!renderer) {
         SDL_Log("Failed to SDL_CreateRenderer: %s", SDL_GetError());
@@ -549,7 +549,7 @@ Audio_out::Audio_out() {
     want.freq = 44100;
     want.format = AUDIO_S16LSB;
     want.channels = 1;
-    want.samples = 256;
+    want.samples = AUDIO_BUFFER_SIZE;
 
     dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
     if (dev == 0) {

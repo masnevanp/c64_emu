@@ -8,6 +8,7 @@
 #include <utility>
 #include <optional>
 #include <iostream>
+#include <cmath>
 #ifdef __MINGW32__
 #include <windows.h>
 #endif
@@ -24,39 +25,40 @@
 class Timer {
 public:
     using clock = std::chrono::high_resolution_clock;
-    using ms    = std::chrono::milliseconds;
+    using us    = std::chrono::microseconds;
 
     Timer() { reset(); }
 
-    void reset() { t1 = clock::now(); }
+    void reset() { clock_start = clock::now(); }
 
     int elapsed() const {
-        return std::chrono::duration_cast<ms>(clock::now() - t1).count();
+        return std::chrono::duration_cast<us>(clock::now() - clock_start).count();
     }
 
-    int diff(int target_elapsed_ms, bool reset = false) { // since last reset()
-        auto t2 = clock::now();
-        auto elapsed_ms = std::chrono::duration_cast<ms>(t2 - t1).count();
-        auto diff_ms = target_elapsed_ms - elapsed_ms;
-        if (reset) t1 = t2;
-        return diff_ms;
-    }
-
-    int sync(int target_elapsed_ms, bool reset = false) { // since last reset()
-        auto diff_ms = diff(target_elapsed_ms, reset);
-        if (diff_ms > 0) {
+    int wait_elapsed(int elapsed_us, bool reset = false) {
+        const auto d = diff(elapsed_us, reset);
+        const auto diff_us = d.count();
+        if (diff_us < 0) {
+            const int ms = std::round(-diff_us / 1000.0);
             #ifdef __MINGW32__
-                Sleep(diff_ms);
+                Sleep(ms);
             #else
-                std::this_thread::sleep_for(ms(diff_ms));
+                std::this_thread::sleep_for(ms(ms));
             #endif
         }
-        return diff_ms;
+        return diff_us;
     }
 
 private:
-    clock::time_point t1;
+    clock::time_point clock_start;
 
+    us diff(int target_elapsed_us, bool reset) {
+        const auto elapsed = clock::now() - clock_start;
+        const auto target_elapsed = us(target_elapsed_us);
+        if (reset) clock_start = clock_start + target_elapsed;
+        const auto diff = std::chrono::duration_cast<us>(elapsed - target_elapsed);
+        return diff;
+    }
 };
 
 

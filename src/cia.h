@@ -29,16 +29,13 @@ public:
 
     Core(
         const PD_out& port_out_a, const PD_out& port_out_b,
-        IO::Int_hub& int_hub_, IO::Int_hub::Src int_src_, u8 TOD_freq = 50)
+        IO::Int_hub& int_hub_, IO::Int_hub::Src int_src_, const u64& system_cycle)
       :
         port_a(port_out_a), port_b(port_out_b),
         int_ctrl(int_hub_, int_src_),
         timer_b(int_ctrl, sig_null, cnt, inmode_mask_b, Int_ctrl::Int_src::tb, port_b, tb_pb_bit),
         timer_a(int_ctrl, timer_b.tick_ta, cnt, inmode_mask_a, Int_ctrl::Int_src::ta, port_b, ta_pb_bit),
-        tod(int_ctrl)
-    {
-        tod_tick_freq = CPU_FREQ / (double)TOD_freq;
-    }
+        tod(timer_a.cr, int_ctrl, system_cycle) {}
 
     void reset_warm() { int_ctrl.reset(); }
 
@@ -51,8 +48,6 @@ public:
             registers are set to zero and the timer latches to all
             ones. All other registers are reset to zero.
         */
-        tick_cnt = next_tod_tick = 0;
-
         cnt = true;
 
         port_a.reset();
@@ -106,7 +101,7 @@ public:
             case icr:      int_ctrl.w_icr(data); return;
             case cra: // NOTE! Timers store the full CR (although they don't use all the bits)
                 timer_a.w_cr(data);
-                tod.set_todin(data & CRA::todin);
+                tod.upd_todin();
                 return;
             case crb:
                 timer_b.w_cr(data);
@@ -132,11 +127,7 @@ private:
         timer_a.tick_phi2();
         timer_b.tick_phi2();
 
-        if (++tick_cnt >= next_tod_tick) {
-            tod.tick();
-            if (next_tod_tick >= COLOR_CLOCK_FREQ) tick_cnt = next_tod_tick = 0;
-            next_tod_tick = std::ceil(next_tod_tick + tod_tick_freq);
-        }
+        tod.tick();
     }
 
     Cycle_sync sync;
@@ -408,18 +399,19 @@ private:
     public:
         enum HR { am = 0x00, pm = 0x80 };
 
-        TOD(Int_ctrl& int_ctrl_) : int_ctrl(int_ctrl_) { reset(); }
+        TOD(const u8& cra_, Int_ctrl& int_ctrl_, const u64& system_cycle_)
+            : cra(cra_), int_ctrl(int_ctrl_), system_cycle(system_cycle_)
+        { reset(); }
 
         void reset() {
             time  = Time{0x00, 0x00, 0x00, 0x01};
             alarm = Time{0xff, 0xff, 0xff, 0xff};
             r_src = w_dest = &time;
-            running = false;
-            tick_cnt = 0;
+            stop();
         }
 
-        void set_todin(bool todin_50hz) { time_upd_freq = todin_50hz ? 5 : 6; }
-        void set_w_dest(bool al)        { w_dest = al ? &alarm : &time; }
+        void upd_todin() { if (running()) start(); }
+        void set_w_dest(bool al) { w_dest = al ? &alarm : &time; }
 
         u8 r_10th() {
             u8 tnth = r_src->tnth;
@@ -437,16 +429,13 @@ private:
         }
 
         void w_10th(const u8& data) {
-            if (w_dest == &time) {
-                running = true;
-                tick_cnt = 0;
-            }
+            if (w_dest == &time) start();
             w_dest->tnth = data & 0xf;
         }
         void w_sec(const u8& data) { w_dest->sec = (to_u8(data) & 0x7f); }
         void w_min(const u8& data) { w_dest->min = (to_u8(data) & 0x7f); }
         void w_hr(const u8& data)  {
-            if (w_dest == &time) running = false;
+            if (w_dest == &time) stop();
             u8 hr = to_u8(data & 0x1f);
             if (data & HR::pm) hr = (hr < 12) ? hr + 12 : hr;
             else hr = (hr == 12) ? 0 : hr;
@@ -454,9 +443,8 @@ private:
         }
 
         void tick() {
-            if (running) {
-                if (++tick_cnt >= time_upd_freq) {
-                    tick_cnt = 0;
+            if (running()) {
+                if (system_cycle % tick_freq == 0) {
                     time.tick();
                     if (time == alarm) int_ctrl.set(Int_ctrl::Int_src::alrm);
                 }
@@ -466,6 +454,13 @@ private:
     private:
         static u8 to_bcd(u8 val) { return ((val / 10) << 4) | (val % 10); }
         static u8 to_u8(u8 bcd)  { return ((bcd >> 4) * 10) + (bcd & 0xf); }
+
+        void start() {
+            const bool todin_50hz = cra & CRA::todin;
+            tick_freq = std::round((CPU_FREQ_PAL / 50) * (todin_50hz ? 5 : 6));
+        }
+        void stop() { tick_freq = 0; }
+        bool running() const { return tick_freq; }
 
         struct Time {
             u8 tnth;
@@ -495,21 +490,16 @@ private:
         Time time_latch;
         Time alarm;
 
+        u32 tick_freq;
+
         Time* r_src;
         Time* w_dest;
 
-        bool running;
-
-        u32 time_upd_freq;
-        u32 tick_cnt;
+        const u8& cra;
 
         Int_ctrl& int_ctrl;
+        const u64& system_cycle;
     };
-
-
-    u32 tick_cnt;
-    double tod_tick_freq;
-    double next_tod_tick;
 
     bool cnt;
 

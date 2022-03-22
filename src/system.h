@@ -247,10 +247,12 @@ class VIC_out {
 public:
     VIC_out(
         IO::Int_hub& int_hub_, Host::Video_out& vid_out_, Host::Input& host_input_,
-        TheSID& sid_, Overlay& menu_overlay_, C1541_status_panel& c1541_status_
+        TheSID& sid_, Overlay& menu_overlay_, C1541_status_panel& c1541_status_,
+        const double& frame_rate_
     ) :
         int_hub(int_hub_), vid_out(vid_out_), host_input(host_input_),
-        sid(sid_), menu_overlay(menu_overlay_), c1541_status(c1541_status_) { }
+        sid(sid_), menu_overlay(menu_overlay_), c1541_status(c1541_status_),
+        frame_rate(frame_rate_) { }
 
     void set_irq() { int_hub.set(IO::Int_hub::Src::vic); }
     void clr_irq() { int_hub.clr(IO::Int_hub::Src::vic); }
@@ -267,19 +269,23 @@ public:
 
     void sync(u16 line) { // NOTE: not called on the 'frame done' line
         if (line % SYNC_FREQ == 0) {
-            if (!frame_skip) {
-                host_input.poll();
-                auto frame_progress = double(line) / double(VIC_II::FRAME_LINE_COUNT);
-                auto sync_moment = frame_moment + (frame_progress * VIC_II::FRAME_MS);
-                watch.stop();
-                frame_timer.sync(std::round(sync_moment));
-                watch.start();
-            }
+            host_input.poll();
+
+            watch.stop();
+
+            const auto frame_progress = double(line) / double(FRAME_LINE_COUNT);
+            const auto frame_progress_us = frame_progress * frame_duration_us();
+            frame_timer.wait_elapsed(frame_progress_us);
+
+            watch.start();
+
             sid.output();
         }
     }
 
 private:
+    double frame_duration_us() const { return 1000000.0 / frame_rate; }
+
     IO::Int_hub& int_hub;
 
     Host::Video_out& vid_out;
@@ -290,9 +296,9 @@ private:
     Overlay& menu_overlay;
     C1541_status_panel& c1541_status;
 
+    const double& frame_rate;
+
     Timer frame_timer;
-    double frame_moment = 0;
-    int frame_skip = 0;
 };
 
 
@@ -478,16 +484,25 @@ public:
         load = 0x01, save = 0x02,
     };
 
+    struct Speed_settings {
+        Choice<double> frame_rate{
+            {FRAME_RATE_PAL, 60.0, 50.0}, {"50.125 (PAL)", "60.0", "50.0"},
+        };
+        Choice<bool> audio_pitch_shift{
+            {false, true}, {"FIXED", "SHIFT"},
+        };
+    };
+
     C64(const ROM& rom) :
-        cia1(cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1),
-        cia2(cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2),
+        cia1(cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1, s.vic.cycle),
+        cia2(cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2, s.vic.cycle),
         sid(s.vic.cycle),
         col_ram(s.color_ram),
         vic(s.vic, s.ram, col_ram, rom.charr, addr_space.exp.romh_r, s.rdy_low, vic_out),
         c1541(cia2.port_a.ext_in, rom.c1541/*, run_cfg_change*/),
         c1541_status_panel{c1541.dc.status, rom.charr},
-        vid_out(),
-        vic_out(int_hub, vid_out, host_input, sid, menu.overlay, c1541_status_panel),
+        vid_out(speed.frame_rate.chosen),
+        vic_out(int_hub, vid_out, host_input, sid, menu.overlay, c1541_status_panel, speed.frame_rate.chosen),
         int_hub(cpu),
         input_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in, vic),
         addr_space(s.ram, rom, cia1, cia2, sid, vic, col_ram),
@@ -506,6 +521,7 @@ public:
                 sid.settings_menu(),
                 c1541.menu(),
                 ::Menu::Group("CARTRIDGE /", cart_menu_actions),
+                ::Menu::Group("SPEED /",     speed_menu_items),
             },
             rom.charr
         )
@@ -733,6 +749,21 @@ private:
 
     std::vector<::Menu::Action> cart_menu_actions{
         {"CARTRIDGE / DETACH ?", [&](){ Cartridge::detach(exp_ctx); reset_cold(); }},
+    };
+
+    Speed_settings speed;
+    std::vector<::Menu::Knob> speed_menu_items{
+        {"SPEED / FPS",  speed.frame_rate,
+            [&]() {
+                vid_out.reconfig();
+                sid.reconfig(speed.frame_rate, speed.audio_pitch_shift);
+            }
+        },
+        {"SPEED / AUDIO PITCH", speed.audio_pitch_shift,
+            [&]() {
+                sid.reconfig(speed.frame_rate, speed.audio_pitch_shift);
+            }
+        },
     };
 
     Menu menu;

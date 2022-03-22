@@ -12,11 +12,30 @@ using i32 = int32_t;
 using u64 = uint64_t;
 
 
-// Real PAL C64 COLOR_CLOCK_FREQ: 17734472.0 --> ~50.125 fps
+/*
+    y1 (color clock) freq                 = 17734472 (pal)
+    cpu_freq = y1 / 18                    = 985248.444...
+    raster_lines_per_frame                = 312
+    cycles_per_raster_line                = 63
+    frame_cycle_cnt = 312 * 63            = 19656
+    pal_freq = cpu_freq / frame_cycle_cnt = 50.12456474...
+    frame_duration_ms = 1000 / pal_freq   = 19.95029793...
+*/
 
-static constexpr double FRAME_RATE = 50.0;
-static constexpr double CPU_FREQ = FRAME_RATE * (312.0 * 63.0);
-static constexpr double COLOR_CLOCK_FREQ = 18.0 * CPU_FREQ;
+static constexpr double COLOR_CLOCK_FREQ_PAL = 17734472.0;
+static constexpr double CPU_FREQ_PAL         = COLOR_CLOCK_FREQ_PAL / 18.0;
+
+
+static constexpr int FRAME_LINE_COUNT  = 312;
+static constexpr int LINE_CYCLE_COUNT  =  63;
+static constexpr int FRAME_CYCLE_COUNT = FRAME_LINE_COUNT * LINE_CYCLE_COUNT;
+
+
+static constexpr double FRAME_RATE = 60.0;
+static constexpr double FRAME_RATE_PAL = CPU_FREQ_PAL / FRAME_CYCLE_COUNT;
+
+
+static constexpr int AUDIO_BUFFER_SIZE = 128;
 
 
 struct U16l { // little-endian

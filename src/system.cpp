@@ -209,15 +209,6 @@ void System::C1541_status_panel::draw() {
 
 
 void System::VIC_out::frame(u8* frame) {
-    host_input.poll();
-
-    c1541_status.update();
-
-    frame_moment += VIC_II::FRAME_MS;
-    auto sync_moment = std::round(frame_moment);
-    bool reset = sync_moment == 6318000; // since '316687 * FRAME_MS = 6318000'
-    frame_moment = reset ? 0 : frame_moment;
-
     auto output_frame = [&]() {
         auto output_overlay = [&](Overlay& ol) {
             const u8* src = ol.pixels;
@@ -241,25 +232,24 @@ void System::VIC_out::frame(u8* frame) {
         vid_out.put(frame);
     };
 
+    host_input.poll();
+
+    c1541_status.update();
+
     watch.stop();
-    int diff_ms;
+
     if (vid_out.v_synced()) {
-        if ((frame_skip & 0x3) == 0x0) output_frame();
-        diff_ms = frame_timer.diff(sync_moment, reset);
+        output_frame();
+        frame_timer.reset();
     } else {
-        diff_ms = frame_timer.sync(sync_moment, reset);
-        if ((frame_skip & 0x3) == 0x0) output_frame();
+        frame_timer.wait_elapsed(frame_duration_us(), true);
+        output_frame();
     }
+
     watch.start();
 
-    if (diff_ms <= -VIC_II::FRAME_MS) {
-        ++frame_skip;
-    } else if (frame_skip) {
-        frame_skip = 0;
-        sid.flush();
-    }
-
     sid.output();
+
     watch.stop();
     watch.reset();
 }

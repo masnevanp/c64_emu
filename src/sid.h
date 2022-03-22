@@ -30,9 +30,35 @@ public:
     void reset() { re_sid.reset(); }
     void flush() { audio_out.flush(); }
 
+    void reconfig(double frame_rate, bool pitch_shift) {
+        if (pitch_shift) {
+            re_sid.set_sampling_parameters(frame_rate * FRAME_CYCLE_COUNT, set.sampling, OUTPUT_FREQ);
+            clock_speed_base = 1.0;
+        } else {
+            re_sid.set_sampling_parameters(CPU_FREQ_PAL, set.sampling, OUTPUT_FREQ);
+            clock_speed_base = FRAME_RATE_PAL / frame_rate;
+        }
+    }
+
+    /*
+        Some crude rate control here... But seems to be good enough.
+        (Not really tested on low-end machines though.)
+        TODO: make buffer sizes & rate control params runtime configurable (if ever needed)
+    */
     void output() {
+        static constexpr int buffered_lo = 512;
+        static constexpr int buffered_hi = 1024;
+
         tick();
-        audio_out.put(buf, buf_ptr - buf);
+
+        const int buffered = audio_out.put(buf, buf_ptr - buf);
+        if (buffered <= buffered_lo) clock_speed = 1.01 * clock_speed_base;
+        else if (buffered >= buffered_hi) {
+            const float reduction = 0.01 + (((buffered - buffered_hi) / 256.0) / 100.0);
+            clock_speed = (1 - reduction) * clock_speed_base;
+        }
+        else clock_speed = clock_speed_base;
+
         buf_ptr = buf;
     }
 
@@ -49,7 +75,7 @@ private:
 
     // TODO: non-hard coding
     // output 6 times per frame  => ~147.0 samples
-    static const u32 BUF_SZ = 152;
+    static const u32 BUF_SZ = 160;
 
     i16 buf[BUF_SZ];
     i16* buf_ptr = buf;
@@ -57,21 +83,25 @@ private:
     u64 last_tick_cycle = 0;
     const u64& system_cycle;
 
+    float clock_speed_base = 1.0;
+    float clock_speed = 1.0;
+
     Host::Audio_out audio_out;
 
     Settings set;
 
     std::vector<Menu::Knob> menu_items{
         {"RESID / MODEL",    set.model,    [&](){ re_sid.set_chip_model(set.model); }},
-        {"RESID / SAMPLING", set.sampling, [&](){ re_sid.set_sampling_parameters(CPU_FREQ, set.sampling, OUTPUT_FREQ); }},
+        {"RESID / SAMPLING", set.sampling, [&](){ re_sid.set_sampling_parameters(982800, set.sampling, OUTPUT_FREQ); }},
     };
 
     void tick() {
-        int n = system_cycle - last_tick_cycle;
-        if (n) {
-            last_tick_cycle = system_cycle;
+        int cycles = clock_speed * (system_cycle - last_tick_cycle);
+        last_tick_cycle = system_cycle;
+
+        if (cycles > 0) {
             // there is always enough space in the buffer (hence the '0xffff')
-            buf_ptr += re_sid.clock(n, buf_ptr, 0xffff);
+            buf_ptr += re_sid.clock(cycles, buf_ptr, 0xffff);
         }
     }
 };

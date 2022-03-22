@@ -10,19 +10,6 @@ namespace VIC_II {
 
 static const int REG_COUNT = 64;
 
-/*
-    http://www.commodore.ca/manuals/c64_programmers_reference/c64-programmers_reference_guide-08-schematics.pdf
-
-    y1 (color clock) freq                 = 17734472 (pal)
-    cpu_freq = y1 / 18                    = 985248.444...
-    raster_lines_per_frame                = 312
-    cycles_per_raster_line                = 63
-    frame_cycle_cnt = 312 * 63            = 19656
-    pal_freq = cpu_freq / frame_cycle_cnt = 50.12456474...
-    frame_duration_ms = 1000 / pal_freq   = 19.95029793...
-*/
-static const double FRAME_MS       = 1000.0 / (CPU_FREQ / (312.0 * 63));
-
 
 // TODO: parameterize frame/border size (all fixed for now)
 static const int BORDER_SZ_V       = 32;
@@ -31,10 +18,6 @@ static const int BORDER_SZ_H       = 24;
 static const int FRAME_WIDTH        = 320 + 2 * BORDER_SZ_V;
 static const int FRAME_HEIGHT       = 200 + 2 * BORDER_SZ_H;
 static const int FRAME_SIZE         = FRAME_WIDTH * FRAME_HEIGHT;
-
-static const int FRAME_LINE_COUNT  = 312;
-static const int LINE_CYCLE_COUNT  =  63;
-static const int FRAME_CYCLE_COUNT = FRAME_LINE_COUNT * LINE_CYCLE_COUNT;
 
 
 static constexpr u8 CIA1_PB_LP_BIT = 0x10;

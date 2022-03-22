@@ -126,7 +126,8 @@ public:
     };
     Menu::Group settings_menu() { return Menu::Group("VIDEO /", menu_items); }
 
-    Video_out() : frame(set), filter(set) {}
+    Video_out(const double& frame_rate_in_)
+        : frame_rate_in(frame_rate_in_), frame(set), filter(set) {}
     ~Video_out();
 
     void put(const u8* vic_frame) {
@@ -144,7 +145,9 @@ public:
         upd_mode();
     }
 
-    bool v_synced() const { return sdl_mode.refresh_rate == FRAME_RATE; }
+    void reconfig() { upd_mode(); }
+
+    bool v_synced() const { return double(sdl_mode.refresh_rate) == frame_rate_in; }
 
     static SDL_Texture* create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SDL_BlendMode bm,
                                             int w, int h);
@@ -212,6 +215,8 @@ private:
     void upd_mode();
     void upd_dimensions();
 
+    const double& frame_rate_in;
+
     Settings set;
 
     SDL_DisplayMode sdl_mode = { 0, 0, 0, 0, 0 };
@@ -243,12 +248,15 @@ private:
 // TODO: error handling (e.g. on error just run without audio?)
 class Audio_out {
 public:
+    static constexpr int bytes_per_sample = 2;
+
     Audio_out();
     ~Audio_out();
 
-    void put(const i16* chunk, u32 sz) { SDL_QueueAudio(dev, chunk, 2 * sz); }
-
-    // u32 queued() const { return SDL_GetQueuedAudioSize(dev) * 2; }
+    int put(const i16* chunk, u32 sz) {
+        SDL_QueueAudio(dev, chunk, sz * bytes_per_sample);
+        return SDL_GetQueuedAudioSize(dev) / bytes_per_sample;
+    }
 
     void flush() { SDL_ClearQueuedAudio(dev); }
 
