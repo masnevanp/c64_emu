@@ -780,30 +780,5 @@ private:
 
 } // namespace System
 
-/*
-#include <iostream>
-#include <cmath>
-
-using namespace std;
-
-double yy1 = 17734472.0;
-double f   = yy1 / 18.0;
-int cf     = 312 * 63;
-double pf  = f / cf;
-double fd  = 1000.0 / pf;
-
-int main()
-{
-    for (int i = 0; i < 1000000; ++i) {
-        double d = i * fd;
-        double diff = std::abs(d - std::round(d));
-        if (diff < 0.000001) {
-            std::cout << (int)i << ": (" << (int)d << ")\n";
-        }
-    }
-
-    return 0;
-}
-*/
 
 #endif // SYSTEM_H_INCLUDED
