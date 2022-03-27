@@ -43,7 +43,7 @@ public:
             #ifdef __MINGW32__
                 Sleep(ms);
             #else
-                std::this_thread::sleep_for(ms(ms));
+                std::this_thread::sleep_for(std::chrono::milliseconds(ms));
             #endif
         }
         return diff_us;
