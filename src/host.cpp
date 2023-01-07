@@ -546,7 +546,7 @@ Audio_out::Audio_out() {
     SDL_AudioSpec have;
 
     SDL_memset(&want, 0, sizeof(want));
-    want.freq = 44100;
+    want.freq = AUDIO_OUTPUT_FREQ;
     want.format = AUDIO_S16LSB;
     want.channels = 1;
     want.samples = AUDIO_BUFFER_SIZE;

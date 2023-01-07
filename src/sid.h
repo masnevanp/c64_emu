@@ -46,18 +46,23 @@ public:
         TODO: make buffer sizes & rate control params runtime configurable (if ever needed)
     */
     void output() {
-        static constexpr int buffered_lo = 512;
-        static constexpr int buffered_hi = 1024;
+        static constexpr int buffered_lo = AUDIO_BUFFER_SIZE * 2;
+        static constexpr int buffered_hi = 3 * buffered_lo;
 
         tick();
 
         const int buffered = audio_out.put(buf, buf_ptr - buf);
-        if (buffered <= buffered_lo) clock_speed = 1.01 * clock_speed_base;
-        else if (buffered >= buffered_hi) {
-            const float reduction = 0.01 + (((buffered - buffered_hi) / 256.0) / 100.0);
+        if (buffered <= buffered_lo) {
+            clock_speed = 1.01 * clock_speed_base;
+            //std::cout << "+";
+        } else if (buffered >= buffered_hi) {
+            const float reduction = 0.01 + (((buffered - buffered_hi) / 128.0) / 100.0);
             clock_speed = (1 - reduction) * clock_speed_base;
+            //std::cout << "-";
+        } else {
+            clock_speed = clock_speed_base;
+            //std::cout << ".";
         }
-        else clock_speed = clock_speed_base;
 
         buf_ptr = buf;
     }
@@ -73,9 +78,8 @@ public:
 private:
     reSID::SID re_sid;
 
-    // TODO: non-hard coding
-    // output 6 times per frame  => ~147.0 samples
-    static const u32 BUF_SZ = 160;
+    // max. ever needed + some extra for the crude rate control
+    static constexpr u32 BUF_SZ = (1.01 * ((AUDIO_OUTPUT_FREQ / FRAME_RATE_MIN) / FRAME_SYNC_POINTS)) + 8;
 
     i16 buf[BUF_SZ];
     i16* buf_ptr = buf;

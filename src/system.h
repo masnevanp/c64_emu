@@ -33,9 +33,6 @@ using Color_RAM = VIC_II::Color_RAM;
 
 
 
-// sync.freq. in raster lines (must divide into total line count 312)
-static const int SYNC_FREQ = 52;  // ==> ~3.3 ms
-
 static const int MENU_Y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 3;
 
 
@@ -245,6 +242,8 @@ private:
 
 class VIC_out {
 public:
+    static constexpr int SYNC_FREQ = FRAME_LINE_COUNT / FRAME_SYNC_POINTS;
+
     VIC_out(
         IO::Int_hub& int_hub_, Host::Video_out& vid_out_, Host::Input& host_input_,
         TheSID& sid_, Overlay& menu_overlay_, C1541_status_panel& c1541_status_,
@@ -486,10 +485,13 @@ public:
 
     struct Speed_settings {
         Choice<double> frame_rate{
-            {FRAME_RATE_PAL, 60.0, 50.0}, {"50.125 (PAL)", "60.0", "50.0"},
+            {FRAME_RATE_PAL, FRAME_RATE_MAX, FRAME_RATE_MIN},
+            {std::to_string(FRAME_RATE_PAL) + " (PAL)", std::to_string(FRAME_RATE_MAX),
+                    std::to_string(FRAME_RATE_MIN)},
         };
         Choice<bool> audio_pitch_shift{
-            {false, true}, {"FIXED", "SHIFT"},
+            {false, true},
+            {"FIXED", "SHIFT"},
         };
     };
 
