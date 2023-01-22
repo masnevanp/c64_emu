@@ -240,18 +240,49 @@ private:
 };
 
 
+struct Performance {
+    struct Latency_settings {
+        // @sync point: time syncing, input polling, and audio output
+        u16 sync_freq; // divisor of FRAME_LINE_COUNT (1, 2, 3, 4, 6, 8, 12, 13, 24, 26, 39, 52, 78, 104, 156, 312)
+        u16 audio_buf_sz;
+    };
+
+    Choice<double> frame_rate{
+        {FRAME_RATE_PAL, FRAME_RATE_MAX, FRAME_RATE_MIN},
+        {std::to_string(FRAME_RATE_PAL) + " (PAL)", std::to_string(FRAME_RATE_MAX),
+                std::to_string(FRAME_RATE_MIN)},
+    };
+
+    Choice<bool> audio_pitch_shift{
+        {false, true},
+        {"FIXED", "SHIFT"},
+    };
+
+    static constexpr int min_sync_points = 1;
+    Choice<Latency_settings> latency{
+        {
+            { FRAME_LINE_COUNT / 8, 128 },
+            { FRAME_LINE_COUNT / 4, 256 },
+            { FRAME_LINE_COUNT / 2, 512 },
+            { FRAME_LINE_COUNT / min_sync_points, 1024 },
+            //{ FRAME_LINE_COUNT / 12, 128 },
+            //{ FRAME_LINE_COUNT / 24, 128 },
+        },
+        {"FRAME/8", "FRAME/4", "FRAME/2", "1 FRAME"/*, "FRAME/12"*//*, "FRAME/24"*/},
+    };
+};
+
+
 class VIC_out {
 public:
-    static constexpr int SYNC_FREQ = FRAME_LINE_COUNT / FRAME_SYNC_POINTS;
-
     VIC_out(
         IO::Int_hub& int_hub_, Host::Video_out& vid_out_, Host::Input& host_input_,
         TheSID& sid_, Overlay& menu_overlay_, C1541_status_panel& c1541_status_,
-        const double& frame_rate_
+        const Performance& perf
     ) :
         int_hub(int_hub_), vid_out(vid_out_), host_input(host_input_),
         sid(sid_), menu_overlay(menu_overlay_), c1541_status(c1541_status_),
-        frame_rate(frame_rate_) { }
+        frame_rate(perf.frame_rate.chosen), sync_freq(perf.latency.chosen.sync_freq) { }
 
     void set_irq() { int_hub.set(IO::Int_hub::Src::vic); }
     void clr_irq() { int_hub.clr(IO::Int_hub::Src::vic); }
@@ -267,7 +298,8 @@ public:
     void frame(u8* frame);
 
     void sync(u16 line) { // NOTE: not called on the 'frame done' line
-        if (line % SYNC_FREQ == 0) {
+        const bool is_sync_point = (line % sync_freq == 0);
+        if (is_sync_point) {
             host_input.poll();
 
             watch.stop();
@@ -296,6 +328,7 @@ private:
     C1541_status_panel& c1541_status;
 
     const double& frame_rate;
+    const u16& sync_freq;
 
     Timer frame_timer;
 };
@@ -483,28 +516,17 @@ public:
         load = 0x01, save = 0x02,
     };
 
-    struct Speed_settings {
-        Choice<double> frame_rate{
-            {FRAME_RATE_PAL, FRAME_RATE_MAX, FRAME_RATE_MIN},
-            {std::to_string(FRAME_RATE_PAL) + " (PAL)", std::to_string(FRAME_RATE_MAX),
-                    std::to_string(FRAME_RATE_MIN)},
-        };
-        Choice<bool> audio_pitch_shift{
-            {false, true},
-            {"FIXED", "SHIFT"},
-        };
-    };
 
     C64(const ROM& rom) :
         cia1(cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1, s.vic.cycle),
         cia2(cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2, s.vic.cycle),
-        sid(s.vic.cycle),
+        sid(FRAME_RATE_MIN, Performance::min_sync_points, s.vic.cycle),
         col_ram(s.color_ram),
         vic(s.vic, s.ram, col_ram, rom.charr, addr_space.exp.romh_r, s.rdy_low, vic_out),
         c1541(cia2.port_a.ext_in, rom.c1541/*, run_cfg_change*/),
         c1541_status_panel{c1541.dc.status, rom.charr},
-        vid_out(speed.frame_rate.chosen),
-        vic_out(int_hub, vid_out, host_input, sid, menu.overlay, c1541_status_panel, speed.frame_rate.chosen),
+        vid_out(perf.frame_rate.chosen),
+        vic_out(int_hub, vid_out, host_input, sid, menu.overlay, c1541_status_panel, perf),
         int_hub(cpu),
         input_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in, vic),
         addr_space(s.ram, rom, cia1, cia2, sid, vic, col_ram),
@@ -523,7 +545,7 @@ public:
                 sid.settings_menu(),
                 c1541.menu(),
                 ::Menu::Group("CARTRIDGE /", cart_menu_actions),
-                ::Menu::Group("SPEED /",     speed_menu_items),
+                ::Menu::Group("PERFORMANCE /", perf_menu_items),
             },
             rom.charr
         )
@@ -753,17 +775,22 @@ private:
         {"CARTRIDGE / DETACH ?", [&](){ Cartridge::detach(exp_ctx); reset_cold(); }},
     };
 
-    Speed_settings speed;
-    std::vector<::Menu::Knob> speed_menu_items{
-        {"SPEED / FPS",  speed.frame_rate,
+    Performance perf;
+    std::vector<::Menu::Knob> perf_menu_items{
+        {"PERFORMANCE / FPS",  perf.frame_rate,
             [&]() {
                 vid_out.reconfig();
-                sid.reconfig(speed.frame_rate, speed.audio_pitch_shift);
+                sid.reconfig(perf.frame_rate, perf.audio_pitch_shift);
             }
         },
-        {"SPEED / AUDIO PITCH", speed.audio_pitch_shift,
+        {"PERFORMANCE / AUDIO PITCH", perf.audio_pitch_shift,
             [&]() {
-                sid.reconfig(speed.frame_rate, speed.audio_pitch_shift);
+                sid.reconfig(perf.frame_rate, perf.audio_pitch_shift);
+            }
+        },
+        {"PERFORMANCE / LATENCY", perf.latency,
+            [&]() {
+                sid.reconfig(perf.latency.chosen.audio_buf_sz);
             }
         },
     };

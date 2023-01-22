@@ -10,53 +10,41 @@
 // Using reSID by Dag Lem for core functionality
 class reSID_Wrapper {
 public:
-    static const int OUTPUT_FREQ = 44100;
+    reSID_Wrapper(int min_frame_rate, int min_sync_points, const u64& system_cycle_) : system_cycle(system_cycle_) {
+        // max. ever needed (with some extra for the crude clock speed control)
+        const int max_buf_sz = (1.01 * ((AUDIO_OUTPUT_FREQ / min_frame_rate) / min_sync_points)) + 8;
+        buf = buf_ptr = new i16[max_buf_sz];
+    }
 
-    struct Settings {
-        using Model    = reSID::chip_model;
-        using Sampling = reSID::sampling_method;
-
-        Choice<Model> model{
-            {Model::MOS6581, Model::MOS8580}, {"MOS6581", "MOS8580"},
-        };
-        Choice<Sampling> sampling{ // NOTE: 'fast' can get pitchy...
-            {Sampling::SAMPLE_INTERPOLATE, Sampling::SAMPLE_RESAMPLE,
-                Sampling::SAMPLE_RESAMPLE_FASTMEM, Sampling::SAMPLE_FAST},
-            {"INTERPOLATE", "RESAMPLE", "RESAMPLE FASTMEM", "FAST"},
-        };
-    };
-    Menu::Group settings_menu() { return Menu::Group("RESID /", menu_items); }
-
-    void reset() { re_sid.reset(); }
+    void reset() { core.reset(); }
     void flush() { audio_out.flush(); }
 
     void reconfig(double frame_rate, bool pitch_shift) {
         if (pitch_shift) {
-            re_sid.set_sampling_parameters(frame_rate * FRAME_CYCLE_COUNT, set.sampling, OUTPUT_FREQ);
+            core.set_clock_freq(frame_rate * FRAME_CYCLE_COUNT);
             clock_speed_base = 1.0;
         } else {
-            re_sid.set_sampling_parameters(CPU_FREQ_PAL, set.sampling, OUTPUT_FREQ);
+            core.set_clock_freq(CPU_FREQ_PAL);
             clock_speed_base = FRAME_RATE_PAL / frame_rate;
         }
     }
 
-    /*
-        Some crude rate control here... But seems to be good enough.
-        (Not really tested on low-end machines though.)
-        TODO: make buffer sizes & rate control params runtime configurable (if ever needed)
-    */
-    void output() {
-        static constexpr int buffered_lo = AUDIO_BUFFER_SIZE * 2;
-        static constexpr int buffered_hi = 3 * buffered_lo;
+    void reconfig(u16 audio_out_buf_sz_) { audio_out_buf_sz = audio_out.config(audio_out_buf_sz_); }
 
+    // Some crude clock speed control here. Good'nuff..? (Not tested on low-end machines though.)
+    void output() {
         tick();
 
         const int buffered = audio_out.put(buf, buf_ptr - buf);
+
+        const int buffered_lo = audio_out_buf_sz * 2;
+        const int buffered_hi = 3 * buffered_lo;
+
         if (buffered <= buffered_lo) {
             clock_speed = 1.01 * clock_speed_base;
             //std::cout << "+";
         } else if (buffered >= buffered_hi) {
-            const float reduction = 0.01 + (((buffered - buffered_hi) / 128.0) / 100.0);
+            const float reduction = 0.01 + (((buffered - buffered_hi) / audio_out_buf_sz) / 100.0);
             clock_speed = (1 - reduction) * clock_speed_base;
             //std::cout << "-";
         } else {
@@ -67,22 +55,28 @@ public:
         buf_ptr = buf;
     }
 
-    void r(const u8& ri, u8& data) { data = re_sid.read(ri); }
+    void r(const u8& ri, u8& data) { data = core.read(ri); }
     void w(const u8& ri, const u8& data) {
         tick(); // tick with old state first
-        re_sid.write(ri, data);
+        core.write(ri, data);
     }
 
-    reSID_Wrapper(const u64& system_cycle_) : system_cycle(system_cycle_) {}
+    Menu::Group settings_menu() { return Menu::Group("RESID /", menu_items); }
 
 private:
-    reSID::SID re_sid;
+    class Core : public reSID::SID {
+    public:
+        bool set_clock_freq(double clock_freq) {
+            return set_sampling_parameters(clock_freq, sampling, AUDIO_OUTPUT_FREQ);
+        }
+        bool set_sampling_method(reSID::sampling_method method) {
+            return set_sampling_parameters(clock_frequency, method, AUDIO_OUTPUT_FREQ);
+        }
+    };
+    Core core;
 
-    // max. ever needed + some extra for the crude rate control
-    static constexpr u32 BUF_SZ = (1.01 * ((AUDIO_OUTPUT_FREQ / FRAME_RATE_MIN) / FRAME_SYNC_POINTS)) + 8;
-
-    i16 buf[BUF_SZ];
-    i16* buf_ptr = buf;
+    i16* buf;
+    i16* buf_ptr;
 
     u64 last_tick_cycle = 0;
     const u64& system_cycle;
@@ -90,13 +84,27 @@ private:
     float clock_speed_base = 1.0;
     float clock_speed = 1.0;
 
+    u16 audio_out_buf_sz;
+
     Host::Audio_out audio_out;
 
+    struct Settings {
+        using Model    = reSID::chip_model;
+        using Sampling = reSID::sampling_method;
+
+        Choice<Model> model{
+            {Model::MOS6581, Model::MOS8580}, {"6581", "8580"},
+        };
+        Choice<Sampling> sampling{ // NOTE: 'fast' can get pitchy...
+            {Sampling::SAMPLE_INTERPOLATE, Sampling::SAMPLE_RESAMPLE, Sampling::SAMPLE_FAST/*, Sampling::SAMPLE_RESAMPLE_FASTMEM*/},
+            {"INTERPOLATE", "RESAMPLE", "FAST"/*, "RESAMPLE FASTMEM"*/},
+        };
+    };
     Settings set;
 
     std::vector<Menu::Knob> menu_items{
-        {"RESID / MODEL",    set.model,    [&](){ re_sid.set_chip_model(set.model); }},
-        {"RESID / SAMPLING", set.sampling, [&](){ re_sid.set_sampling_parameters(982800, set.sampling, OUTPUT_FREQ); }},
+        {"RESID / MODEL",    set.model,    [&](){ core.set_chip_model(set.model); }},
+        {"RESID / SAMPLING", set.sampling, [&](){ core.set_sampling_method(set.sampling); }},
     };
 
     void tick() {
@@ -105,7 +113,7 @@ private:
 
         if (cycles > 0) {
             // there is always enough space in the buffer (hence the '0xffff')
-            buf_ptr += re_sid.clock(cycles, buf_ptr, 0xffff);
+            buf_ptr += core.clock(cycles, buf_ptr, 0xffff);
         }
     }
 };

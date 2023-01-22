@@ -541,15 +541,20 @@ void Video_out::upd_dimensions() {
 }
 
 
-Audio_out::Audio_out() {
+u16 Audio_out::config(u16 buf_sz) {
     SDL_AudioSpec want;
     SDL_AudioSpec have;
+
+    if (dev) {
+        flush();
+        SDL_CloseAudioDevice(dev);
+    }
 
     SDL_memset(&want, 0, sizeof(want));
     want.freq = AUDIO_OUTPUT_FREQ;
     want.format = AUDIO_S16LSB;
     want.channels = 1;
-    want.samples = AUDIO_BUFFER_SIZE;
+    want.samples = buf_sz;
 
     dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
     if (dev == 0) {
@@ -560,10 +565,12 @@ Audio_out::Audio_out() {
     //std::cout << (int)want.format << " " << (int)have.format;
 
     SDL_PauseAudioDevice(dev, 0);
+
+    return have.samples;
 }
 
 Audio_out::~Audio_out() {
-    SDL_CloseAudioDevice(dev);
+    if (dev) SDL_CloseAudioDevice(dev);
 }
 
 

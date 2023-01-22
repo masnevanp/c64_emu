@@ -30,9 +30,6 @@ static constexpr int FRAME_LINE_COUNT  = 312;
 static constexpr int LINE_CYCLE_COUNT  =  63;
 static constexpr int FRAME_CYCLE_COUNT = FRAME_LINE_COUNT * LINE_CYCLE_COUNT;
 
-// @sync point: time syncing, input polling, and audio output
-static constexpr int FRAME_SYNC_POINTS = 6; // a factor of FRAME_LINE_COUNT (1, 2, 3, 4, 6, 8, 12, 13, 24, 26, 39, 52, 78, 104, 156, 312)
-
 
 static constexpr double FRAME_RATE_MIN = 50.0;
 static constexpr double FRAME_RATE_MAX = 60.0;
@@ -40,7 +37,6 @@ static constexpr double FRAME_RATE_PAL = CPU_FREQ_PAL / FRAME_CYCLE_COUNT;
 
 
 static constexpr int AUDIO_OUTPUT_FREQ = 44100;
-static constexpr int AUDIO_BUFFER_SIZE = 128;
 
 
 struct U16l { // little-endian
