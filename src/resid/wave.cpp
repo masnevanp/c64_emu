@@ -1,6 +1,6 @@
 //  ---------------------------------------------------------------------------
 //  This file is part of reSID, a MOS6581 SID emulator engine.
-//  Copyright (C) 2010  Dag Lem <resid@nimrod.no>
+//  Copyright (C) 1998 - 2022  Dag Lem <resid@nimrod.no>
 //
 //  This program is free software; you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
@@ -20,10 +20,25 @@
 #define RESID_WAVE_CC
 
 #include "wave.h"
-#include "dac.h"
 
 namespace reSID
 {
+
+// Number of cycles after which the shift register is reset
+// when the test bit is set.
+const cycle_count SHIFT_REGISTER_RESET_6581 = 0x8000;
+const cycle_count SHIFT_REGISTER_RESET_8580 = 0x950000;
+
+// Number of cycles after which the waveform output fades to 0 when setting
+// the waveform register to 0.
+//
+// We have two SOAS/C samplings showing that floating DAC
+// keeps its state for at least 0x14000 cycles.
+//
+// This can't be found via sampling OSC3, it seems that
+// the actual analog output must be sampled and timed.
+const cycle_count FLOATING_OUTPUT_TTL_6581 = 200000;  // ~200ms
+const cycle_count FLOATING_OUTPUT_TTL_8580 = 5000000; // ~5s
 
 // Waveform lookup tables.
 unsigned short WaveformGenerator::model_wave[2][8][1 << 12] = {
@@ -50,10 +65,12 @@ unsigned short WaveformGenerator::model_wave[2][8][1 << 12] = {
 };
 
 
-// DAC lookup tables.
-unsigned short WaveformGenerator::model_dac[2][1 << 12] = {
-  {0},
-  {0},
+// DAC lookup tables for 12-bit DACs.
+// MOS 6581: 2R/R ~ 2.20, missing termination resistor.
+// MOS 8580: 2R/R ~ 2.00, correct termination.
+RESID_CONSTINIT const DAC<12> WaveformGenerator::model_dac[2] = {
+  DAC<12>(2.20, false),
+  DAC<12>(2.00, true)
 };
 
 
@@ -73,18 +90,13 @@ WaveformGenerator::WaveformGenerator()
       // Noise mask, triangle, sawtooth, pulse mask.
       // The triangle calculation is made branch-free, just for the hell of it.
       model_wave[0][0][i] = model_wave[1][0][i] = 0xfff;
-      model_wave[0][1][i] = model_wave[1][1][i] = ((accumulator ^ -!!msb) >> 11) & 0xffe;
+      model_wave[0][1][i] = model_wave[1][1][i] =
+	((accumulator ^ -!!msb) >> 11) & 0xffe;
       model_wave[0][2][i] = model_wave[1][2][i] = accumulator >> 12;
       model_wave[0][4][i] = model_wave[1][4][i] = 0xfff;
 
       accumulator += 0x1000;
     }
-
-    // Build DAC lookup tables for 12-bit DACs.
-    // MOS 6581: 2R/R ~ 2.20, missing termination resistor.
-    build_dac_table(model_dac[0], 12, 2.20, false);
-    // MOS 8580: 2R/R ~ 2.00, correct termination.
-    build_dac_table(model_dac[1], 12, 2.00, true);
 
     class_init = true;
   }
@@ -157,6 +169,12 @@ bool do_pre_writeback(reg8 waveform_prev, reg8 waveform, bool is6581)
     // This need more investigation
     if (waveform == 8)
         return false;
+    if (waveform_prev == 0xc) {
+        if (is6581)
+            return false;
+        else if ((waveform != 0x9) && (waveform != 0xe))
+            return false;
+    }
     // What's happening here?
     if (is6581 &&
             ((((waveform_prev & 0x3) == 0x1) && ((waveform & 0x3) == 0x2))
@@ -202,7 +220,7 @@ void WaveformGenerator::writeCONTROL_REG(reg8 control)
     shift_pipeline = 0;
 
     // Set reset time for shift register.
-    shift_register_reset = 0x8000;
+    shift_register_reset = (sid_model == MOS6581) ? SHIFT_REGISTER_RESET_6581 : SHIFT_REGISTER_RESET_8580;
 
     // The test bit sets pulse high.
     pulse_output = 0xfff;
@@ -233,13 +251,7 @@ void WaveformGenerator::writeCONTROL_REG(reg8 control)
   else if (waveform_prev) {
     // Change to floating DAC input.
     // Reset fading time for floating DAC input.
-    //
-    // We have two SOAS/C samplings showing that floating DAC
-    // keeps its state for at least 0x14000 cycles.
-    //
-    // This can't be found via sampling OSC3, it seems that
-    // the actual analog output must be sampled and timed.
-    floating_output_ttl = 0x14000;
+    floating_output_ttl = (sid_model == MOS6581) ? FLOATING_OUTPUT_TTL_6581 : FLOATING_OUTPUT_TTL_8580;
   }
 
   // The gate bit is handled by the EnvelopeGenerator.
@@ -273,7 +285,12 @@ void WaveformGenerator::reset()
   no_pulse = 0xfff;
   pulse_output = 0xfff;
 
-  reset_shift_register();
+  // reset shift register
+  // when reset is released the shift register is clocked once
+  shift_register = 0x7ffffe;
+  shift_register_reset = 0;
+  set_noise_output();
+
   shift_pipeline = 0;
 
   waveform_output = 0;

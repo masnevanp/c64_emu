@@ -1,6 +1,6 @@
 //  ---------------------------------------------------------------------------
 //  This file is part of reSID, a MOS6581 SID emulator engine.
-//  Copyright (C) 2010  Dag Lem <resid@nimrod.no>
+//  Copyright (C) 1998 - 2022  Dag Lem <resid@nimrod.no>
 //
 //  This program is free software; you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
@@ -20,7 +20,8 @@
 #ifndef RESID_WAVE_H
 #define RESID_WAVE_H
 
-#include "resid-config.h"
+#include "siddefs.h"
+#include "dac.h"
 
 namespace reSID
 {
@@ -57,6 +58,9 @@ public:
   short output();
 
   // Calculate and set waveform output value.
+#if RESID_FPGA_CODE
+  short calculate_waveform_output();
+#endif
   void set_waveform_output();
   void set_waveform_output(cycle_count delta_t);
 
@@ -119,7 +123,7 @@ protected:
   unsigned short* wave;
   static unsigned short model_wave[2][8][1 << 12];
   // DAC lookup tables.
-  static unsigned short model_dac[2][1 << 12];
+  static const DAC<12> model_dac[2];
 
 friend class Voice;
 friend class SID;
@@ -414,15 +418,50 @@ RESID_INLINE void WaveformGenerator::set_noise_output()
 // * The combination of triangle and sawtooth interconnects neighboring bits
 //   of the sawtooth waveform.
 //
-// This behavior would be quite difficult to model exactly, since the short
-// circuits are not binary, but are subject to analog effects. Tests show that
-// minor (1 bit) differences can actually occur in the output from otherwise
+// The figure below show how the waveform bits are interconnected:
+//
+//   Pulse hi/lo  P--...--------------Rl---------------Rl--...
+//                            |                |
+//   Sawtooth bits            | Sn+1           |  Sn
+//                   ...------|--|  -----------|--|  ------...
+//   Noise bits            Nn |  |  |     Nn-1 |  |  |
+//                         |  |  |  |       |  |  |  |
+//   Switch "resistors"    Rn Rp Rs Rt      Rn Rp Rs Rt     N / P / S / T
+//                         |  |  |  |       |  |  |  |
+//   Waveform switches      \  \  \  \       \  \  \  \     Control reg D7-D4
+//                         |  |  |  |       |  |  |  |
+//                         ----------       ----------
+//                             |                |
+//   Waveform output bits /   Wn+1              Wn
+//   DAC input bits
+//
+// Notes:
+//   - Triangle output bit 0 is switched to GND via the "resistor" Rtlo.
+//     Rtlo has lower resistance than Rt.
+//   - The 8580 triangle output bits 11 - 4 are switched via "resistors" Rthi.
+//     Rthi have higher resistance than Rt.
+//   - Sawtooth output bit 11 is switched via the "resistor" Rshi.
+//     Rshi has higher resistance than Rs.
+//   - Rshi in the 8580 is different from Rshi in the 6581.
+//   - Noise output switch "resistors" Rn11 - Rn4 are all different.
+//   - Noise output bits 3 - 0 are switched to GND via the "resistors" Rnlo.
+//     Rnlo have lower resistance than Rn11 - Rn4.
+//   - The waveform bits are outputs from NMOS inverters. These have
+//     comparatively high output impedance, especially for "1" bits. This
+//     implies that *all* waveform output bits are in practice interconnected,
+//     not only for pulse, but also for the combination of triangle and sawtooth.
+//
+// This would be computationally expensive to model exactly, since each output
+// bit value depends on all inputs, and the output bit values are analog. Tests
+// show that 1 bit differences can actually occur in the output from otherwise
 // identical samples from OSC3 when waveforms are combined. To further
 // complicate the situation the output changes slightly with time (more
 // neighboring bits are successively set) when the 12-bit waveform
 // registers are kept unchanged.
 //
-// The output is instead approximated by using the upper bits of the
+// It is possible to calculate (digital) bit values with reasonable resource
+// usage on an FPGA - this is demonstrated in calculate_waveform_output().
+// Here, the output is instead approximated by using the upper bits of the
 // accumulator as an index to look up the combined output in a table
 // containing actual combined waveform samples from OSC3.
 // These samples are 8 bit, so 4 bits of waveform resolution is lost.
@@ -449,6 +488,86 @@ RESID_INLINE void WaveformGenerator::set_noise_output()
 // since the waveform bits are and'ed into the shift register via the shift
 // register outputs.
 
+static reg12 noise_pulse6581(reg12 noise)
+{
+    return (noise < 0xf00) ? 0x000 : noise & (noise<<1) & (noise<<2);
+}
+
+static reg12 noise_pulse8580(reg12 noise)
+{
+    return (noise < 0xfc0) ? noise & (noise << 1) : 0xfc0;
+}
+
+#if RESID_FPGA_CODE
+RESID_INLINE
+short WaveformGenerator::calculate_waveform_output()
+{
+  int ix = (accumulator ^ (~sync_source->accumulator & ring_msb_mask)) >> 12;
+  int x = accumulator;
+
+  // Espresso has been used to simplify sums of products per bit for
+  // sawtooth + triangle and pulse + sawtooth + triangle, based on waveform
+  // samples.
+  // A few manual simplifications have been made for the 8580 waveforms,
+  // without introducing any noticeable difference.
+  switch (waveform) {
+  case 2:
+    return accumulator >> 12;
+  case 3:
+    if (sid_model == 0) {
+      return
+        ((((x & 0x7fc) == 0x7fc)) << 10) |
+        ((((x & 0x7e0) == 0x7e0) | ((x & 0x3fe) == 0x3fe)) << 9) |
+        ((((x & 0x7e0) == 0x7e0) | ((x & 0x5ff) == 0x5ff) | ((x & 0x3f0) == 0x3f0)) << 8) |
+        ((((x & 0x7e0) == 0x7e0) | ((x & 0x1f8) == 0x1f8) | ((x & 0x3f0) == 0x3f0)) << 7) |
+        ((((x & 0x0fc) == 0x0fc) | ((x & 0x1f8) == 0x1f8) | ((x & 0x3f0) == 0x3f0)) << 6) |
+        ((((x & 0x07e) == 0x07e) | ((x & 0x1f8) == 0x1f8) | ((x & 0x0fc) == 0x0fc)) << 5) |
+        ((((x & 0x13f) == 0x13f) | ((x & 0x07e) == 0x07e) | ((x & 0x7fa) == 0x7fa) | ((x & 0x0bf) == 0x0bf) | ((x & 0x0fc) == 0x0fc)) << 4);
+    }
+    else {
+      return
+        ((((x & 0xe7e) == 0xe7e) | ((x & 0xe80) == 0xe80) | ((x & 0xf00) == 0xf00) | ((x & 0xe7d) == 0xe7d)) << 11) |
+        ((((x & 0x7f8) == 0x7f8) | ((x & 0xf00) == 0xf00)) << 10) |
+        ((((x & 0x7e0) == 0x7e0) | ((x & 0xf0f) == 0xf0f) | ((x & 0xf1b) == 0xf1b) | ((x & 0xbfe) == 0xbfe) | ((x & 0xf1e) == 0xf1e) | ((x & 0xf40) == 0xf40) | ((x & 0xf30) == 0xf30) | ((x & 0xf29) == 0xf29) | ((x & 0xf26) == 0xf26) | ((x & 0xf80) == 0xf80)) << 9) |
+        ((((x & 0x7e0) == 0x7e0) | ((x & 0x3f0) == 0x3f0) | ((x & 0xdfe) == 0xdfe) | ((x & 0x5ff) == 0x5ff) | ((x & 0xf80) == 0xf80)) << 8) |
+        ((((x & 0x7e0) == 0x7e0) | ((x & 0x3f0) == 0x3f0) | ((x & 0xfc0) == 0xfc0) | ((x & 0x1f8) == 0x1f8) | ((x & 0xeff) == 0xeff)) << 7) |
+        ((((x & 0x0fc) == 0x0fc) | ((x & 0x1f8) == 0x1f8) | ((x & 0x3f0) == 0x3f0) | ((x & 0xfe0) == 0xfe0)) << 6) |
+        ((((x & 0x07e) == 0x07e) | ((x & 0xff0) == 0xff0) | ((x & 0x7f7) == 0x7f7) | ((x & 0x1f8) == 0x1f8) | ((x & 0x0fc) == 0x0fc)) << 5) |
+        ((((x & 0xdbf) == 0xdbf) | ((x & 0x0fc) == 0x0fc) | ((x & 0x3fa) == 0x3fa) | ((x & 0x7f8) == 0x7f8) | ((x & 0x3bf) == 0x3bf) | ((x & 0x07e) == 0x07e)) << 4);
+    }
+  case 4:
+    return pulse_output;
+  case 7: {
+    if (sid_model == 0) {
+      return
+        ((((x & 0x7fc) == 0x7fc) | ((x & 0x7fb) == 0x7fb)) << 10) |
+        ((((x & 0x7ef) == 0x7ef) | ((x & 0x7f7) == 0x7f7) | ((x & 0x7fc) == 0x7fc) | ((x & 0x7fb) == 0x7fb) | ((x & 0x3ff) == 0x3ff)) << 9) |
+        ((((x & 0x7fc) == 0x7fc) | ((x & 0x3ff) == 0x3ff) | ((x & 0x7f7) == 0x7f7) | ((x & 0x7fb) == 0x7fb)) << 8) |
+        ((((x & 0x7fc) == 0x7fc) | ((x & 0x3ff) == 0x3ff) | ((x & 0x7fb) == 0x7fb)) << 7) |
+        ((((x & 0x7fd) == 0x7fd) | ((x & 0x3ff) == 0x3ff) | ((x & 0x7fe) == 0x7fe)) << 6) |
+        ((((x & 0x7fd) == 0x7fd) | ((x & 0x3ff) == 0x3ff) | ((x & 0x7fe) == 0x7fe)) << 5) |
+        ((((x & 0x3ff) == 0x3ff) | ((x & 0x7fe) == 0x7fe)) << 4);
+    }
+    else {
+      return
+        ((((x & 0xe89) == 0xe89) | ((x & 0xe3e) == 0xe3e) | ((x & 0xec0) == 0xec0) | ((x & 0xe8a) == 0xe8a) | ((x & 0xdf7) == 0xdf7) | ((x & 0xdf8) == 0xdf8) | ((x & 0xe85) == 0xe85) | ((x & 0xe6a) == 0xe6a) | ((x & 0xe90) == 0xe90) | ((x & 0xe83) == 0xe83) | ((x & 0xe67) == 0xe67) | ((x & 0xea0) == 0xea0) | ((x & 0xf00) == 0xf00) | ((x & 0xe5e) == 0xe5e) | ((x & 0xe70) == 0xe70) | ((x & 0xe6c) == 0xe6c)) << 11) |
+        ((((x & 0xeee) == 0xeee) | ((x & 0x7ef) == 0x7ef) | ((x & 0x7f2) == 0x7f2) | ((x & 0x7f4) == 0x7f4) | ((x & 0xef0) == 0xef0) | ((x & 0x7f8) == 0x7f8) | ((x & 0xf00) == 0xf00) | ((x & 0x7f1) == 0x7f1)) << 10) |
+        ((((x & 0xf78) == 0xf78) | ((x & 0x7f0) == 0x7f0) | ((x & 0x7ee) == 0x7ee) | ((x & 0xf74) == 0xf74) | ((x & 0xf6f) == 0xf6f) | ((x & 0xf80) == 0xf80) | ((x & 0xbff) == 0xbff)) << 9) |
+        ((((x & 0xdff) == 0xdff) | ((x & 0xbfe) == 0xbfe) | ((x & 0x7ef) == 0x7ef) | ((x & 0x7f2) == 0x7f2) | ((x & 0x3ff) == 0x3ff) | ((x & 0x7f4) == 0x7f4) | ((x & 0xfc0) == 0xfc0) | ((x & 0xfb8) == 0xfb8) | ((x & 0x7f8) == 0x7f8) | ((x & 0xfb6) == 0xfb6)) << 8) |
+        ((((x & 0xbfe) == 0xbfe) | ((x & 0xfdc) == 0xfdc) | ((x & 0xdfe) == 0xdfe) | ((x & 0x7f7) == 0x7f7) | ((x & 0xfda) == 0xfda) | ((x & 0xbfd) == 0xbfd) | ((x & 0x7f8) == 0x7f8) | ((x & 0x3ff) == 0x3ff) | ((x & 0xfe0) == 0xfe0) | ((x & 0xeff) == 0xeff)) << 7) |
+        ((((x & 0xfeb) == 0xfeb) | ((x & 0x7fa) == 0x7fa) | ((x & 0xbfe) == 0xbfe) | ((x & 0xdfe) == 0xdfe) | ((x & 0xff0) == 0xff0) | ((x & 0x7fc) == 0x7fc) | ((x & 0x3ff) == 0x3ff) | ((x & 0xfec) == 0xfec) | ((x & 0xeff) == 0xeff)) << 6) |
+        ((((x & 0xff6) == 0xff6) | ((x & 0xdff) == 0xdff) | ((x & 0xf7f) == 0xf7f) | ((x & 0xbfe) == 0xbfe) | ((x & 0x7fc) == 0x7fc) | ((x & 0xff5) == 0xff5) | ((x & 0x3ff) == 0x3ff) | ((x & 0xff8) == 0xff8) | ((x & 0xeff) == 0xeff)) << 5) |
+        ((((x & 0xdff) == 0xdff) | ((x & 0xf7f) == 0xf7f) | ((x & 0xffa) == 0xffa) | ((x & 0x7fe) == 0x7fe) | ((x & 0xff9) == 0xff9) | ((x & 0xffc) == 0xffc) | ((x & 0x3ff) == 0x3ff) | ((x & 0xeff) == 0xeff)) << 4);
+    }
+  }
+  case 8:
+    return no_noise_or_noise_output;
+  default:
+    return wave[ix] & (no_pulse | pulse_output) & no_noise_or_noise_output;
+  }
+}
+#endif // RESID_FPGA_CODE
+
 RESID_INLINE
 void WaveformGenerator::set_waveform_output()
 {
@@ -458,7 +577,17 @@ void WaveformGenerator::set_waveform_output()
     // calculation of the output value.
     int ix = (accumulator ^ (~sync_source->accumulator & ring_msb_mask)) >> 12;
 
+#if RESID_FPGA_CODE
+    waveform_output = calculate_waveform_output();
+#else
     waveform_output = wave[ix] & (no_pulse | pulse_output) & no_noise_or_noise_output;
+#endif
+
+    if (unlikely((waveform & 0xc) == 0xc))
+    {
+        waveform_output = (sid_model == MOS6581) ?
+            noise_pulse6581(waveform_output) : noise_pulse8580(waveform_output);
+    }
 
     // Triangle/Sawtooth output is delayed half cycle on 8580.
     // This will appear as a one cycle delay on OSC3 as it is
@@ -487,7 +616,7 @@ void WaveformGenerator::set_waveform_output()
   else {
     // Age floating DAC input.
     if (likely(floating_output_ttl) && unlikely(!--floating_output_ttl)) {
-      waveform_output = 0;
+      osc3 = waveform_output = 0;
     }
   }
 
@@ -536,7 +665,7 @@ void WaveformGenerator::set_waveform_output(cycle_count delta_t)
       floating_output_ttl -= delta_t;
       if (unlikely(floating_output_ttl <= 0)) {
         floating_output_ttl = 0;
-        waveform_output = 0;
+        osc3 = waveform_output = 0;
       }
     }
   }
@@ -577,7 +706,12 @@ short WaveformGenerator::output()
 {
   // DAC imperfections are emulated by using waveform_output as an index
   // into a DAC lookup table. readOSC() uses waveform_output directly.
+#if RESID_FPGA_CODE
+  // The FPGA code calculates the value by bit superpositioning.
+  return model_dac[sid_model](waveform_output);
+#else
   return model_dac[sid_model][waveform_output];
+#endif
 }
 
 #endif // RESID_INLINING || defined(RESID_WAVE_CC)
