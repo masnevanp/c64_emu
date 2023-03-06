@@ -121,7 +121,7 @@ public:
         Param<u8> contrast {100, 0, 100, 1};
         Param<u8> saturation{68, 0, 100, 1};
 
-        Param<u8> filter_pattern{6, 0, 254, 1}; // TODO: actual max
+        Param<u8> filter_pattern{3, 0, 254, 1}; // TODO: actual max
         Param<u8> filter_level {11, 0,  15, 1}; // 0 --> all pass
     };
     Menu::Group settings_menu() { return Menu::Group("VIDEO /", menu_items); }
