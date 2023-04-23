@@ -112,29 +112,27 @@ public:
             {"WINDOWED", "FULLSCREEN", "TRUE FULLSCREEN"},
         };
         // TODO: fullscreen_scale?
-        Param<double> window_scale{3.00, 0.5, 8.00, 0.05}; // init, min, max, step
-        Param<double> aspect_ratio{0.918, 0.5, 1.25, 0.002}; // PAL actual: ~0.935
+        Param<double> window_scale{3.40, 0.5, 8.00, 0.05}; // init, min, max, step
+        Param<double> aspect_ratio{0.936, 0.5, 1.25, 0.001}; // PAL: ~0.936
 
         Param<u8> sharpness{0, 0, 3, 1};
 
         Param<u8> brightness{78, 0, 100, 1};
         Param<u8> contrast {100, 0, 100, 1};
-        Param<u8> saturation{68, 0, 100, 1};
+        Param<u8> saturation{74, 0, 100, 1};
 
-        Param<u8> filter_pattern{3, 0, 254, 1}; // TODO: actual max
-        Param<u8> filter_level {11, 0,  15, 1}; // 0 --> all pass
+        Param<u8> mask_pattern{3, 0, 254, 1}; // TODO: actual max
+        Param<u8> mask_level {15, 0,  15, 1}; // 0 --> all pass
     };
     Menu::Group settings_menu() { return Menu::Group("VIDEO /", menu_items); }
 
-    Video_out(const double& frame_rate_in_)
-        : frame_rate_in(frame_rate_in_), frame(set), filter(set) {}
+    Video_out(const double& frame_rate_in_) : frame_rate_in(frame_rate_in_) {}
     ~Video_out();
 
     void put(const u8* vic_frame) {
         //SDL_RenderClear(renderer);
-        frame.draw(vic_frame);
-        frame.frame.copy(renderer, dstrect);
-        filter.frame.copy(renderer, dstrect);
+        frame.put(vic_frame, renderer);
+        mask.put(renderer);
         flip();
     }
 
@@ -160,14 +158,15 @@ private:
 
         SDL_Texture* texture = nullptr;
         SDL_Rect srcrect = {0, 0, 0, 0};
+        SDL_Rect dstrect = {0, 0, 0, 0};
         u32* pixels = nullptr;
 
         SDL_frame(int max_w_, int max_h_, SDL_TextureAccess ta_, SDL_BlendMode bm_);
         ~SDL_frame();
 
         void connect(SDL_Renderer* renderer);
-        void copy(SDL_Renderer* r, const SDL_Rect* dstrect) {
-            SDL_RenderCopy(r, texture, &srcrect, dstrect);
+        void copy(SDL_Renderer* r) {
+            SDL_RenderCopy(r, texture, &srcrect, &dstrect);
         }
     };
 
@@ -175,40 +174,33 @@ private:
         static constexpr int max_w = VIC_II::FRAME_WIDTH * 3; // TODO: non-hardcoded
         static constexpr int max_h = VIC_II::FRAME_HEIGHT * 3; // TODO: non-hardcoded
 
-        Frame(const Settings& set_) : set(set_) {}
+        void upd_palette(const Settings& set);
+        void upd_sharpness(const Settings& set);
 
-        void upd_palette();
-        void upd_sharpness();
+        void put(const u8* vic_frame, SDL_Renderer* r) {
+            draw(vic_frame);
+            frame.copy(r);
+        }
 
         u32 col(const u8 vic_pixel) { return palette[vic_pixel & 0xf]; } // TODO: do '&' here? (or in VIC?)}
 
         std::function<void (const u8* )> draw;
 
-        const Settings& set;
         u32 palette[16];
         SDL_frame frame{max_w, max_h, SDL_TEXTUREACCESS_STREAMING, SDL_BLENDMODE_NONE};
     };
 
-    struct Filter {
-        static constexpr int max_w = VIC_II::FRAME_WIDTH * 4; // TODO: non-hardcoded
-        static constexpr int max_h = VIC_II::FRAME_HEIGHT * 3; // TODO: non-hardcoded
+    struct Mask {
+        static constexpr int max_w = 1920; // TODO: non-hardcoded
+        static constexpr int max_h = 1080; // TODO: non-hardcoded
 
-        struct Pattern {
-            using Shape = std::vector<std::vector<u32>>;
-
-            const u8 px_w;
-            const u8 px_h;
-
-            const Shape shape;
-        };
-
+        using Pattern = std::vector<std::vector<u32>>;
         static const std::vector<Pattern> patterns;
 
-        Filter(const Settings& set_) : set(set_) {}
+        void upd(const Settings& set);
 
-        void upd();
+        void put(SDL_Renderer* r) { frame.copy(r); }
 
-        const Settings& set;
         SDL_frame frame{max_w, max_h, SDL_TEXTUREACCESS_STATIC, SDL_BLENDMODE_MOD};
     };
 
@@ -225,22 +217,19 @@ private:
     SDL_Renderer* renderer = nullptr;
 
     Frame frame;
-    Filter filter;
-
-    SDL_Rect fullscreen_dstrect = {0, 0, 0, 0};
-    SDL_Rect* dstrect = nullptr;
+    Mask mask;
 
     std::vector<Menu::Knob> menu_items{
         //name                          connected setting   notify
         {"VIDEO / MODE",                set.mode,           [&](){ upd_mode(); }},
         {"VIDEO / WINDOW SCALE",        set.window_scale,   [&](){ upd_dimensions(); }},
         {"VIDEO / ASPECT RATIO",        set.aspect_ratio,   [&](){ upd_dimensions(); }},
-        {"VIDEO / SHARPNESS",           set.sharpness,      [&](){ frame.upd_sharpness(); }},
-        {"VIDEO / COLODORE BRIGHTNESS", set.brightness,     [&](){ frame.upd_palette(); }},
-        {"VIDEO / COLODORE CONTRAST",   set.contrast,       [&](){ frame.upd_palette(); }},
-        {"VIDEO / COLODORE SATURATION", set.saturation,     [&](){ frame.upd_palette(); }},
-        {"VIDEO / FILTER PATTERN",      set.filter_pattern, [&](){ filter.upd(); }},
-        {"VIDEO / FILTER LEVEL",        set.filter_level,   [&](){ filter.upd(); }},
+        {"VIDEO / SHARPNESS",           set.sharpness,      [&](){ frame.upd_sharpness(set); }},
+        {"VIDEO / COLODORE BRIGHTNESS", set.brightness,     [&](){ frame.upd_palette(set); }},
+        {"VIDEO / COLODORE CONTRAST",   set.contrast,       [&](){ frame.upd_palette(set); }},
+        {"VIDEO / COLODORE SATURATION", set.saturation,     [&](){ frame.upd_palette(set); }},
+        {"VIDEO / MASK PATTERN",        set.mask_pattern,   [&](){ mask.upd(set); }},
+        {"VIDEO / MASK LEVEL",          set.mask_level,     [&](){ mask.upd(set); }},
     };
 };
 

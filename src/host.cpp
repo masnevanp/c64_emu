@@ -262,13 +262,13 @@ void Video_out::SDL_frame::connect(SDL_Renderer* renderer) {
 }
 
 
-void Video_out::Frame::upd_palette() {
+void Video_out::Frame::upd_palette(const Settings& set) {
     get_Colodore(palette, set.brightness, set.contrast, set.saturation);
     palette[0] = 0x020202; // keep it blackish...
 }
 
 
-void Video_out::Frame::upd_sharpness() {
+void Video_out::Frame::upd_sharpness(const Settings& set) {
     struct Sz { const u8 w; const u8 h; };
 
     static constexpr std::array<Sz, 5> px_sz{{ {1, 1}, {1, 2}, {2, 2}, {3, 3} }};
@@ -353,81 +353,55 @@ void Video_out::Frame::upd_sharpness() {
 }
 
 
-const std::vector<Video_out::Filter::Pattern> Video_out::Filter::patterns = {
-    { 1, 2, {
-        { 0x000000 },
-        { 0x111111 },
-    }},
-    { 3, 3, {
-        { 0x000000, 0x111111, 0x050505, 0x050505, 0x0b0b0b, 0x000000 },
-        { 0x050505, 0x0b0b0b, 0x000000, 0x000000, 0x111111, 0x050505 },
-        { 0x000000, 0x0b0b0b, 0x000000, 0x000000, 0x0b0b0b, 0x000000 },
-    }},
-    { 3, 3, {
-        { 0x111111, 0x050505, 0x050505, 0x0b0b0b, 0x000000, 0x000000 },
-        { 0x0b0b0b, 0x000000, 0x000000, 0x111111, 0x050505, 0x050505 },
-        { 0x0b0b0b, 0x000000, 0x000000, 0x0b0b0b, 0x000000, 0x000000 },
-    }},
-    { 3, 3, {
-        { 0x0b0b0b, 0x111111, 0x0b0b0b },
-        { 0x000000, 0x050505, 0x000000 },
-        { 0x000000, 0x050505, 0x000000 },
-        { 0x111111, 0x0b0b0b, 0x0b0b0b },
-        { 0x050505, 0x000000, 0x000000 },
-        { 0x050505, 0x000000, 0x000000 },
-    }},
-    { 3, 3, {
-        { 0x110000, 0x001100, 0x000011},
-        { 0x110000, 0x001100, 0x000011},
-        { 0x110202, 0x021102, 0x020211},
-    }},
-    { 3, 2, {
-        { 0x000000, 0x000000, 0x001111 },
-        { 0x000000, 0x110011, 0x111100 },
-    }},
-    { 3, 3, {
-        { 0x000000, 0x000000, 0x050505 },
-        { 0x000000, 0x000000, 0x050505 },
-        { 0x0b0b0b, 0x0b0b0b, 0x111111 },
-    }},
-    { 3, 3, {
-        { 0x111111, 0x050505, 0x050505 },
-        { 0x0b0b0b, 0x000000, 0x000000 },
-        { 0x0b0b0b, 0x000000, 0x000000 },
-    }},
-    { 4, 3, {
-        { 0x000000, 0x000000, 0x050505 },
-        { 0x000000, 0x000000, 0x050505 },
-        { 0x0b0b0b, 0x0b0b0b, 0x111111 },
-    }},
-    { 4, 3, {
-        { 0x000000, 0x050505, 0x000000 },
-        { 0x000000, 0x050505, 0x000000 },
-        { 0x0b0b0b, 0x111111, 0x0b0b0b },
-    }},
+const std::vector<Video_out::Mask::Pattern> Video_out::Mask::patterns = {
+    {
+        //{ 0x000000, 0x000000, 0x050505, },
+        { 0x000000, 0x000000, 0x000000, },
+        { 0x000000, 0x000000, 0x0a0a0a, },
+        { 0x0a0a0a, 0x0a0a0a, 0x111111, },
+        { 0x050505, 0x050505, 0x0a0a0a, },
+    },
+    {
+        { 0x000000, 0x050505, 0x111111, 0x000000 },
+        { 0x000000, 0x050505, 0x111111, 0x000000 },
+        { 0x050505, 0x050505, 0x111111, 0x050505 },
+    },
+    {
+        { 0x000000, 0x111111, 0x000000, },
+        { 0x000000, 0x111111, 0x000000, },
+        { 0x0a0a0a, 0x0a0a0a, 0x0a0a0a, },
+        { 0x000000, 0x111111, 0x000000, },
+    },
+    {
+        { 0x050505, 0x111111, 0x050505, 0x050505, 0x050505, 0x111111, 0x000000, 0x000000 },
+        { 0x050505, 0x111111, 0x000000, 0x000000, 0x050505, 0x111111, 0x050505, 0x050505 },
+        { 0x050505, 0x111111, 0x000000, 0x000000, 0x050505, 0x111111, 0x000000, 0x000000 },
+    },
+    {
+        { 0x000000, 0x111111, 0x000000, 0x000000 },
+        { 0x000000, 0x111111, 0x000000, 0x000000 },
+        { 0x050505, 0x0a0a0a, 0x050505, 0x050505 },
+    },
 };
 
 
-void Video_out::Filter::upd() {
+void Video_out::Mask::upd(const Settings& set) {
     static constexpr u32 all_pass = 0xffffffff;
 
-    const auto& ptrn = patterns[set.filter_pattern % patterns.size()];
+    const auto& pattern = patterns[set.mask_pattern % patterns.size()];
 
     auto p = frame.pixels;
-    const auto ptrn_rows = ptrn.shape.size();
-    for (int y = 0; y < VIC_II::FRAME_HEIGHT * ptrn.px_h; ++y) {
-        const auto& row = ptrn.shape[y % ptrn_rows];
-        const auto ptrn_row_cols = row.size();
-        for (int x = 0; x < VIC_II::FRAME_WIDTH * ptrn.px_w; ++x) {
-            *p++ = all_pass - (set.filter_level * row[x % ptrn_row_cols]);
+    const auto row_cnt = pattern.size();
+    for (int y = 0; y < max_h; ++y) {
+        const auto& row = pattern[y % row_cnt];
+        const auto col_cnt = row.size();
+        for (int x = 0; x < max_w; ++x) {
+            *p++ = all_pass - (set.mask_level * row[x % col_cnt]);
         }
     }
 
-    const auto bytes_per_row = VIC_II::FRAME_WIDTH * bytes_per_pixel * ptrn.px_w;
+    const auto bytes_per_row = max_w * bytes_per_pixel;
     SDL_UpdateTexture(frame.texture, nullptr, (void*)frame.pixels, bytes_per_row);
-
-    frame.srcrect.w = VIC_II::FRAME_WIDTH * ptrn.px_w;
-    frame.srcrect.h = VIC_II::FRAME_HEIGHT * ptrn.px_h;
 }
 
 
@@ -509,9 +483,9 @@ void Video_out::upd_mode() {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 
     frame.frame.connect(renderer);
-    filter.frame.connect(renderer);
+    mask.frame.connect(renderer);
 
-    filter.upd();
+    mask.upd(set);
 
     upd_dimensions();
 
@@ -521,27 +495,29 @@ void Video_out::upd_mode() {
 
 void Video_out::upd_dimensions() {
     if (set.mode == Mode::win) {
-        int w = set.aspect_ratio * (set.window_scale * VIC_II::FRAME_WIDTH);
-        int h = set.window_scale * VIC_II::FRAME_HEIGHT;
+        const int w = set.aspect_ratio * (set.window_scale * VIC_II::FRAME_WIDTH);
+        const int h = set.window_scale * VIC_II::FRAME_HEIGHT;
         SDL_SetWindowSize(window, w, h);
-        dstrect = nullptr;
+        frame.frame.dstrect = SDL_Rect{0, 0, w, h};
+        mask.frame.srcrect = mask.frame.dstrect = SDL_Rect{0, 0, w, h};;
     } else {
         int win_w; int win_h;
         SDL_GetRendererOutputSize(renderer, &win_w, &win_h);
         int w = set.aspect_ratio * (((double)win_h / VIC_II::FRAME_HEIGHT) * VIC_II::FRAME_WIDTH);
         if (w < win_w) {
-            fullscreen_dstrect.x = (win_w - w) / 2;
-            fullscreen_dstrect.y = 0;
-            fullscreen_dstrect.w = w;
-            fullscreen_dstrect.h = win_h;
+            frame.frame.dstrect.x = (win_w - w) / 2;
+            frame.frame.dstrect.y = 0;
+            frame.frame.dstrect.w = w;
+            frame.frame.dstrect.h = win_h;
         } else {
             int h =  (((double)win_w / VIC_II::FRAME_WIDTH) * VIC_II::FRAME_HEIGHT) / set.aspect_ratio;
-            fullscreen_dstrect.x = 0;
-            fullscreen_dstrect.y = (win_h - h) / 2;
-            fullscreen_dstrect.w = win_w;
-            fullscreen_dstrect.h = h;
+            frame.frame.dstrect.x = 0;
+            frame.frame.dstrect.y = (win_h - h) / 2;
+            frame.frame.dstrect.w = win_w;
+            frame.frame.dstrect.h = h;
         }
-        dstrect = &fullscreen_dstrect;
+
+        mask.frame.srcrect = mask.frame.dstrect = SDL_Rect{0, 0, win_w, win_h};;
     }
 
     SDL_RenderClear(renderer);
