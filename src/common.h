@@ -176,10 +176,12 @@ using Sig_key = Sig2<u8, u8>;
 template<typename T>
 class Param {
 public:
-    Param(T init, T min_, T max_, T step_) : val(init), min(min_), max(max_), step(step_) {}
+    Param(T init, T min_, T max_, T step_, std::function<std::string (T)> to_str_ = std::function<std::string (T)>())
+        : val(init), min(min_), max(max_), step(step_), to_str(to_str_) {}
 
     operator T() const { return val; }
     operator std::string() const {
+        if (to_str) return to_str(val);
         if constexpr (std::is_convertible<T, std::string>::value) return val;
         else return std::to_string(val);
     }
@@ -192,6 +194,8 @@ private:
     const T min;
     const T max;
     const T step;
+
+    std::function<std::string (T)> to_str;
 
     void set(T v) { if (v >= min && v <= max) val = v; }
 };
