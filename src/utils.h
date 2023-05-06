@@ -138,6 +138,9 @@ std::string as_upper(const std::string& src);
 
 std::string replace(std::string s, const std::string& what, const std::string& with);
 
+std::string to_string(double d, int precision);
+
+
 /*
 template<typename T>
 constexpr int count_leading_zero_bits(T x) {

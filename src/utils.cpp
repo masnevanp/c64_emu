@@ -5,6 +5,8 @@
 #include <cmath>
 #include <filesystem>
 #include <iostream>
+#include <iomanip>
+#include <sstream>
 
 
 
@@ -122,4 +124,11 @@ std::string replace(std::string s, const std::string& what, const std::string& w
         pos += with.length();
     }
     return s;
+}
+
+
+std::string to_string(double d, int precision) {
+    std::stringstream stream;
+    stream << std::fixed << std::setprecision(precision) << d;
+    return stream.str();
 }
