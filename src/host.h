@@ -112,12 +112,13 @@ public:
             {"WINDOWED", "FULLSCREEN", "TRUE FULLSCREEN"},
         };
         // TODO: fullscreen_scale?
-        Param<double> window_scale{3.40, 0.5, 8.00, 0.05}; // init, min, max, step
-        Param<double> aspect_ratio{0.936, 0.5, 1.25, 0.001}; // PAL: ~0.936
+        // init, min, max, step, to_str
+        Param<double> window_scale{3.40,  0.5, 8.00, 0.05,  [](double d){ return to_string(d, 2); }};
+        Param<double> aspect_ratio{0.918, 0.5, 1.25, 0.001, [](double d){ return to_string(d, 3); }}; // PAL: ~0.936
 
         Param<u8> sharpness{0, 0, 3, 1};
 
-        Param<u8> brightness{78, 0, 100, 1};
+        Param<u8> brightness{82, 0, 100, 1};
         Param<u8> contrast {100, 0, 100, 1};
         Param<u8> saturation{74, 0, 100, 1};
 
