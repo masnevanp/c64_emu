@@ -33,9 +33,6 @@ using Color_RAM = VIC_II::Color_RAM;
 
 
 
-static const int MENU_Y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 3;
-
-
 struct ROM {
     const u8* basic;
     const u8* kernal;
@@ -196,50 +193,6 @@ private:
 };
 
 
-struct VIC_out_overlay {
-    // static constexpr u8 transparent = 0xff;
-
-    const u16 x; const u16 y; const u16 w; const u16 h;
-    bool visible = false;
-
-    u8* pixels;
-
-    VIC_out_overlay(u16 x_, u16 y_, u16 w_, u16 h_) : x(x_), y(y_), w(w_), h(h_), pixels(new u8[w * h]) {}
-    ~VIC_out_overlay() { delete[] pixels; }
-
-    void clear(u8 col) { for (int p = 0; p < w * h; ++p) pixels[p] = col; }
-};
-
-using Overlay = VIC_out_overlay;
-
-
-class C1541_status_panel {
-public:
-    static constexpr Color col_bg = Color::black;
-
-    C1541_status_panel(const C1541::Disk_ctrl::Status& status_, const u8* charrom_)
-        : status(status_), charrom(charrom_) { overlay.clear(col_bg); }
-
-    void update() {
-        if (overlay.visible) draw();
-        overlay.visible = status.head.active();
-    }
-
-private:
-    friend class VIC_out;
-
-    const C1541::Disk_ctrl::Status& status;
-    const u8* charrom;
-
-    Overlay overlay{
-        VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 4 * 8 - 2, MENU_Y + 5,
-        4 * 8, (1 * 8) + 1
-    };
-
-    void draw();
-};
-
-
 struct Performance {
     struct Latency_settings {
         // @sync point: time syncing, input polling, and audio output
@@ -249,8 +202,11 @@ struct Performance {
 
     Choice<double> frame_rate{
         {FRAME_RATE_PAL, FRAME_RATE_MAX, FRAME_RATE_MIN},
-        {std::to_string(FRAME_RATE_PAL) + " (PAL)", std::to_string(FRAME_RATE_MAX),
-                std::to_string(FRAME_RATE_MIN)},
+        {
+            to_string(FRAME_RATE_PAL, 3) + " (PAL)",
+            to_string(FRAME_RATE_MAX, 3),
+            to_string(FRAME_RATE_MIN, 3),
+        },
     };
 
     Choice<bool> audio_pitch_shift{
@@ -275,13 +231,35 @@ struct Performance {
 
 class VIC_out {
 public:
+    class Overlay {
+    public:
+        Overlay(u16 x_, u16 y_, u16 w_, u16 h_, const u8* charrom_)
+            : x(x_), y(y_), w(w_), h(h_), pixels(new u8[w * h]), charrom(charrom_) {}
+        ~Overlay() { delete[] pixels; }
+
+        // static constexpr u8 transparent = 0xff;
+
+        const u16 x; const u16 y; const u16 w; const u16 h;
+        bool visible = false;
+
+        void clear(u8 col) { for (int p = 0; p < w * h; ++p) pixels[p] = col; }
+        void draw_chr(u16 chr, u16 cx, u16 cy, Color fg, Color bg);
+
+    private:
+        friend class VIC_out;
+
+        u8* pixels;
+        const u8* charrom;
+    };
+
     VIC_out(
         IO::Int_hub& int_hub_, Host::Video_out& vid_out_, Host::Input& host_input_,
-        TheSID& sid_, Overlay& menu_overlay_, C1541_status_panel& c1541_status_,
+        TheSID& sid_, Overlay& menu_overlay_,
+        const C1541::Disk_ctrl::Status& c1541_status_, const u8* charrom_,
         const Performance& perf
     ) :
         int_hub(int_hub_), vid_out(vid_out_), host_input(host_input_),
-        sid(sid_), menu_overlay(menu_overlay_), c1541_status(c1541_status_),
+        sid(sid_), menu_overlay(menu_overlay_), c1541_status_panel(c1541_status_, charrom_),
         frame_rate(perf.frame_rate.chosen), sync_freq(perf.latency.chosen.sync_freq) { }
 
     void set_irq() { int_hub.set(IO::Int_hub::Src::vic); }
@@ -325,7 +303,24 @@ private:
     TheSID& sid;
 
     Overlay& menu_overlay;
-    C1541_status_panel& c1541_status;
+
+    struct C1541_status_panel {
+        static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 16;
+        static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 12;
+
+        static const Color col_bg = Color::black;
+        static const Color col_led_on = Color::light_green;
+        static const Color col_led_off = Color::gray_1;
+
+        C1541_status_panel(const C1541::Disk_ctrl::Status& c1541_status_, const u8* charrom)
+          : c1541_status(c1541_status_), overlay(pos_x, pos_y, 8, 8, charrom) {}
+
+        const C1541::Disk_ctrl::Status& c1541_status;
+        Overlay overlay;
+
+        void update();
+    };
+    C1541_status_panel c1541_status_panel;
 
     const double& frame_rate;
     const u16& sync_freq;
@@ -445,7 +440,11 @@ private:
 
 class Menu {
 public:
-    static constexpr u8 col[2] = {Color::gray_1, Color::light_green}; // bg, fg
+    static const int pos_x = VIC_II::BORDER_SZ_V + 1 * 8;
+    static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 12;
+
+    static const Color col_fg = Color::light_green;
+    static const Color col_bg = Color::gray_1;
 
     Menu(std::initializer_list<std::pair<std::string, std::function<void ()>>> imm_actions_,
         std::initializer_list<std::pair<std::string, std::function<void ()>>> actions_,
@@ -466,12 +465,7 @@ private:
 
     ::Menu::Controller ctrl{&main_menu};
 
-    const u8* charset;
-
-    Overlay overlay{
-        VIC_II::BORDER_SZ_V, MENU_Y,
-        40 * 8, 2 * 8
-    };
+    VIC_out::Overlay vic_out_overlay;
 
     void update();
 };
@@ -524,9 +518,8 @@ public:
         col_ram(s.color_ram),
         vic(s.vic, s.ram, col_ram, rom.charr, addr_space.exp.romh_r, s.rdy_low, vic_out),
         c1541(cia2.port_a.ext_in, rom.c1541/*, run_cfg_change*/),
-        c1541_status_panel{c1541.dc.status, rom.charr},
         vid_out(perf.frame_rate.chosen),
-        vic_out(int_hub, vid_out, host_input, sid, menu.overlay, c1541_status_panel, perf),
+        vic_out(int_hub, vid_out, host_input, sid, menu.vic_out_overlay, c1541.dc.status, rom.charr, perf),
         int_hub(cpu),
         input_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in, vic),
         addr_space(s.ram, rom, cia1, cia2, sid, vic, col_ram),
@@ -627,8 +620,6 @@ public:
     C1541::System c1541;
 
 private:
-    C1541_status_panel c1541_status_panel;
-
     Host::Video_out vid_out;
     VIC_out vic_out;
 

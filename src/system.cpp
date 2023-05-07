@@ -179,32 +179,13 @@ const u8 System::Address_space::Mode_to_PLA_idx[32] = {
 };
 
 
-void System::C1541_status_panel::draw() {
-    auto draw_char = [&](u16 chr, u16 chr_x, u16 chr_y, Color fg, Color bg) {
-        const u8* src = &charrom[chr * 8];
-        for (int px_row = 0; px_row < 8; ++px_row, ++src) {
-            u8* tgt = &overlay.pixels[(px_row + chr_y) * overlay.w + chr_x];
-            for (u8 px = 0b10000000; px; px >>= 1) *tgt++ = (*src & px) ? fg : bg;
-        }
-    };
 
-    static constexpr u16 pad_left = 3;
-    static constexpr u16 pad_top  = 1;
-
-    static constexpr u16 ch_zero   = 0x0030;
-    static constexpr u16 ch_led_wp = 0x0051;
-    static constexpr u16 ch_led    = 0x0057;
-
-    const auto x = pad_left;
-    const auto y = pad_top;
-    const auto led_ch = status.wp_off() ? ch_led : ch_led_wp;
-    const auto led_col = status.led_on() ? Color::light_green : Color::gray_1;
-    draw_char(led_ch, x, y, led_col, col_bg);
-
-    const auto track_n = (status.head.track_n / 2) + 1;
-    const auto tn_col = status.head.active() ? Color::green : Color::gray_2;
-    draw_char(ch_zero + track_n / 10, x + 8 + 2,  y, tn_col, col_bg);
-    draw_char(ch_zero + track_n % 10, x + 16 + 2, y, tn_col, col_bg);
+void System::VIC_out::Overlay::draw_chr(u16 chr, u16 cx, u16 cy, Color fg, Color bg) {
+    const u8* src = &charrom[chr * 8];
+    for (int px_row = 0; px_row < 8; ++px_row, ++src) {
+        u8* tgt = &pixels[(px_row + cy) * w + cx];
+        for (u8 px = 0b10000000; px; px >>= 1) *tgt++ = (*src & px) ? fg : bg;
+    }
 }
 
 
@@ -223,18 +204,17 @@ void System::VIC_out::frame(u8* frame) {
 
         if (menu_overlay.visible) {
             output_overlay(menu_overlay);
-            output_overlay(c1541_status.overlay);
-            c1541_status.overlay.visible = true; // forces to update
-        } else if (c1541_status.overlay.visible) {
-            output_overlay(c1541_status.overlay);
+            c1541_status_panel.update();
+            output_overlay(c1541_status_panel.overlay);
+        } else if (c1541_status_panel.c1541_status.head.active()) {
+            c1541_status_panel.update();
+            output_overlay(c1541_status_panel.overlay);
         }
 
         vid_out.put(frame);
     };
 
     host_input.poll();
-
-    c1541_status.update();
 
     watch.stop();
 
@@ -255,17 +235,36 @@ void System::VIC_out::frame(u8* frame) {
 }
 
 
+void System::VIC_out::C1541_status_panel::update() {
+    static const u16 ch_led_wp = 0x0051;
+    static const u16 ch_led    = 0x0057;
+
+    const auto led_ch = c1541_status.wp_off() ? ch_led : ch_led_wp;
+    const auto led_col = c1541_status.led_on() ? col_led_on : col_led_off;
+    overlay.draw_chr(led_ch, 0, 0, led_col, col_bg);
+
+    /*
+    static constexpr u16 ch_zero   = 0x0030;
+    const auto track_n = (status.head.track_n / 2) + 1;
+    const auto tn_col = status.head.active() ? Color::green : Color::gray_2;
+    draw_char(ch_zero + track_n / 10, x + 8 + 2,  y, tn_col, col_bg);
+    draw_char(ch_zero + track_n % 10, x + 16 + 2, y, tn_col, col_bg);
+    */
+}
+
+
+
 System::Menu::Menu(std::initializer_list<std::pair<std::string, std::function<void ()>>> imm_actions_,
     std::initializer_list<std::pair<std::string, std::function<void ()>>> actions_,
     std::initializer_list<::Menu::Group> subs_,
     const u8* charrom)
-  : subs(subs_), charset(&charrom[256 * 8]) // using the 'lower case' half
+  : subs(subs_), vic_out_overlay(pos_x, pos_y, 36 * 8, 8, charrom)
 {
     auto Imm_action = [&](const std::pair<std::string, std::function<void ()>>& a) {
-        return ::Menu::Kludge(a.first, [act = a.second, &vis = overlay.visible](){ act(); vis = false; return nullptr; });
+        return ::Menu::Kludge(a.first, [act = a.second, &vis = vic_out_overlay.visible](){ act(); vis = false; return nullptr; });
     };
     auto Action = [&](const std::pair<std::string, std::function<void ()>>& a) {
-        return ::Menu::Action(a.first, [act = a.second, &vis = overlay.visible](){ act(); vis = false; return nullptr; });
+        return ::Menu::Action(a.first, [act = a.second, &vis = vic_out_overlay.visible](){ act(); vis = false; return nullptr; });
     };
 
     for (auto a : imm_actions_) imm_actions.push_back(Imm_action(a));
@@ -288,14 +287,14 @@ System::Menu::Menu(std::initializer_list<std::pair<std::string, std::function<vo
 void System::Menu::handle_key(u8 code) {
     using kc = Key_code::System;
 
-    if (overlay.visible) {
+    if (vic_out_overlay.visible) {
         switch (code) {
             case kc::menu_ent:  ctrl.key_enter(); break;
             case kc::menu_up:   ctrl.key_up();    break;
             case kc::menu_down: ctrl.key_down();  break;
         }
     } else {
-        overlay.visible = true;
+        vic_out_overlay.visible = true;
     }
 
     update();
@@ -303,27 +302,20 @@ void System::Menu::handle_key(u8 code) {
 
 
 void System::Menu::toggle_visibility()  {
-    if (!overlay.visible) ctrl.select(&main_menu);
-    overlay.visible = !overlay.visible;
+    if (!vic_out_overlay.visible) ctrl.select(&main_menu);
+    vic_out_overlay.visible = !vic_out_overlay.visible;
     update();
 }
 
 
 void System::Menu::update() {
-    overlay.clear(col[0]);
+    vic_out_overlay.clear(col_bg);
 
     const std::string text = ctrl.state();
-    auto text_x = 4; // (overlay.w - (text.length() * 8)) / 2; // centered
-
-    for (u8 ci = 0; ci < text.length(); ++ci) {
-        for (int px_row = 0; px_row < 8; ++px_row) {
-            auto c = text[ci] % 64; // map ascii code to character data (subset)
-            const u8* pixels = &charset[(8 * c) + px_row];
-            u8* tgt = &overlay.pixels[text_x + ci * 8 + 2 * px_row * overlay.w];
-            for (int px = 7; px >= 0; --px, ++tgt) {
-                *tgt = *(tgt + overlay.w) = col[(*pixels >> px) & 0x1];
-            }
-        }
+    auto x = 4;
+    for (u8 ci = 0; ci < text.length(); ++ci, x += 8) {
+        const auto c = (text[ci] % 64) + 256; // map ascii code to petscii (using the 'lower case' half)
+        vic_out_overlay.draw_chr(c, x, 0, col_fg, col_bg);
     }
 }
 
