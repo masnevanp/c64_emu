@@ -66,7 +66,7 @@ static constexpr u8 crt_signature[] = {
 
 
 
-Files::Type file_type(const std::vector<u8>& file) {
+Files::Img::Type file_type(const std::vector<u8>& file) {
     auto is_crt = [&]() {
         return std::size(file) >= CRT_SIZE_MIN
                     && std::equal(std::begin(crt_signature), std::end(crt_signature),
@@ -96,13 +96,37 @@ Files::Type file_type(const std::vector<u8>& file) {
 
     auto is_raw = [&]() { return std::size(file) > 0 && std::size(file) <= C64_BIN_SIZE_MAX; };
 
-    if (is_crt()) return Files::Type::crt;
-    if (is_t64()) return Files::Type::t64;
-    if (is_g64()) return Files::Type::g64;
-    if (is_d64()) return Files::Type::d64;
-    if (is_raw()) return Files::Type::raw;
+    using Type = Files::Img::Type;
 
-    return Files::Type::unsupported;
+    if (is_crt()) return Type::crt;
+    if (is_t64()) return Type::t64;
+    if (is_g64()) return Type::g64;
+    if (is_d64()) return Type::d64;
+    if (is_raw()) return Type::raw;
+
+    return Type::unknown;
+}
+
+
+Files::Img Files::read_img_file(const std::string& path) {
+    const auto fs_path = fs::path(path);
+    const auto name = fs_path.filename().string();
+
+    if (fs::file_size(fs_path) <= HD_FILE_SIZE_MAX) {
+        if (auto data = read_file(path)) {
+            return Img{
+                file_type(*data),
+                name,
+                *data
+            };
+        }
+    }
+
+    return Img{
+        Img::Type::unknown,
+        name,
+        std::vector<u8>(0)
+    };
 }
 
 
@@ -298,66 +322,65 @@ private:
     }
 
     load_result load_hd_file(const fs::path& path, const std::string& what) {
-        if (fs::file_size(path) > HD_FILE_SIZE_MAX) return NOT_FOUND;
+        using Type = Files::Img::Type;
+        using Iop = Files::Img_op;
 
-        if (auto hd_file = read_file(path.string())) {
-            using Iop = Files::Img_op;
+        auto is_already_mounted = [&]() { return context == path; };
+        auto mount = [&]() { context = path; };
+        auto fwd = [&](Files::Img& img) {
+            img_consumer(img); // might rip the contents (move from img.data)}
+        };
 
-            const auto type = file_type(*hd_file);
-            load_result c64_file{NOT_FOUND};
+        auto img = Files::read_img_file(path.string());
+        load_result c64_file{NOT_FOUND};
 
-            auto is_already_mounted = [&]() { return context == path; };
-            auto mount = [&]() { context = path; };
-            auto fwd = [&]() { // might rip the contents (move from)}
-                img_consumer(path.filename().string(), type, *hd_file);
-            };
+        switch (img.type) {
+            case Type::crt:
+                c64_file = (iops & Iop::inspect)
+                        ? std::vector<u8>(0)  // TODO: print directly to screen (if in direct mode)
+                        : std::vector<u8>(0); // empty file (i.e. op success, nothing loaded)
 
-            switch (type) {
-                case Files::Type::crt:
+                if (iops & Iop::fwd) fwd(img);
+
+                break;
+
+            case Type::t64:
+                c64_file = load_t64(img.data, what);
+                break;
+
+            case Type::d64:
+                if (is_already_mounted()) {
+                    c64_file = load_d64(img.data, what);
+                } else {
                     c64_file = (iops & Iop::inspect)
-                            ? std::vector<u8>(0)  // TODO: print directly to screen (if in direct mode)
-                            : std::vector<u8>(0); // empty file (i.e. op success, nothing loaded)
+                        ? load_d64(img.data, "$") // TODO: print directly to screen (if in direct mode)
+                        : std::vector<u8>(0); // empty file (i.e. op success, nothing loaded)
 
-                    if (iops & Iop::fwd) fwd();
+                    if (iops & Iop::mount) mount();
+                    if (iops & Iop::fwd) fwd(img);
+                }
 
-                    break;
+                break;
 
-                case Files::Type::t64: c64_file = load_t64(*hd_file, what); break;
+            case Type::g64:
+                // TODO: handle as d64 is handled
+                if (iops & Iop::fwd) {
+                    fwd(img);
+                    c64_file = std::vector<u8>(0);
+                }
 
-                case Files::Type::d64:
-                    if (is_already_mounted()) {
-                        c64_file = load_d64(*hd_file, what);
-                    } else {
-                        c64_file = (iops & Iop::inspect)
-                            ? load_d64(*hd_file, "$") // TODO: print directly to screen (if in direct mode)
-                            : std::vector<u8>(0); // empty file (i.e. op success, nothing loaded)
+                break;
 
-                        if (iops & Iop::mount) mount();
-                        if (iops & Iop::fwd) fwd();
-                    }
+            case Type::raw:
+                c64_file = std::move(img.data);
+                break;
 
-                    break;
-
-                case Files::Type::g64:
-                    // TODO: handle as d64 is handled
-                    if (iops & Iop::fwd) {
-                        fwd();
-                        c64_file = std::vector<u8>(0);
-                    }
-
-                    break;
-
-                case Files::Type::raw: c64_file = *hd_file; break;
-
-                case Files::Type::unsupported:
-                default:
-                    return NOT_FOUND;
-            }
-
-            return c64_file;
+            case Type::unknown:
+            default:
+                return NOT_FOUND;
         }
 
-        return NOT_FOUND;
+        return c64_file;
     }
 
     load_result load_hd(const std::string& what);

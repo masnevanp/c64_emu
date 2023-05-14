@@ -684,6 +684,16 @@ private:
                 case kc::menu_up:
                 case kc::menu_down: menu.handle_key(code);        break;
             }
+        },
+
+        // file drop
+        [this](const char* filepath) {
+            std::cout << "\nDrop: " << filepath << std::endl;
+            auto img = Files::read_img_file(filepath);
+            img_consumer(img);
+            // Could also just use the loader: loader(filepath, Files::Img_op::fwd);
+            // but that would require some changes to the loader
+            // (e.g. if a disk is mounted, then other 'incoming' disks are ignored currently..)
         }
     };
 
@@ -725,31 +735,35 @@ private:
     };
 
     Files::consumer img_consumer {
-        [this](std::string name, Files::Type type, std::vector<u8>& data) {
-            // std::cout << "File: " << path << ' ' << (int)data.size() << std::endl;
+        [this](Files::Img& img) {
+            using Type = Files::Img::Type;
 
-            switch (type) {
-                case Files::Type::crt: {
-                    Files::CRT crt{data};
+            switch (img.type) {
+                case Type::crt: {
+                    Files::CRT crt{img.data};
                     if (crt.header().valid()) {
                         if (Cartridge::attach(crt, exp_ctx)) reset_cold();
                     } else {
-                        std::cout << "CRT: invalid header" << std::endl;
+                        std::cout << "CRT img: invalid header" << std::endl;
                     }
                     break;
                 }
-                case Files::Type::d64:
+                case Type::d64:
                     // auto slot = s.ram[0xb9]; // secondary address
                     // slot=0 --> first free slot
-                    c1541.disk_carousel.insert(0, new C1541::D64_disk(Files::D64{data}), name);
+                    c1541.disk_carousel.insert(0,
+                            new C1541::D64_disk(Files::D64{img.data}), img.name);
                     break;
-                case Files::Type::g64:
-                    c1541.disk_carousel.insert(0, new C1541::G64_disk(std::move(data)), name);
+                case Type::g64:
+                    c1541.disk_carousel.insert(0,
+                            new C1541::G64_disk(std::move(img.data)), img.name);
                     break;
                 default:
-                    return;
+                    std::cout << "\nImg ignored: " << img.name << std::endl;
+                    break;
             }
-
+            // TODO: support 't64' (e.g. cold reset & feed the appropriate 'LOAD'
+            // command + 'RETURN' key into the C64 keyboard input buffer)
         }
     };
 

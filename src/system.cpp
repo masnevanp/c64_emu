@@ -414,10 +414,8 @@ void System::C64::do_load() {
     if (!bin || (*bin).size() == 1 || (*bin).size() == 2) {
         cpu.pc = 0xf704; // jmp to 'file not found'
     } else {
-        // NOTE: Loading a file of size 0 'succeeds' (you get the 'READY.', with no errors)
-        // It happens when a disk gets inserted to the disk drive, but the image is
-        // not mounted (by the loader) --> no directory listing generated.
-        // TODO: maybe return a 'variant' instead?
+        // NOTE: File size 0 indicates that the loader operation was a success,
+        // although no binary was returned (so you get the 'READY.', with no errors).
         if ((*bin).size() > 2) inject(*bin);
 
         // 'return' status to kernal routine

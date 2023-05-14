@@ -122,6 +122,7 @@ void Input::poll() { // TODO: filtering?
             case SDL_JOYBUTTONDOWN: handle_joy_btn(true);  break;
             case SDL_JOYBUTTONUP:   handle_joy_btn(false); break;
             case SDL_WINDOWEVENT:   handle_win_ev();       break;
+            case SDL_DROPFILE:      handle_dropfile();     break;
         }
     }
 }

@@ -80,7 +80,7 @@ std::optional<std::vector<u8>> read_file(const std::string& filepath) {
     f.seekg(0);
     f.read((char*)bin.data(), sz);
 
-    std::cout << "Read file '" << filepath << "', " << sz << " bytes " << std::endl;
+    std::cout << "File read: '" << filepath << "', " << sz << " bytes " << std::endl;
 
     return bin;
 }

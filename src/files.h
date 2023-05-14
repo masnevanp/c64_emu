@@ -12,8 +12,30 @@
 
 namespace Files {
 
-enum class Type { crt, t64, d64, g64, raw, unsupported };
+struct Img {
+    enum class Type { crt, t64, d64, g64, raw, unknown };
 
+    const Type type;
+    const std::string name;
+    std::vector<u8> data;
+};
+
+Img read_img_file(const std::string& path);
+
+
+enum Img_op : u8 {
+    fwd  = 0b001, // fwd to consumer
+    mount = 0b010,
+    inspect = 0b100, // e.g. a dir listing (returned as a basic program listing)
+    none = 0,
+};
+
+using load_result = std::optional<std::vector<u8>>;
+using consumer = std::function<void (Files::Img&)>;
+using loader = std::function<load_result(const std::string&, const u8 img_ops)>;
+
+// TODO: --> 'loader.h' ?
+loader Loader(const std::string& init_dir, consumer& img_consumer);
 
 
 struct T64 {
@@ -300,19 +322,6 @@ struct CRT {
         last = T74_HERO,
     };
 };
-
-
-enum Img_op : u8 {
-    fwd  = 0b001, mount = 0b010, inspect = 0b100,
-    none = 0,
-};
-
-using load_result = std::optional<std::vector<u8>>;
-using consumer = std::function<void (std::string, Type, std::vector<u8>&)>;
-using loader = std::function<load_result(const std::string&, const u8 img_ops)>;
-
-loader Loader(const std::string& init_dir, consumer& img_consumer);
-
 
 } // namespace Files
 

@@ -20,6 +20,7 @@ public:
         Sig_key controller_1;
         Sig_key controller_2;
         Sig_key sys;
+        Sig1<const char*> filedrop;
     };
 
     static const u8 JOY_ID_BIT = 0x10; // included in the joy. key code
@@ -81,6 +82,11 @@ private:
                 set_shift_lock();
                 break;
         }
+    }
+
+    void handle_dropfile() {
+        handlers.filedrop(sdl_ev.drop.file);
+        SDL_free(sdl_ev.drop.file);
     }
 
     void set_shift_lock() {
