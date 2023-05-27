@@ -242,7 +242,7 @@ struct CRT {
         const u8 name[32];
 
         bool valid() const { // NOTE: loader checks the signature
-            if (hw_type > Cartridge_HW_type::last) return false;
+            if (hw_type > Cartridge_HW_type::last) return false; // TODO: does this buy anything?
             if (exrom > 1 || game > 1) return false;
 
             return true;
@@ -320,6 +320,13 @@ struct CRT {
         T69_SD_BOX = 69, T70_MultiMAX = 70, T71_Blackbox_V9 = 71,
         T72_Lt_Kernal_Host_Adaptor = 72, T73_RAMLink = 73, T74_HERO = 74,
         last = T74_HERO,
+        REU
+    };
+
+    enum REU_type : u8 {
+        R1700 = 0,
+        R1750 = 1,
+        R1764 = 2
     };
 };
 

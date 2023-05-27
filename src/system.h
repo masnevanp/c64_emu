@@ -778,6 +778,10 @@ private:
 
     std::vector<::Menu::Action> cart_menu_actions{
         {"CARTRIDGE / DETACH ?", [&](){ Cartridge::detach(exp_ctx); reset_cold(); }},
+        {"CARTRIDGE / ATTACH 1764 REU ?", [&]() { // TODO: sub menu with a list of REU types
+            Cartridge::attach(Files::CRT::REU_type::R1764, exp_ctx);
+            reset_cold();
+        }},
     };
 
     Performance perf;

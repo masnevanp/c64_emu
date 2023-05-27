@@ -310,6 +310,34 @@ bool Cartridge::attach(const Files::CRT& crt, Ctx& exp_ctx) {
 }
 
 
+void REU_1764(Ctx& ctx) {
+    std::cout << "CRT: 1764 attach" << std::endl;
+
+    ctx.as.io2_r = [&](const u16& a, u8& d) {
+        std::cout << "1764 io2 r: " << (int)a << std::endl;
+    };
+    ctx.as.io2_w = [&](const u16& a, const u8& d) {
+        std::cout << "1764 io2 w: " << (int)a << std::endl;
+    };
+
+    ctx.reset = [&]() { }; // TODO: aynthing? clear/init mem?
+}
+
+
+bool Cartridge::attach(Files::CRT::REU_type reu_type, Expansion_ctx& exp_ctx) {
+    detach(exp_ctx);
+
+    switch (reu_type) {
+        using T = Files::CRT::REU_type;
+
+        case T::R1764: REU_1764(exp_ctx); return true;
+        default:
+            std::cout << "CRT: unsupported REU type: " << (int)reu_type << std::endl;
+            return false;
+    }
+}
+
+
 void Cartridge::detach(Ctx& exp_ctx) {
     // reading unconnected areas should return whatever is 'floating'
     // on the bus, so this is not 100% accurate, but meh....

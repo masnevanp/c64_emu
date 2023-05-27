@@ -16,6 +16,7 @@ namespace Cartridge {
 
 
 bool attach(const Files::CRT& crt, Expansion_ctx& exp_ctx);
+bool attach(Files::CRT::REU_type reu_type, Expansion_ctx& exp_ctx);
 void detach(Expansion_ctx& exp_ctx);
 
 
