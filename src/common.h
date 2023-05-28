@@ -108,7 +108,7 @@ struct Expansion_ctx {
     u8* sys_ram;
     u64& sys_cycle;
 
-    u8* mem;
+    u8* ram;
 
     std::function<void ()> reset;
 };

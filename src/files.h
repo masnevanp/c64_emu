@@ -320,13 +320,6 @@ struct CRT {
         T69_SD_BOX = 69, T70_MultiMAX = 70, T71_Blackbox_V9 = 71,
         T72_Lt_Kernal_Host_Adaptor = 72, T73_RAMLink = 73, T74_HERO = 74,
         last = T74_HERO,
-        REU
-    };
-
-    enum REU_type : u8 {
-        R1700 = 0,
-        R1750 = 1,
-        R1764 = 2
     };
 };
 

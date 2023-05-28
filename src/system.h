@@ -483,7 +483,7 @@ struct State {
     // emulation control data, ...
     // TODO: dynamic, or meh..? (although 640k is enough for everyone...except easyflash..)
     //       (nasty, if state saving is implemented)
-    u8 exp_mem[640 * 1024];
+    u8 exp_ram[640 * 1024];
 };
 
 
@@ -583,15 +583,19 @@ public:
         for (shutdown = false; !shutdown;) {
             vic.tick();
 
-            const auto rw = cpu.mrw();
-            if (s.rdy_low && rw == NMOS6502::MC::RW::r) {
-                c1541.tick();
+            if (!reu.dma()) {
+                const auto rw = cpu.mrw();
+                if (s.rdy_low && rw == NMOS6502::MC::RW::r) {
+                    c1541.tick();
+                } else {
+                    // 'Slip in' the C1541 cycle
+                    if (rw == NMOS6502::MC::RW::w) c1541.tick();
+                    addr_space.access(cpu.mar(), cpu.mdr(), rw);
+                    cpu.tick();
+                    if (rw == NMOS6502::MC::RW::r) c1541.tick();
+                }
             } else {
-                // 'Slip in' the C1541 cycle
-                if (rw == NMOS6502::MC::RW::w) c1541.tick();
-                addr_space.access(cpu.mar(), cpu.mdr(), rw);
-                cpu.tick();
-                if (rw == NMOS6502::MC::RW::r) c1541.tick();
+                c1541.tick();
             }
 
             cia1.tick(s.vic.cycle);
@@ -618,6 +622,8 @@ public:
     VIC vic;
 
     C1541::System c1541;
+
+    Cartridge::REU reu;
 
 private:
     Host::Video_out vid_out;
@@ -778,10 +784,7 @@ private:
 
     std::vector<::Menu::Action> cart_menu_actions{
         {"CARTRIDGE / DETACH ?", [&](){ Cartridge::detach(exp_ctx); reset_cold(); }},
-        {"CARTRIDGE / ATTACH 1764 REU ?", [&]() { // TODO: sub menu with a list of REU types
-            Cartridge::attach(Files::CRT::REU_type::R1764, exp_ctx);
-            reset_cold();
-        }},
+        {"CARTRIDGE / ATTACH REU ?", [&]() { if (reu.attach(exp_ctx)) reset_cold(); }},
     };
 
     Performance perf;
@@ -809,7 +812,7 @@ private:
     Files::loader loader;
 
     Expansion_ctx exp_ctx{
-        addr_space.exp, s.ram, s.vic.cycle, s.exp_mem, nullptr
+        addr_space.exp, s.ram, s.vic.cycle, s.exp_ram, nullptr
     };
 
     static void install_tape_kernal_traps(u8* kernal, u8 trap_opc);
