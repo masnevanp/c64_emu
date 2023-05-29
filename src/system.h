@@ -583,7 +583,7 @@ public:
         for (shutdown = false; !shutdown;) {
             vic.tick();
 
-            if (!reu.dma()) {
+            if (!reu.dma()) { // TODO: check BA first!! (rdy_low)
                 const auto rw = cpu.mrw();
                 if (s.rdy_low && rw == NMOS6502::MC::RW::r) {
                     c1541.tick();
