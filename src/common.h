@@ -86,10 +86,13 @@ private:
 // gather everything required by an expansion (e.g. cart)
 // (TODO: nmi/irq when needed...)
 struct Expansion_ctx {
-    struct Address_space {
+    struct IO {
+        IO(const u16& ba_low_, u16& dma_low_) : ba_low(ba_low_), dma_low(dma_low_) {}
+
         using r = std::function<void (const u16& addr, u8& data)>;
         using w = std::function<void (const u16& addr, const u8& data)>;
 
+        // sys -> exp
         r roml_r;
         w roml_w;
         r romh_r;
@@ -100,16 +103,22 @@ struct Expansion_ctx {
         r io2_r;
         w io2_w;
 
+        const u16& ba_low; // low == active
+
+        // exp -> sys
         std::function<void (bool e, bool g)> exrom_game;
+
+        u16& dma_low; // low == active
     };
 
-    Address_space& as;
+    IO& io;
 
     u8* sys_ram;
     u64& sys_cycle;
 
     u8* ram;
 
+    std::function<void ()> tick;
     std::function<void ()> reset;
 };
 

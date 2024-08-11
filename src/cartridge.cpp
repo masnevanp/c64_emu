@@ -67,8 +67,8 @@ static const auto& not_attached = std::nullopt;
 Result T0_Normal_cartridge(const Files::CRT& crt, Ctx& ctx) {
     if (load_static_chips(crt, ctx) == 0) return not_attached;
 
-    ctx.as.roml_r = [&](const u16& a, u8& d) { d = ctx.ram[a]; };
-    ctx.as.romh_r = [&](const u16& a, u8& d) { d = ctx.ram[0x2000 + a]; };
+    ctx.io.roml_r = [&](const u16& a, u8& d) { d = ctx.ram[a]; };
+    ctx.io.romh_r = [&](const u16& a, u8& d) { d = ctx.ram[0x2000 + a]; };
 
     return exrom_game(crt);
 }
@@ -78,21 +78,21 @@ Result T4_Simons_BASIC(const Files::CRT& crt, Ctx& ctx) {
     if (load_static_chips(crt, ctx) != 2) return not_attached;
 
     struct romh_active {
-        void operator=(bool act) { _c.as.exrom_game(false, !act); }
+        void operator=(bool act) { _c.io.exrom_game(false, !act); }
         Ctx& _c;
     };
 
-    ctx.as.roml_r = [&](const u16& a, u8& d) {
+    ctx.io.roml_r = [&](const u16& a, u8& d) {
         d = ctx.ram[a];
     };
-    ctx.as.romh_r = [&](const u16& a, u8& d) {
+    ctx.io.romh_r = [&](const u16& a, u8& d) {
         d = ctx.ram[0x2000 + a];
     };
 
-    ctx.as.io1_r = [&](const u16& a, u8& d) { UNUSED(a); UNUSED(d);
+    ctx.io.io1_r = [&](const u16& a, u8& d) { UNUSED(a); UNUSED(d);
         romh_active{ctx} = false;
     };
-    ctx.as.io1_w = [&](const u16& a, const u8& d) { UNUSED(a); UNUSED(d);
+    ctx.io.io1_w = [&](const u16& a, const u8& d) { UNUSED(a); UNUSED(d);
         romh_active{ctx} = true;
     };
 
@@ -130,12 +130,12 @@ Result T5_Ocean_type_1(const Files::CRT& crt, Ctx& ctx) {
     const bool game = (banks == 64);
 
     if (!game) {
-        ctx.as.romh_r = [&](const u16& a, u8& d) { d = ctx.ram[bank{ctx} + a]; };
+        ctx.io.romh_r = [&](const u16& a, u8& d) { d = ctx.ram[bank{ctx} + a]; };
     }
 
-    ctx.as.roml_r = [&](const u16& a, u8& d) { d = ctx.ram[bank{ctx} + a]; };
+    ctx.io.roml_r = [&](const u16& a, u8& d) { d = ctx.ram[bank{ctx} + a]; };
 
-    ctx.as.io1_w = [&](const u16& a, const u8& d) {
+    ctx.io.io1_w = [&](const u16& a, const u8& d) {
         if (a == 0x0e00) bank{ctx} = d & 0b00111111;
     };
 
@@ -156,7 +156,7 @@ Result T10_Epyx_Fastload(const Files::CRT& crt, Ctx& ctx) {
         u64& _inact_at() const { return *(u64*)&_c.ram[0x2000]; }
     };
 
-    ctx.as.roml_r = [&](const u16& a, u8& d) {
+    ctx.io.roml_r = [&](const u16& a, u8& d) {
         if (status{ctx}.inactive()) {
             d = ctx.sys_ram[0x8000 + a];
         } else {
@@ -165,10 +165,10 @@ Result T10_Epyx_Fastload(const Files::CRT& crt, Ctx& ctx) {
         }
     };
 
-    ctx.as.io1_r = [&](const u16& a, u8& d) { UNUSED(a); UNUSED(d);
+    ctx.io.io1_r = [&](const u16& a, u8& d) { UNUSED(a); UNUSED(d);
         status{ctx}.activate();
     };
-    ctx.as.io2_r = [&](const u16& a, u8& d) {
+    ctx.io.io2_r = [&](const u16& a, u8& d) {
         d = ctx.ram[0x1f00 | (a & 0x00ff)];
     };
 
@@ -185,33 +185,33 @@ Result T16_Warp_Speed(const Files::CRT& crt, Ctx& ctx) {
         operator bool() const { return _c.ram[0x4000]; }
         void operator=(bool act) {
             _c.ram[0x4000] = act;
-            _c.as.exrom_game(!act, !act);
+            _c.io.exrom_game(!act, !act);
         }
 
         Ctx& _c;
     };
 
-    ctx.as.roml_r = [&](const u16& a, u8& d) {
+    ctx.io.roml_r = [&](const u16& a, u8& d) {
         d = active{ctx}
                 ? ctx.ram[0x0000 + a]
                 : ctx.sys_ram[0x8000 + a];
     };
-    ctx.as.romh_r = [&](const u16& a, u8& d) {
+    ctx.io.romh_r = [&](const u16& a, u8& d) {
         d = active{ctx}
                 ? ctx.ram[0x2000 + a]
                 : ctx.sys_ram[0xa000 + a];
     };
 
-    ctx.as.io1_r = [&](const u16& a, u8& d) {
+    ctx.io.io1_r = [&](const u16& a, u8& d) {
         d = ctx.ram[0x1e00 | (a & 0x00ff)];
     };
-    ctx.as.io2_r = [&](const u16& a, u8& d) {
+    ctx.io.io2_r = [&](const u16& a, u8& d) {
         d = ctx.ram[0x1f00 | (a & 0x00ff)];
     };
-    ctx.as.io1_w = [&](const u16& a, const u8& d) { UNUSED(a); UNUSED(d);
+    ctx.io.io1_w = [&](const u16& a, const u8& d) { UNUSED(a); UNUSED(d);
         active{ctx} = true;
     };
-    ctx.as.io2_w = [&](const u16& a, const u8& d) { UNUSED(a); UNUSED(d);
+    ctx.io.io2_w = [&](const u16& a, const u8& d) { UNUSED(a); UNUSED(d);
         active{ctx} = false;
     };
 
@@ -231,11 +231,11 @@ Result T18_Zaxxon_Super_Zaxxon_SEGA(const Files::CRT& crt, Ctx& ctx) {
         Ctx& _c;
     };
 
-    ctx.as.roml_r = [&](const u16& a, u8& d) {
+    ctx.io.roml_r = [&](const u16& a, u8& d) {
         romh_base{ctx} = 0x1000 | ((a & 0x1000) << 1);
         d = ctx.ram[a & 0x0fff];
     };
-    ctx.as.romh_r = [&](const u16& a, u8& d) {
+    ctx.io.romh_r = [&](const u16& a, u8& d) {
         d = ctx.ram[romh_base{ctx} + a];
     };
 
@@ -247,18 +247,18 @@ Result T51_MACH_5(const Files::CRT& crt, Ctx& ctx) {
     if (load_static_chips(crt, ctx) != 1) return not_attached;
 
     struct active {
-        void operator=(bool act) { _c.as.exrom_game(!act, true); }
+        void operator=(bool act) { _c.io.exrom_game(!act, true); }
         Ctx& _c;
     };
 
-    ctx.as.roml_r = [&](const u16& a, u8& d) { d = ctx.ram[a]; };
+    ctx.io.roml_r = [&](const u16& a, u8& d) { d = ctx.ram[a]; };
 
-    ctx.as.io1_r = [&](const u16& a, u8& d) { d = ctx.ram[0x1e00 | (a & 0x00ff)]; };
-    ctx.as.io2_r = [&](const u16& a, u8& d) { d = ctx.ram[0x1f00 | (a & 0x00ff)]; };
-    ctx.as.io1_w = [&](const u16& a, const u8& d) { UNUSED(a); UNUSED(d);
+    ctx.io.io1_r = [&](const u16& a, u8& d) { d = ctx.ram[0x1e00 | (a & 0x00ff)]; };
+    ctx.io.io2_r = [&](const u16& a, u8& d) { d = ctx.ram[0x1f00 | (a & 0x00ff)]; };
+    ctx.io.io1_w = [&](const u16& a, const u8& d) { UNUSED(a); UNUSED(d);
         active{ctx} = true;
     };
-    ctx.as.io2_w = [&](const u16& a, const u8& d) { UNUSED(a); UNUSED(d);
+    ctx.io.io2_w = [&](const u16& a, const u8& d) { UNUSED(a); UNUSED(d);
         active{ctx} = false;
     };
 
@@ -302,7 +302,7 @@ bool Cartridge::attach(const Files::CRT& crt, Ctx& exp_ctx) {
     }
 
     if (result) {
-        exp_ctx.as.exrom_game((*result).exrom, (*result).game);
+        exp_ctx.io.exrom_game((*result).exrom, (*result).game);
         return true;
     }
 
@@ -313,39 +313,23 @@ bool Cartridge::attach(const Files::CRT& crt, Ctx& exp_ctx) {
 void Cartridge::detach(Ctx& exp_ctx) {
     // reading unconnected areas should return whatever is 'floating'
     // on the bus, so this is not 100% accurate, but meh....
-    static Expansion_ctx::Address_space::r null_r { [](const u16& a, u8& d) { UNUSED(a); UNUSED(d); } };
-    static Expansion_ctx::Address_space::w null_w { [](const u16& a, const u8& d) { UNUSED(a); UNUSED(d); } };
+    static Expansion_ctx::IO::r null_r { [](const u16& a, u8& d) { UNUSED(a); UNUSED(d); } };
+    static Expansion_ctx::IO::w null_w { [](const u16& a, const u8& d) { UNUSED(a); UNUSED(d); } };
 
-    exp_ctx.as.roml_r = null_r;
-    exp_ctx.as.roml_w = null_w;
-    exp_ctx.as.romh_r = null_r;
-    exp_ctx.as.romh_w = null_w;
+    exp_ctx.io.roml_r = null_r;
+    exp_ctx.io.roml_w = null_w;
+    exp_ctx.io.romh_r = null_r;
+    exp_ctx.io.romh_w = null_w;
 
-    exp_ctx.as.io1_r = null_r;
-    exp_ctx.as.io1_w = null_w;
-    exp_ctx.as.io2_r = null_r;
-    exp_ctx.as.io2_w = null_w;
+    exp_ctx.io.io1_r = null_r;
+    exp_ctx.io.io1_w = null_w;
+    exp_ctx.io.io2_r = null_r;
+    exp_ctx.io.io2_w = null_w;
 
-    exp_ctx.as.exrom_game(true, true);
+    exp_ctx.io.exrom_game(true, true);
 
+    exp_ctx.io.dma_low = false;
+
+    exp_ctx.tick = nullptr;
     exp_ctx.reset = [](){};
-}
-
-
-bool Cartridge::REU::attach(Expansion_ctx& exp_ctx) {
-    // TODO: check if already attached (prevent re-init & system reset)
-    //       (e.g. somehow check if exp_ctx already has reu ops connected...?)
-    //       (or might need to add a flag/status --> requires notification on detach)
-
-    std::cout << "CRT: REU attach" << std::endl;
-
-    detach(exp_ctx);
-
-    pre_attach();
-
-    exp_ctx.as.io2_r = io2_r;
-    exp_ctx.as.io2_w = io2_w;
-    exp_ctx.reset = reset;
-
-    return true;
 }
