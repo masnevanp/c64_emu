@@ -11,11 +11,18 @@
         https://sourceforge.net/p/vice-emu/code/HEAD/tree/trunk/vice/src/c64/cart/
 */
 
+/*
+    REU support is possible only thanks to this:
+        Wolfgang Moser: Technical Reference Documentation - Commodore RAM Expansion Unit Controller - 8726R1
+*/
+
 
 namespace Cartridge {
 
 bool attach(const Files::CRT& crt, Expansion_ctx& exp_ctx);
 void detach(Expansion_ctx& exp_ctx);
+
+bool attach_REU(Expansion_ctx& exp_ctx);
 
 }
 

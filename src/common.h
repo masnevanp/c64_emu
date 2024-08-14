@@ -87,7 +87,10 @@ private:
 // (TODO: nmi/irq when needed...)
 struct Expansion_ctx {
     struct IO {
-        IO(const u16& ba_low_, u16& dma_low_) : ba_low(ba_low_), dma_low(dma_low_) {}
+        IO(const u16& ba_low_,
+            std::function<void (const u16&, u8&)> sys_addr_space_read_,
+            u16& dma_low_)
+          : ba_low(ba_low_), sys_addr_space_read(sys_addr_space_read_), dma_low(dma_low_) {}
 
         using r = std::function<void (const u16& addr, u8& data)>;
         using w = std::function<void (const u16& addr, const u8& data)>;
@@ -106,6 +109,7 @@ struct Expansion_ctx {
         const u16& ba_low; // low == active
 
         // exp -> sys
+        std::function<void (const u16&, u8&)> sys_addr_space_read;
         std::function<void (bool e, bool g)> exrom_game;
 
         u16& dma_low; // low == active

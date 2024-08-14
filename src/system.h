@@ -18,7 +18,6 @@
 #include "menu.h"
 #include "files.h"
 #include "cartridge.h"
-#include "reu.h"
 
 
 
@@ -32,7 +31,6 @@ using CIA = CIA::Core;
 using TheSID = reSID_Wrapper; // 'The' due to nameclash
 using VIC = VIC_II::Core<VIC_out>;
 using Color_RAM = VIC_II::Color_RAM;
-using REU = REU::Core<Address_space>;
 
 
 
@@ -629,8 +627,6 @@ public:
 
     C1541::System c1541;
 
-    REU reu{addr_space};
-
 private:
     Performance perf;
 
@@ -792,7 +788,7 @@ private:
 
     std::vector<::Menu::Action> cart_menu_actions{
         {"CARTRIDGE / DETACH ?", [&](){ Cartridge::detach(exp_ctx); reset_cold(); }},
-        {"CARTRIDGE / ATTACH REU ?", [&]() { if (reu.attach(exp_ctx)) reset_cold(); }},
+        {"CARTRIDGE / ATTACH REU ?", [&]() { if ( Cartridge::attach_REU(exp_ctx)) reset_cold(); }},
     };
 
     std::vector<::Menu::Knob> perf_menu_items{
@@ -818,7 +814,14 @@ private:
 
     Files::loader loader;
 
-    Expansion_ctx::IO exp_io{s.ba_low, s.dma_low};
+    Expansion_ctx::IO exp_io{
+        s.ba_low,
+        //std::bind(&Address_space::access, addr_space, std::placeholders::_1),
+        [this](const u16& a, u8& d) {
+            addr_space.access(a, d, NMOS6502::MC::RW::r);
+        },
+        s.dma_low
+    };
     Expansion_ctx exp_ctx{
         exp_io, s.ram, s.vic.cycle, s.exp_ram, nullptr, nullptr
     };
