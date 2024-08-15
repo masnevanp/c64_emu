@@ -335,7 +335,8 @@ void Cartridge::detach(Ctx& exp_ctx) {
 }
 
 
-namespace REU {
+class REU {
+public:
     enum R : u8 {
         status = 0, cmd, saddr_l, saddr_h, raddr_l, raddr_h, raddr_b, tlen_l,
         tlen_h, int_mask, addr_ctrl
@@ -370,6 +371,68 @@ namespace REU {
         fix_s = 0b10000000, fix_r = 0b01000000, unused_ac = 0b00111111,
     };
 
+    REU(Ctx& exp_ctx_) : exp_ctx(exp_ctx_) {}
+
+    bool attach() {
+        // pre_attach();
+
+        exp_ctx.io.io2_r = [&](const u16& a, u8& d) {
+            std::cout << "REU io2 r: " << (int)a << std::endl;
+
+            switch (a & 0b11111) {
+                case REU::R::status:
+                    d = r.status | REU::R_status::sz_1764 | REU::R_status::chip_ver_1764;
+                    r.status = 0x00;
+                    return;
+                case REU::R::cmd:       d = r.cmd;        return;
+                case REU::R::saddr_l:   d = r.saddr;      return;
+                case REU::R::saddr_h:   d = r.saddr >> 8; return;
+                case REU::R::raddr_l:   d = r.raddr;      return;
+                case REU::R::raddr_h:   d = r.raddr >> 8; return;
+                case REU::R::raddr_b:   d = (r.raddr | REU::R_raddr::raddr_unused) >> 16; return;
+                case REU::R::tlen_l:    d = r.tlen;       return;
+                case REU::R::tlen_h:    d = r.tlen >> 8;  return;
+                case REU::R::int_mask:  d = r.int_mask;   return;
+                case REU::R::addr_ctrl: d = r.addr_ctrl;  return;
+                default:           d = 0xff;         return;
+            }
+        };
+
+        exp_ctx.io.io2_w = [&](const u16& a, const u8& d) {
+            std::cout << "REU io2 w: " << (int)a << std::endl;
+            switch (a & 0b11111) {
+                case REU::R::status: return; // read-only
+                case REU::R::cmd:    init_op(); return;
+                case REU::R::saddr_l:   r.saddr = (r.saddr & 0xff00) | d;        return;
+                case REU::R::saddr_h:   r.saddr = (r.saddr & 0x00ff) | (d << 8); return;
+                case REU::R::raddr_l:   r.raddr = (r.raddr & ~REU::R_raddr::raddr_lo) | d;          return;
+                case REU::R::raddr_h:   r.raddr = (r.raddr & ~REU::R_raddr::raddr_hi) | (d << 8);   return;
+                case REU::R::raddr_b:   r.raddr = (r.raddr & ~REU::R_raddr::raddr_bank) | (d << 8); return;
+                case REU::R::tlen_l:    r.tlen = (r.tlen & 0xff00) | d;          return;
+                case REU::R::tlen_h:    r.tlen = (r.tlen & 0x00ff) | (d << 8);   return;
+                case REU::R::int_mask:  r.int_mask = d | REU::R_int_mask::unused_im;   return; 
+                case REU::R::addr_ctrl: r.addr_ctrl = d | REU::R_addr_ctrl::unused_ac; return; 
+                default: return;
+            }
+        };
+
+        exp_ctx.reset = [&]() {
+            std::cout << "REU reset" << std::endl;
+
+            r.status = 0x00;
+            r.cmd = 0b00000000 | REU::R_cmd::ff00_trig;
+            r.saddr = 0x0000;
+            r.raddr = 0x0000; // unused bits get 'set' when reading the reg (i.e. raddr_b appears to be 0xf8 after reset)
+            r.tlen = 0xffff;
+            r.int_mask = 0x00;
+            r.addr_ctrl = 0x00;
+
+            exp_ctx.io.dma_low = false;
+        };
+
+        return true;
+    }
+private:
     struct Reg_file {
         u32 raddr;
         u16 saddr;
@@ -380,9 +443,36 @@ namespace REU {
         u8 addr_ctrl;
     };
 
-    struct State {
-        Reg_file r;
+    Reg_file r;
+
+    Ctx& exp_ctx;
+
+    void init_op() {
+        exp_ctx.tick = tick_start;
+    }
+
+    std::function<void ()> tick_start {
+        [this] {
+            std::cout << "tick_start\n";
+            exp_ctx.tick = tick_do_it;
+            exp_ctx.io.dma_low = true;
+        }
     };
+
+    std::function<void ()> tick_do_it {
+        [this] {
+            std::cout << "tick_do_it\n";
+            if (!exp_ctx.io.ba_low) {
+                done();
+            }
+        }
+    };
+
+    void done() {
+        std::cout << "done\n";
+        exp_ctx.tick = nullptr;
+        exp_ctx.io.dma_low = false;
+    }
 };
 
 
@@ -391,91 +481,16 @@ namespace REU {
       (http://codebase64.org/doku.php?id=base:reu_registers)
 */
 
-static REU::State reu; // TODO: allocate in expansion ram
 
 bool Cartridge::attach_REU(Ctx& exp_ctx) {
     // TODO: check if already atexp_ctxtached (prevent re-init & system reset)
     //       (e.g. somehow check if exp_ctx already has reu ops connected...?)
     //       (or might need to add a flag/status --> requires notification on detach)
-    using namespace REU;
 
     std::cout << "CRT: REU attach" << std::endl;
 
     Cartridge::detach(exp_ctx);
 
-    // pre_attach();
-    Reg_file& r = reu.r;
-
-    exp_ctx.io.io2_r = [&](const u16& a, u8& d) {
-        std::cout << "REU io2 r: " << (int)a << std::endl;
-
-        switch (a & 0b11111) {
-            case R::status:
-                d = r.status | R_status::sz_1764 | R_status::chip_ver_1764;
-                r.status = 0x00;
-                return;
-            case R::cmd:       d = r.cmd;        return;
-            case R::saddr_l:   d = r.saddr;      return;
-            case R::saddr_h:   d = r.saddr >> 8; return;
-            case R::raddr_l:   d = r.raddr;      return;
-            case R::raddr_h:   d = r.raddr >> 8; return;
-            case R::raddr_b:   d = (r.raddr | R_raddr::raddr_unused) >> 16; return;
-            case R::tlen_l:    d = r.tlen;       return;
-            case R::tlen_h:    d = r.tlen >> 8;  return;
-            case R::int_mask:  d = r.int_mask;   return;
-            case R::addr_ctrl: d = r.addr_ctrl;  return;
-            default:           d = 0xff;         return;
-        }
-    };
-
-    exp_ctx.io.io2_w = [&](const u16& a, const u8& d) {
-        std::cout << "REU io2 w: " << (int)a << std::endl;
-        switch (a & 0b11111) {
-            case R::status: return; // read-only
-            case R::cmd:                         return;
-            case R::saddr_l:   r.saddr = (r.saddr & 0xff00) | d;             return;
-            case R::saddr_h:   r.saddr = (r.saddr & 0x00ff) | (d << 8);      return;
-            case R::raddr_l:   r.raddr = (r.raddr & ~R_raddr::raddr_lo) | d;          return;
-            case R::raddr_h:   r.raddr = (r.raddr & ~R_raddr::raddr_hi) | (d << 8);   return;
-            case R::raddr_b:   r.raddr = (r.raddr & ~R_raddr::raddr_bank) | (d << 8); return;
-            case R::tlen_l:    r.tlen = (r.tlen & 0xff00) | d;               return;
-            case R::tlen_h:    r.tlen = (r.tlen & 0x00ff) | (d << 8);        return;
-            case R::int_mask:  r.int_mask = d | R_int_mask::unused_im;       return; 
-            case R::addr_ctrl: r.addr_ctrl = d | R_addr_ctrl::unused_ac;     return; 
-            default: return;
-        }
-    };
-
-    // NOTE: set 'exp_ctx.io.dma_low = true' upon execution
-
-    // sys_address_space.access(0xffff, d, NMOS6502::MC::RW::w);
-
-    exp_ctx.tick = [&](){};
-
-    exp_ctx.reset = [&]() {
-        std::cout << "REU reset" << std::endl;
-
-        r.status = 0x00;
-        r.cmd = 0b00000000 | R_cmd::ff00_trig;
-        r.saddr = 0x0000;
-        r.raddr = 0x0000; // unused bits get 'set' when reading the reg (i.e. raddr_b appears to be 0xf8 after reset)
-        r.tlen = 0xffff;
-        r.int_mask = 0x00;
-        r.addr_ctrl = 0x00;
-
-        exp_ctx.io.dma_low = false;
-    };
-
-    /*
-    std::function<void ()> Tick(Expansion_ctx& exp_ctx) {
-        return [&]() {
-            UNUSED(exp_ctx);
-            // if (executing && !exp_ctx.io.ba_low) do_work();
-            // NOTE: set 'exp_ctx.io.dma_low = false' upon completion
-        };
-    }
-    */
-
-    return true;
-    return true;
+    REU& reu = *(new REU(exp_ctx)); // TODO: allocate in expansion ram (placement new)
+    return reu.attach();
 }
