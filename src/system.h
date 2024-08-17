@@ -817,9 +817,7 @@ private:
     Expansion_ctx::IO exp_io{
         s.ba_low,
         //std::bind(&Address_space::access, addr_space, std::placeholders::_1),
-        [this](const u16& a, u8& d) {
-            addr_space.access(a, d, NMOS6502::MC::RW::r);
-        },
+        [this](const u16& a, u8& d, const u8 rw) { addr_space.access(a, d, rw); },
         s.dma_low
     };
     Expansion_ctx exp_ctx{

@@ -3,6 +3,7 @@
 #include <optional>
 #include "cartridge.h"
 #include "utils.h"
+#include "nmos6502/nmos6502_mc.h"
 
 
 
@@ -352,7 +353,7 @@ public:
     };
     enum R_cmd : u8 {
         // masks
-        exec = 0b10000000, autoload = 0b00100000, ff00_trig = 0b00010000, xfer = 0b00000011,
+        exec = 0b10000000, autoload = 0b00100000, no_ff00_trig = 0b00010000, xfer = 0b00000011,
         reserved = 0b01001100,
         // values
         xfer_sr = 0b00, xfer_rs = 0b01, xfer_swap = 0b10, xfer_very = 0b11,
@@ -368,7 +369,7 @@ public:
     };
     enum R_addr_ctrl : u8 {
         // masks
-        fix_s = 0b10000000, fix_r = 0b01000000, unused_ac = 0b00111111,
+        fix_s = 0b10000000, fix_r = 0b01000000, fix = 0b11000000, unused_ac = 0b00111111,
     };
 
     REU(Ctx& exp_ctx_) : exp_ctx(exp_ctx_) {}
@@ -385,13 +386,13 @@ public:
                     r.status = 0x00;
                     return;
                 case REU::R::cmd:       d = r.cmd;        return;
-                case REU::R::saddr_l:   d = r.saddr;      return;
-                case REU::R::saddr_h:   d = r.saddr >> 8; return;
-                case REU::R::raddr_l:   d = r.raddr;      return;
-                case REU::R::raddr_h:   d = r.raddr >> 8; return;
-                case REU::R::raddr_b:   d = (r.raddr | REU::R_raddr::raddr_unused) >> 16; return;
-                case REU::R::tlen_l:    d = r.tlen;       return;
-                case REU::R::tlen_h:    d = r.tlen >> 8;  return;
+                case REU::R::saddr_l:   d = r.a.saddr;      return;
+                case REU::R::saddr_h:   d = r.a.saddr >> 8; return;
+                case REU::R::raddr_l:   d = r.a.raddr;      return;
+                case REU::R::raddr_h:   d = r.a.raddr >> 8; return;
+                case REU::R::raddr_b:   d = (r.a.raddr | REU::R_raddr::raddr_unused) >> 16; return;
+                case REU::R::tlen_l:    d = r.a.tlen;       return;
+                case REU::R::tlen_h:    d = r.a.tlen >> 8;  return;
                 case REU::R::int_mask:  d = r.int_mask;   return;
                 case REU::R::addr_ctrl: d = r.addr_ctrl;  return;
                 default:           d = 0xff;         return;
@@ -401,15 +402,18 @@ public:
         exp_ctx.io.io2_w = [&](const u16& a, const u8& d) {
             std::cout << "REU io2 w: " << (int)a << std::endl;
             switch (a & 0b11111) {
-                case REU::R::status: return; // read-only
-                case REU::R::cmd:    init_op(); return;
-                case REU::R::saddr_l:   r.saddr = (r.saddr & 0xff00) | d;        return;
-                case REU::R::saddr_h:   r.saddr = (r.saddr & 0x00ff) | (d << 8); return;
-                case REU::R::raddr_l:   r.raddr = (r.raddr & ~REU::R_raddr::raddr_lo) | d;          return;
-                case REU::R::raddr_h:   r.raddr = (r.raddr & ~REU::R_raddr::raddr_hi) | (d << 8);   return;
-                case REU::R::raddr_b:   r.raddr = (r.raddr & ~REU::R_raddr::raddr_bank) | (d << 8); return;
-                case REU::R::tlen_l:    r.tlen = (r.tlen & 0xff00) | d;          return;
-                case REU::R::tlen_h:    r.tlen = (r.tlen & 0x00ff) | (d << 8);   return;
+                case REU::R::status:    return; // read-only
+                case REU::R::cmd:
+                    r.cmd = d;
+                    if (r.cmd & R_cmd::no_ff00_trig) dispatch_op();
+                    return;
+                case REU::R::saddr_l:   r.a.saddr = r._a.saddr = (r.a.saddr & 0xff00) | d;        return;
+                case REU::R::saddr_h:   r.a.saddr = r._a.saddr = (r.a.saddr & 0x00ff) | (d << 8); return;
+                case REU::R::raddr_l:   r.a.raddr = r._a.raddr = (r.a.raddr & ~REU::R_raddr::raddr_lo) | d;          return;
+                case REU::R::raddr_h:   r.a.raddr = r._a.raddr = (r.a.raddr & ~REU::R_raddr::raddr_hi) | (d << 8);   return;
+                case REU::R::raddr_b:   r.a.raddr = r._a.raddr = (r.a.raddr & ~REU::R_raddr::raddr_bank) | (d << 8); return;
+                case REU::R::tlen_l:    r.a.tlen = r._a.tlen = (r.a.tlen & 0xff00) | d;          return;
+                case REU::R::tlen_h:    r.a.tlen = r._a.tlen = (r.a.tlen & 0x00ff) | (d << 8);   return;
                 case REU::R::int_mask:  r.int_mask = d | REU::R_int_mask::unused_im;   return; 
                 case REU::R::addr_ctrl: r.addr_ctrl = d | REU::R_addr_ctrl::unused_ac; return; 
                 default: return;
@@ -420,10 +424,11 @@ public:
             std::cout << "REU reset" << std::endl;
 
             r.status = 0x00;
-            r.cmd = 0b00000000 | REU::R_cmd::ff00_trig;
-            r.saddr = 0x0000;
-            r.raddr = 0x0000; // unused bits get 'set' when reading the reg (i.e. raddr_b appears to be 0xf8 after reset)
-            r.tlen = 0xffff;
+            r.cmd = 0b00000000 | REU::R_cmd::no_ff00_trig;
+            r.a.saddr = 0x0000;
+            r.a.raddr = 0x0000; // unused bits get 'set' when reading the reg (i.e. raddr_b appears to be 0xf8 after reset)
+            r.a.tlen = 0xffff;
+            r._a = r.a;
             r.int_mask = 0x00;
             r.addr_ctrl = 0x00;
 
@@ -434,9 +439,17 @@ public:
     }
 private:
     struct Reg_file {
-        u32 raddr;
-        u16 saddr;
-        u16 tlen;
+        struct Addr {
+            u32 raddr;
+            u16 saddr;
+            u16 tlen;
+
+            // TODO: handle addr beyond actual RAM (past 256k)
+            void inc_raddr() { raddr = ((raddr + 1) & ~R_raddr::raddr_unused); }
+            void inc_saddr() { saddr += 1; }
+        };
+        Addr a;
+        Addr _a;
         u8 status;
         u8 cmd;
         u8 int_mask;
@@ -447,24 +460,55 @@ private:
 
     Ctx& exp_ctx;
 
-    void init_op() {
-        exp_ctx.tick = tick_start;
-    }
+    void do_sr() { exp_ctx.io.sys_addr_space(r.a.saddr, exp_ctx.ram[r.a.raddr], NMOS6502::MC::RW::r); }
+    void do_rs() { exp_ctx.io.sys_addr_space(r.a.saddr, exp_ctx.ram[r.a.raddr], NMOS6502::MC::RW::w); }
 
-    std::function<void ()> tick_start {
-        [this] {
-            std::cout << "tick_start\n";
-            exp_ctx.tick = tick_do_it;
-            exp_ctx.io.dma_low = true;
-        }
+    void do_tlen() {
+        r.a.tlen -= 1;
+        if (r.a.tlen == 1) done();
+    }
+    // xfer_sr = 0b00, xfer_rs = 0b01, xfer_swap = 0b10, xfer_very = 0b11,
+    // fix_s = 0b10000000, fix_r = 0b01000000
+    // fix_none = 00, fix_r = 01, fix_s = 10, fix_both = 11
+    std::function<void ()> OP[8] {
+        // sys -> REU
+        [this] { // fix none
+            if (!exp_ctx.io.ba_low) { do_sr(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); }
+        },
+        [this] { // fix REU
+            if (!exp_ctx.io.ba_low) { do_sr(); r.a.inc_saddr(); do_tlen(); }
+        },
+        [this] { // fix sys
+            if (!exp_ctx.io.ba_low) { do_sr(); r.a.inc_raddr(); do_tlen(); }
+        },
+        [this] { // fix both
+            if (!exp_ctx.io.ba_low) { do_sr(); do_tlen(); }
+        },
+        // REU -> sys
+        [this] { // fix none
+            if (!exp_ctx.io.ba_low) { do_rs(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); }
+        },
+        [this] { // fix REU
+            if (!exp_ctx.io.ba_low) { do_rs(); r.a.inc_saddr(); do_tlen(); }
+        },
+        [this] { // fix sys
+           if (!exp_ctx.io.ba_low) { do_rs(); r.a.inc_raddr(); do_tlen(); }
+        },
+        [this] { // fix both
+            if (!exp_ctx.io.ba_low) { do_rs(); do_tlen(); }
+        },
+        // swap
+        // verify
     };
 
-    std::function<void ()> tick_do_it {
+    void dispatch_op() { exp_ctx.tick = tick_dispatch_op; }
+
+    std::function<void ()> tick_dispatch_op {
         [this] {
-            std::cout << "tick_do_it\n";
-            if (!exp_ctx.io.ba_low) {
-                done();
-            }
+            const auto op = ((r.cmd & R_cmd::xfer) << 2) | ((r.addr_ctrl & R_addr_ctrl::fix) >> 6);
+            std::cout << "op: " << op << ' ';
+            exp_ctx.tick = OP[op & 0b111]; // #### TODELETE '& 0b111' ####
+            exp_ctx.io.dma_low = true;
         }
     };
 
@@ -472,6 +516,10 @@ private:
         std::cout << "done\n";
         exp_ctx.tick = nullptr;
         exp_ctx.io.dma_low = false;
+        if (r.a.tlen == 0x0001) r.status = r.status | R_status::eob;
+        r.cmd = r.cmd & ~R_cmd::exec;
+        r.cmd = r.cmd | R_cmd::no_ff00_trig;
+        if (r.cmd & R_cmd::autoload) r.a = r._a;
     }
 };
 
