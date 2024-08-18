@@ -375,7 +375,13 @@ public:
     REU(Ctx& exp_ctx_) : exp_ctx(exp_ctx_) {}
 
     bool attach() {
-        // pre_attach();
+        /*
+            TODO:
+                - The REU switches itself out of the host memory space during the transfers.
+                    (http://codebase64.org/doku.php?id=base:reu_registers)
+                --> read (from open address space): just return 0...
+                --> write: just ignore
+        */
 
         exp_ctx.io.io2_r = [&](const u16& a, u8& d) {
             // std::cout << "r: " << (int)(a & 0xf) << ' ';
@@ -461,6 +467,23 @@ private:
 
     Ctx& exp_ctx;
 
+    std::function<void ()> _tick;
+
+    std::function<void ()> tick_wait_ba {
+        [this] {
+            if (!exp_ctx.io.ba_low) exp_ctx.tick = _tick;
+        }
+    };
+
+    bool check_ba() {
+        if (!exp_ctx.io.ba_low) return true;
+
+        _tick = exp_ctx.tick;
+        exp_ctx.tick = tick_wait_ba;
+
+        return false;
+    }
+
     void do_sr() { exp_ctx.io.sys_addr_space(r.a.saddr, exp_ctx.ram[r.a.raddr], NMOS6502::MC::RW::r); }
     void do_rs() { exp_ctx.io.sys_addr_space(r.a.saddr, exp_ctx.ram[r.a.raddr], NMOS6502::MC::RW::w); }
 
@@ -490,31 +513,31 @@ private:
     std::function<void ()> Tick[16] {
         // sys -> REU
         [this] { // fix none
-            if (!exp_ctx.io.ba_low) { do_sr(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); }
+            if (check_ba()) { do_sr(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); }
         },
         [this] { // fix REU
-            if (!exp_ctx.io.ba_low) { do_sr(); r.a.inc_saddr(); do_tlen(); }
+            if (check_ba()) { do_sr(); r.a.inc_saddr(); do_tlen(); }
         },
         [this] { // fix sys
-            if (!exp_ctx.io.ba_low) { do_sr(); r.a.inc_raddr(); do_tlen(); }
+            if (check_ba()) { do_sr(); r.a.inc_raddr(); do_tlen(); }
         },
         [this] { // fix both
-            if (!exp_ctx.io.ba_low) { do_sr(); do_tlen(); }
+            if (check_ba()) { do_sr(); do_tlen(); }
         },
         // REU -> sys
         [this] { // fix none
-            if (!exp_ctx.io.ba_low) { do_rs(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); }
+            if (check_ba()) { do_rs(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); }
         },
         [this] { // fix REU
-            if (!exp_ctx.io.ba_low) { do_rs(); r.a.inc_saddr(); do_tlen(); }
+            if (check_ba()) { do_rs(); r.a.inc_saddr(); do_tlen(); }
         },
         [this] { // fix sys
-           if (!exp_ctx.io.ba_low) { do_rs(); r.a.inc_raddr(); do_tlen(); }
+           if (check_ba()) { do_rs(); r.a.inc_raddr(); do_tlen(); }
         },
         [this] { // fix both
-            if (!exp_ctx.io.ba_low) { do_rs(); do_tlen(); }
+            if (check_ba()) { do_rs(); do_tlen(); }
         },
-        // swap
+        // swap (TODO)
         [this] { // fix none
 
         },
@@ -529,16 +552,16 @@ private:
         },
         // verify
         [this] { // fix none
-            if (!exp_ctx.io.ba_low) { do_ver(); r.a.inc_raddr(); r.a.inc_saddr(); }
+            if (check_ba()) { do_ver(); r.a.inc_raddr(); r.a.inc_saddr(); }
         },
         [this] { // fix REU
-            if (!exp_ctx.io.ba_low) { do_ver(); r.a.inc_saddr(); }
+            if (check_ba()) { do_ver(); r.a.inc_saddr(); }
         },
         [this] { // fix sys
-            if (!exp_ctx.io.ba_low) { do_ver(); r.a.inc_raddr(); }
+            if (check_ba()) { do_ver(); r.a.inc_raddr(); }
         },
         [this] { // fix both
-            if (!exp_ctx.io.ba_low) { do_ver(); }
+            if (check_ba()) { do_ver(); }
         },
     };
 
@@ -566,12 +589,6 @@ private:
         if (r.cmd & R_cmd::autoload) r.a = r._a;
     }
 };
-
-
-/*
-    - The REU switches itself out of the host memory space during the transfers.
-      (http://codebase64.org/doku.php?id=base:reu_registers)
-*/
 
 
 bool Cartridge::attach_REU(Ctx& exp_ctx) {
