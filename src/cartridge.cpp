@@ -378,7 +378,7 @@ public:
         // pre_attach();
 
         exp_ctx.io.io2_r = [&](const u16& a, u8& d) {
-            std::cout << "REU io2 r: " << (int)a << std::endl;
+            // std::cout << "r: " << (int)(a & 0xf) << ' ';
 
             switch (a & 0b11111) {
                 case REU::R::status:
@@ -400,12 +400,13 @@ public:
         };
 
         exp_ctx.io.io2_w = [&](const u16& a, const u8& d) {
-            std::cout << "REU io2 w: " << (int)a << std::endl;
+            // std::cout << "w: " << (int)(a & 0xf) << ' ' << (int)d << ' ';
             switch (a & 0b11111) {
                 case REU::R::status:    return; // read-only
                 case REU::R::cmd:
                     r.cmd = d;
-                    if (r.cmd & R_cmd::no_ff00_trig) dispatch_op();
+                    if ((r.cmd & R_cmd::exec) && (r.cmd & R_cmd::no_ff00_trig)) start();
+                    // TODO: ff00 trigger
                     return;
                 case REU::R::saddr_l:   r.a.saddr = r._a.saddr = (r.a.saddr & 0xff00) | d;        return;
                 case REU::R::saddr_h:   r.a.saddr = r._a.saddr = (r.a.saddr & 0x00ff) | (d << 8); return;
@@ -464,13 +465,29 @@ private:
     void do_rs() { exp_ctx.io.sys_addr_space(r.a.saddr, exp_ctx.ram[r.a.raddr], NMOS6502::MC::RW::w); }
 
     void do_tlen() {
-        r.a.tlen -= 1;
-        if (r.a.tlen == 1) done();
+        if (r.a.tlen == 1) {
+            r.status = r.status | R_status::eob;
+            done();
+        }
+        else r.a.tlen -= 1;
+    }
+
+    void do_ver() {
+        u8 ds;
+        exp_ctx.io.sys_addr_space(r.a.saddr, ds, NMOS6502::MC::RW::r);
+        const u8 dr = exp_ctx.ram[r.a.raddr];
+
+        do_tlen();
+
+        if (ds != dr) {
+            r.status |= R_status::ver_err;
+            done(); // might be an extra 'done()' (if tlen was 1), but meh...
+        }
     }
     // xfer_sr = 0b00, xfer_rs = 0b01, xfer_swap = 0b10, xfer_very = 0b11,
     // fix_s = 0b10000000, fix_r = 0b01000000
     // fix_none = 00, fix_r = 01, fix_s = 10, fix_both = 11
-    std::function<void ()> OP[8] {
+    std::function<void ()> Tick[16] {
         // sys -> REU
         [this] { // fix none
             if (!exp_ctx.io.ba_low) { do_sr(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); }
@@ -498,25 +515,52 @@ private:
             if (!exp_ctx.io.ba_low) { do_rs(); do_tlen(); }
         },
         // swap
+        [this] { // fix none
+
+        },
+        [this] { // fix REU
+
+        },
+        [this] { // fix sys
+
+        },
+        [this] { // fix both
+
+        },
         // verify
+        [this] { // fix none
+            if (!exp_ctx.io.ba_low) { do_ver(); r.a.inc_raddr(); r.a.inc_saddr(); }
+        },
+        [this] { // fix REU
+            if (!exp_ctx.io.ba_low) { do_ver(); r.a.inc_saddr(); }
+        },
+        [this] { // fix sys
+            if (!exp_ctx.io.ba_low) { do_ver(); r.a.inc_raddr(); }
+        },
+        [this] { // fix both
+            if (!exp_ctx.io.ba_low) { do_ver(); }
+        },
     };
 
-    void dispatch_op() { exp_ctx.tick = tick_dispatch_op; }
+    void start() {
+        std::cout << "raddr: " << (int)(r.a.raddr) << ", saddr: " << (int)(r.a.saddr)
+                << ", tlen: " << (int)(r.a.tlen) << ", cmd: " << (int)(r.cmd);
+        exp_ctx.tick = tick_dispatch_op;
+    }
 
     std::function<void ()> tick_dispatch_op {
         [this] {
             const auto op = ((r.cmd & R_cmd::xfer) << 2) | ((r.addr_ctrl & R_addr_ctrl::fix) >> 6);
-            std::cout << "op: " << op << ' ';
-            exp_ctx.tick = OP[op & 0b111]; // #### TODELETE '& 0b111' ####
+            std::cout << ", op: " << op;
+            exp_ctx.tick = Tick[op];
             exp_ctx.io.dma_low = true;
         }
     };
 
     void done() {
-        std::cout << "done\n";
+        std::cout << " :: done" << std::endl;
         exp_ctx.tick = nullptr;
         exp_ctx.io.dma_low = false;
-        if (r.a.tlen == 0x0001) r.status = r.status | R_status::eob;
         r.cmd = r.cmd & ~R_cmd::exec;
         r.cmd = r.cmd | R_cmd::no_ff00_trig;
         if (r.cmd & R_cmd::autoload) r.a = r._a;
