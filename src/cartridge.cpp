@@ -360,8 +360,10 @@ public:
     };
     enum R_raddr : u32 {
         // masks
-        raddr_lo = 0b00000001111, raddr_hi = 0b00011110000,
-        raddr_bank = 0b11100000000, raddr_unused = 0b1111100000000000,
+        raddr_lo     = 0b000000000000000011111111,
+        raddr_hi     = 0b000000001111111100000000,
+        raddr_bank   = 0b000001110000000000000000,
+        raddr_unused = 0b111110000000000000000000,
     };
     enum R_int_mask : u8 {
         // masks
@@ -375,16 +377,9 @@ public:
     REU(Ctx& exp_ctx_) : exp_ctx(exp_ctx_) {}
 
     bool attach() {
-        /*
-            TODO:
-                - The REU switches itself out of the host memory space during the transfers.
-                    (http://codebase64.org/doku.php?id=base:reu_registers)
-                --> read (from open address space): just return 0...
-                --> write: just ignore
-        */
-
         exp_ctx.io.io2_r = [&](const u16& a, u8& d) {
             // std::cout << "r: " << (int)(a & 0xf) << ' ';
+            if (exp_ctx.io.dma_low) return; // switched out during dma
 
             switch (a & 0b11111) {
                 case REU::R::status:
@@ -407,6 +402,8 @@ public:
 
         exp_ctx.io.io2_w = [&](const u16& a, const u8& d) {
             // std::cout << "w: " << (int)(a & 0xf) << ' ' << (int)d << ' ';
+            if (exp_ctx.io.dma_low) return; // switched out during dma
+
             switch (a & 0b11111) {
                 case REU::R::status:    return; // read-only
                 case REU::R::cmd:
@@ -416,9 +413,10 @@ public:
                     return;
                 case REU::R::saddr_l:   r.a.saddr = r._a.saddr = (r.a.saddr & 0xff00) | d;        return;
                 case REU::R::saddr_h:   r.a.saddr = r._a.saddr = (r.a.saddr & 0x00ff) | (d << 8); return;
-                case REU::R::raddr_l:   r.a.raddr = r._a.raddr = (r.a.raddr & ~REU::R_raddr::raddr_lo) | d;          return;
-                case REU::R::raddr_h:   r.a.raddr = r._a.raddr = (r.a.raddr & ~REU::R_raddr::raddr_hi) | (d << 8);   return;
-                case REU::R::raddr_b:   r.a.raddr = r._a.raddr = (r.a.raddr & ~REU::R_raddr::raddr_bank) | (d << 8); return;
+                case REU::R::raddr_l:   r.a.raddr = r._a.raddr = ((r.a.raddr & ~REU::R_raddr::raddr_lo) | d);        return;
+                case REU::R::raddr_h:   r.a.raddr = r._a.raddr = ((r.a.raddr & ~REU::R_raddr::raddr_hi) | (d << 8)); return;
+                case REU::R::raddr_b:   r.a.raddr = r._a.raddr = ((r.a.raddr & ~REU::R_raddr::raddr_bank)
+                                                                    | ((d << 16) & REU::R_raddr::raddr_bank)); return;
                 case REU::R::tlen_l:    r.a.tlen = r._a.tlen = (r.a.tlen & 0xff00) | d;          return;
                 case REU::R::tlen_h:    r.a.tlen = r._a.tlen = (r.a.tlen & 0x00ff) | (d << 8);   return;
                 case REU::R::int_mask:  r.int_mask = d | REU::R_int_mask::unused_im;   return; 
@@ -433,13 +431,15 @@ public:
             r.status = 0x00;
             r.cmd = 0b00000000 | REU::R_cmd::no_ff00_trig;
             r.a.saddr = 0x0000;
-            r.a.raddr = 0x0000; // unused bits get 'set' when reading the reg (i.e. raddr_b appears to be 0xf8 after reset)
+            r.a.raddr = 0x000000; // unused bits get 'set' when reading the reg (i.e. raddr_b appears to be 0xf8 after reset)
             r.a.tlen = 0xffff;
             r._a = r.a;
             r.int_mask = 0x00;
             r.addr_ctrl = 0x00;
 
             exp_ctx.io.dma_low = false;
+
+            swap_write_cycle = false;
         };
 
         return true;
@@ -464,6 +464,10 @@ private:
     };
 
     Reg_file r;
+
+    u8 swap_r;
+    u8 swap_s;
+    u8 swap_write_cycle;
 
     Ctx& exp_ctx;
 
@@ -495,6 +499,23 @@ private:
         else r.a.tlen -= 1;
     }
 
+    bool do_swap() {
+        if (check_ba()) {
+            if (swap_write_cycle) {
+                exp_ctx.ram[r.a.raddr] = swap_r;
+                exp_ctx.io.sys_addr_space(r.a.saddr, swap_s, NMOS6502::MC::RW::w);
+                return true;
+            } else {
+                swap_s = exp_ctx.ram[r.a.raddr];
+                exp_ctx.io.sys_addr_space(r.a.saddr, swap_r, NMOS6502::MC::RW::r);
+            }
+
+            swap_write_cycle = !swap_write_cycle;
+        }
+
+        return false;
+    }
+
     void do_ver() {
         u8 ds;
         exp_ctx.io.sys_addr_space(r.a.saddr, ds, NMOS6502::MC::RW::r);
@@ -507,6 +528,7 @@ private:
             done(); // might be an extra 'done()' (if tlen was 1), but meh...
         }
     }
+
     // xfer_sr = 0b00, xfer_rs = 0b01, xfer_swap = 0b10, xfer_very = 0b11,
     // fix_s = 0b10000000, fix_r = 0b01000000
     // fix_none = 00, fix_r = 01, fix_s = 10, fix_both = 11
@@ -537,18 +559,18 @@ private:
         [this] { // fix both
             if (check_ba()) { do_rs(); do_tlen(); }
         },
-        // swap (TODO)
+        // swap
         [this] { // fix none
-
+            if (do_swap()) { r.a.inc_raddr(); r.a.inc_saddr();  do_tlen(); }
         },
         [this] { // fix REU
-
+            if (do_swap()) { r.a.inc_saddr();  do_tlen(); }
         },
         [this] { // fix sys
-
+            if (do_swap()) { r.a.inc_raddr(); do_tlen(); }
         },
         [this] { // fix both
-
+            if (do_swap()) { do_tlen(); }
         },
         // verify
         [this] { // fix none
@@ -576,7 +598,7 @@ private:
             const auto op = ((r.cmd & R_cmd::xfer) << 2) | ((r.addr_ctrl & R_addr_ctrl::fix) >> 6);
             std::cout << ", op: " << op;
             exp_ctx.tick = Tick[op];
-            exp_ctx.io.dma_low = true;
+            exp_ctx.io.dma_low = true; // TODO: is 'dma_low' needed? (or just check if tick is not null?)
         }
     };
 
