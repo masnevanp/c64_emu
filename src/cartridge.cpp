@@ -434,8 +434,8 @@ public:
             r.a.raddr = 0x000000; // unused bits get 'set' when reading the reg (i.e. raddr_b appears to be 0xf8 after reset)
             r.a.tlen = 0xffff;
             r._a = r.a;
-            r.int_mask = 0x00;
-            r.addr_ctrl = 0x00;
+            r.int_mask = 0x00 | REU::R_int_mask::unused_im;
+            r.addr_ctrl = 0x00 | REU::R_addr_ctrl::unused_ac;;
 
             exp_ctx.io.dma_low = false;
 
