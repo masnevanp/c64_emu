@@ -411,14 +411,14 @@ public:
                     if ((r.cmd & R_cmd::exec) && (r.cmd & R_cmd::no_ff00_trig)) start();
                     // TODO: ff00 trigger
                     return;
-                case REU::R::saddr_l:   r.a.saddr = r._a.saddr = (r.a.saddr & 0xff00) | d;        return;
-                case REU::R::saddr_h:   r.a.saddr = r._a.saddr = (r.a.saddr & 0x00ff) | (d << 8); return;
-                case REU::R::raddr_l:   r.a.raddr = r._a.raddr = ((r.a.raddr & ~REU::R_raddr::raddr_lo) | d);        return;
-                case REU::R::raddr_h:   r.a.raddr = r._a.raddr = ((r.a.raddr & ~REU::R_raddr::raddr_hi) | (d << 8)); return;
+                case REU::R::saddr_l:   r.a.saddr = r._a.saddr = (r._a.saddr & 0xff00) | d;        return;
+                case REU::R::saddr_h:   r.a.saddr = r._a.saddr = (r._a.saddr & 0x00ff) | (d << 8); return;
+                case REU::R::raddr_l:   r.a.raddr = r._a.raddr = ((r._a.raddr & ~REU::R_raddr::raddr_lo) | d);        return;
+                case REU::R::raddr_h:   r.a.raddr = r._a.raddr = ((r._a.raddr & ~REU::R_raddr::raddr_hi) | (d << 8)); return;
                 case REU::R::raddr_b:   r.a.raddr = r._a.raddr = ((r.a.raddr & ~REU::R_raddr::raddr_bank)
                                                                     | ((d << 16) & REU::R_raddr::raddr_bank)); return;
-                case REU::R::tlen_l:    r.a.tlen = r._a.tlen = (r.a.tlen & 0xff00) | d;          return;
-                case REU::R::tlen_h:    r.a.tlen = r._a.tlen = (r.a.tlen & 0x00ff) | (d << 8);   return;
+                case REU::R::tlen_l:    r.a.tlen = r._a.tlen = (r._a.tlen & 0xff00) | d;          return;
+                case REU::R::tlen_h:    r.a.tlen = r._a.tlen = (r._a.tlen & 0x00ff) | (d << 8);   return;
                 case REU::R::int_mask:  r.int_mask = d | REU::R_int_mask::unused_im;   return; 
                 case REU::R::addr_ctrl: r.addr_ctrl = d | REU::R_addr_ctrl::unused_ac; return; 
                 default: return;
@@ -439,7 +439,7 @@ public:
 
             exp_ctx.io.dma_low = false;
 
-            swap_write_cycle = false;
+            swap_cycle = false;
         };
 
         return true;
@@ -467,7 +467,7 @@ private:
 
     u8 swap_r;
     u8 swap_s;
-    u8 swap_write_cycle;
+    u8 swap_cycle;
 
     Ctx& exp_ctx;
 
@@ -501,7 +501,9 @@ private:
 
     bool do_swap() {
         if (check_ba()) {
-            if (swap_write_cycle) {
+            swap_cycle = !swap_cycle;
+
+            if (!swap_cycle) {
                 exp_ctx.ram[r.a.raddr] = swap_r;
                 exp_ctx.io.sys_addr_space(r.a.saddr, swap_s, NMOS6502::MC::RW::w);
                 return true;
@@ -509,8 +511,6 @@ private:
                 swap_s = exp_ctx.ram[r.a.raddr];
                 exp_ctx.io.sys_addr_space(r.a.saddr, swap_r, NMOS6502::MC::RW::r);
             }
-
-            swap_write_cycle = !swap_write_cycle;
         }
 
         return false;
