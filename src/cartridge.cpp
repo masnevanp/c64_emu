@@ -471,22 +471,7 @@ private:
 
     Ctx& exp_ctx;
 
-    std::function<void ()> _tick;
-
-    std::function<void ()> tick_wait_ba {
-        [this] {
-            if (!exp_ctx.io.ba_low) exp_ctx.tick = _tick;
-        }
-    };
-
-    bool check_ba() {
-        if (!exp_ctx.io.ba_low) return true;
-
-        _tick = exp_ctx.tick;
-        exp_ctx.tick = tick_wait_ba;
-
-        return false;
-    }
+    bool ba() const { return !exp_ctx.io.ba_low; }
 
     void do_sr() { exp_ctx.io.sys_addr_space(r.a.saddr, exp_ctx.ram[r.a.raddr], NMOS6502::MC::RW::r); }
     void do_rs() { exp_ctx.io.sys_addr_space(r.a.saddr, exp_ctx.ram[r.a.raddr], NMOS6502::MC::RW::w); }
@@ -500,7 +485,7 @@ private:
     }
 
     bool do_swap() {
-        if (check_ba()) {
+        if (ba()) {
             swap_cycle = !swap_cycle;
 
             if (!swap_cycle) {
@@ -529,62 +514,28 @@ private:
         }
     }
 
-    // xfer_sr = 0b00, xfer_rs = 0b01, xfer_swap = 0b10, xfer_very = 0b11,
-    // fix_s = 0b10000000, fix_r = 0b01000000
-    // fix_none = 00, fix_r = 01, fix_s = 10, fix_both = 11
     std::function<void ()> Tick[16] {
+        // 4 addr. types for each: fix none, fix reu, fix sys, fix both
         // sys -> REU
-        [this] { // fix none
-            if (check_ba()) { do_sr(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); }
-        },
-        [this] { // fix REU
-            if (check_ba()) { do_sr(); r.a.inc_saddr(); do_tlen(); }
-        },
-        [this] { // fix sys
-            if (check_ba()) { do_sr(); r.a.inc_raddr(); do_tlen(); }
-        },
-        [this] { // fix both
-            if (check_ba()) { do_sr(); do_tlen(); }
-        },
+        [this] { if (ba()) { do_sr(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); } },
+        [this] { if (ba()) { do_sr(); r.a.inc_saddr(); do_tlen(); } },
+        [this] { if (ba()) { do_sr(); r.a.inc_raddr(); do_tlen(); } },
+        [this] { if (ba()) { do_sr(); do_tlen(); } },
         // REU -> sys
-        [this] { // fix none
-            if (check_ba()) { do_rs(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); }
-        },
-        [this] { // fix REU
-            if (check_ba()) { do_rs(); r.a.inc_saddr(); do_tlen(); }
-        },
-        [this] { // fix sys
-           if (check_ba()) { do_rs(); r.a.inc_raddr(); do_tlen(); }
-        },
-        [this] { // fix both
-            if (check_ba()) { do_rs(); do_tlen(); }
-        },
+        [this] { if (ba()) { do_rs(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); } },
+        [this] { if (ba()) { do_rs(); r.a.inc_saddr(); do_tlen(); } },
+        [this] { if (ba()) { do_rs(); r.a.inc_raddr(); do_tlen(); } },
+        [this] { if (ba()) { do_rs(); do_tlen(); } },
         // swap
-        [this] { // fix none
-            if (do_swap()) { r.a.inc_raddr(); r.a.inc_saddr();  do_tlen(); }
-        },
-        [this] { // fix REU
-            if (do_swap()) { r.a.inc_saddr();  do_tlen(); }
-        },
-        [this] { // fix sys
-            if (do_swap()) { r.a.inc_raddr(); do_tlen(); }
-        },
-        [this] { // fix both
-            if (do_swap()) { do_tlen(); }
-        },
+        [this] { if (do_swap()) { r.a.inc_raddr(); r.a.inc_saddr();  do_tlen(); } },
+        [this] { if (do_swap()) { r.a.inc_saddr(); do_tlen(); } },
+        [this] { if (do_swap()) { r.a.inc_raddr(); do_tlen(); } },
+        [this] { if (do_swap()) { do_tlen(); } },
         // verify
-        [this] { // fix none
-            if (check_ba()) { do_ver(); r.a.inc_raddr(); r.a.inc_saddr(); }
-        },
-        [this] { // fix REU
-            if (check_ba()) { do_ver(); r.a.inc_saddr(); }
-        },
-        [this] { // fix sys
-            if (check_ba()) { do_ver(); r.a.inc_raddr(); }
-        },
-        [this] { // fix both
-            if (check_ba()) { do_ver(); }
-        },
+        [this] { if (ba()) { do_ver(); r.a.inc_raddr(); r.a.inc_saddr(); } },
+        [this] { if (ba()) { do_ver(); r.a.inc_saddr(); } },
+        [this] { if (ba()) { do_ver(); r.a.inc_raddr(); } },
+        [this] { if (ba()) { do_ver(); } },
     };
 
     void start() {
@@ -598,7 +549,7 @@ private:
             const auto op = ((r.cmd & R_cmd::xfer) << 2) | ((r.addr_ctrl & R_addr_ctrl::fix) >> 6);
             std::cout << ", op: " << op;
             exp_ctx.tick = Tick[op];
-            exp_ctx.io.dma_low = true; // TODO: is 'dma_low' needed? (or just check if tick is not null?)
+            exp_ctx.io.dma_low = true;
         }
     };
 
@@ -614,7 +565,7 @@ private:
 
 
 bool Cartridge::attach_REU(Ctx& exp_ctx) {
-    // TODO: check if already atexp_ctxtached (prevent re-init & system reset)
+    // TODO: check if already attached (prevent re-init & system reset)
     //       (e.g. somehow check if exp_ctx already has reu ops connected...?)
     //       (or might need to add a flag/status --> requires notification on detach)
 
