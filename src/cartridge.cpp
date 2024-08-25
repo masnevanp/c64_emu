@@ -383,7 +383,8 @@ public:
 
             switch (a & 0b11111) {
                 case REU::R::status:
-                    d = r.status | REU::R_status::sz_1764 | REU::R_status::chip_ver_1764;
+                    d = r.status | R_status::sz_1764 | R_status::chip_ver_1764;
+                    if (irq_on()) clr_irq();
                     r.status = 0x00;
                     return;
                 case REU::R::cmd:       d = r.cmd;        return;
@@ -419,7 +420,7 @@ public:
                                                                     | ((d << 16) & REU::R_raddr::raddr_bank)); return;
                 case REU::R::tlen_l:    r.a.tlen = r._a.tlen = (r._a.tlen & 0xff00) | d;          return;
                 case REU::R::tlen_h:    r.a.tlen = r._a.tlen = (r._a.tlen & 0x00ff) | (d << 8);   return;
-                case REU::R::int_mask:  r.int_mask = d | REU::R_int_mask::unused_im;   return; 
+                case REU::R::int_mask:  r.int_mask = d | REU::R_int_mask::unused_im; check_irq(); return; 
                 case REU::R::addr_ctrl: r.addr_ctrl = d | REU::R_addr_ctrl::unused_ac; return; 
                 default: return;
             }
@@ -473,16 +474,15 @@ private:
 
     bool ba() const { return !exp_ctx.io.ba_low; }
 
+    bool irq_on() const { return r.status & R_status::int_pend; }
+
+    void set_irq() { exp_ctx.io.int_hub.set(::IO::Int_hub::Src::exp_i); }
+    void clr_irq() { exp_ctx.io.int_hub.clr(::IO::Int_hub::Src::exp_i); }
+
     void do_sr() { exp_ctx.io.sys_addr_space(r.a.saddr, exp_ctx.ram[r.a.raddr], NMOS6502::MC::RW::r); }
     void do_rs() { exp_ctx.io.sys_addr_space(r.a.saddr, exp_ctx.ram[r.a.raddr], NMOS6502::MC::RW::w); }
 
-    void do_tlen() {
-        if (r.a.tlen == 1) {
-            r.status = r.status | R_status::eob;
-            done();
-        }
-        else r.a.tlen -= 1;
-    }
+    void do_tlen() { if (r.a.tlen == 1) done(); else r.a.tlen -= 1; }
 
     bool do_swap() {
         if (ba()) {
@@ -509,8 +509,20 @@ private:
         do_tlen();
 
         if (ds != dr) {
+            std::cout << "\n  VERR:: raddr: " << (int)(r.a.raddr) << ", saddr: " << (int)(r.a.saddr)
+                << ", tlen: " << (int)(r.a.tlen);
             r.status |= R_status::ver_err;
             done(); // might be an extra 'done()' (if tlen was 1), but meh...
+        }
+    }
+
+    void check_irq() {
+        if (r.int_mask & R_int_mask::int_ena) {
+            if ((r.int_mask & (R_int_mask::eob_m | R_int_mask::ver_err_m)) &
+                (r.status & (R_status::eob | R_status::ver_err))) {
+                r.status |= R_status::int_pend;
+                set_irq();
+            }
         }
     }
 
@@ -554,12 +566,14 @@ private:
     };
 
     void done() {
-        std::cout << " :: done" << std::endl;
+        std::cout << " :: done, sr: " << (int)(r.status) << std::endl;
         exp_ctx.tick = nullptr;
         exp_ctx.io.dma_low = false;
+        if (r.a.tlen == 1) r.status |= R_status::eob;
         r.cmd = r.cmd & ~R_cmd::exec;
         r.cmd = r.cmd | R_cmd::no_ff00_trig;
         if (r.cmd & R_cmd::autoload) r.a = r._a;
+        check_irq();
     }
 };
 

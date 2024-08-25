@@ -10,10 +10,9 @@ namespace IO {
 
 class Int_hub {
 public:
-    // TODO: irq/nmi source: cart./exp. port
     enum Src : u8 {
-        cia1 = 0x01, vic  = 0x02, // IRQ sources
-        cia2 = 0x10, rstr = 0x20, // NMI sources
+        cia1 = 0x01, vic  = 0x02, exp_i = 0x04, // IRQ sources
+        cia2 = 0x10, rstr = 0x20, exp_n = 0x40, // NMI sources
         irq  = 0x0f, nmi  = 0xf0, // source mask
     };
 

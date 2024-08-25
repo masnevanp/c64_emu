@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include "common.h"
+#include "cartridge.h"
 
 
 namespace VIC_II {

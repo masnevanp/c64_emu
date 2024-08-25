@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "files.h"
+#include "io.h"
 
 
 /*
@@ -15,6 +16,53 @@
     REU support is possible only thanks to this:
         Wolfgang Moser: Technical Reference Documentation - Commodore RAM Expansion Unit Controller - 8726R1
 */
+
+
+// gather everything required by an expansion (e.g. cart)
+// (TODO: nmi/irq when needed...)
+struct Expansion_ctx {
+    struct IO {
+        IO(const u16& ba_low_,
+            std::function<void (const u16&, u8&, const u8 rw)> sys_addr_space_,
+            ::IO::Int_hub& int_hub_,
+            u16& dma_low_)
+          : ba_low(ba_low_), sys_addr_space(sys_addr_space_), int_hub(int_hub_), dma_low(dma_low_) {}
+
+        using r = std::function<void (const u16& addr, u8& data)>;
+        using w = std::function<void (const u16& addr, const u8& data)>;
+
+        // sys -> exp
+        r roml_r;
+        w roml_w;
+        r romh_r;
+        w romh_w;
+
+        r io1_r;
+        w io1_w;
+        r io2_r;
+        w io2_w;
+
+        const u16& ba_low; // low == active
+
+        // exp -> sys
+        std::function<void (const u16&, u8&, const u8 rw)> sys_addr_space;
+        std::function<void (bool e, bool g)> exrom_game;
+
+        ::IO::Int_hub& int_hub;
+
+        u16& dma_low; // low == active
+    };
+
+    IO& io;
+
+    u8* sys_ram;
+    u64& sys_cycle;
+
+    u8* ram;
+
+    std::function<void ()> tick;
+    std::function<void ()> reset;
+};
 
 
 namespace Cartridge {
