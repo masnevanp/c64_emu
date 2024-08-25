@@ -382,22 +382,22 @@ public:
             if (exp_ctx.io.dma_low) return; // switched out during dma
 
             switch (a & 0b11111) {
-                case REU::R::status:
+                case R::status:
                     d = r.status | R_status::sz_1764 | R_status::chip_ver_1764;
                     if (irq_on()) clr_irq();
                     r.status = 0x00;
                     return;
-                case REU::R::cmd:       d = r.cmd;        return;
-                case REU::R::saddr_l:   d = r.a.saddr;      return;
-                case REU::R::saddr_h:   d = r.a.saddr >> 8; return;
-                case REU::R::raddr_l:   d = r.a.raddr;      return;
-                case REU::R::raddr_h:   d = r.a.raddr >> 8; return;
-                case REU::R::raddr_b:   d = (r.a.raddr | REU::R_raddr::raddr_unused) >> 16; return;
-                case REU::R::tlen_l:    d = r.a.tlen;       return;
-                case REU::R::tlen_h:    d = r.a.tlen >> 8;  return;
-                case REU::R::int_mask:  d = r.int_mask;   return;
-                case REU::R::addr_ctrl: d = r.addr_ctrl;  return;
-                default:           d = 0xff;         return;
+                case R::cmd:       d = r.cmd;          return;
+                case R::saddr_l:   d = r.a.saddr;      return;
+                case R::saddr_h:   d = r.a.saddr >> 8; return;
+                case R::raddr_l:   d = r.a.raddr;      return;
+                case R::raddr_h:   d = r.a.raddr >> 8; return;
+                case R::raddr_b:   d = (r.a.raddr | R_raddr::raddr_unused) >> 16; return;
+                case R::tlen_l:    d = r.a.tlen;       return;
+                case R::tlen_h:    d = r.a.tlen >> 8;  return;
+                case R::int_mask:  d = r.int_mask;     return;
+                case R::addr_ctrl: d = r.addr_ctrl;    return;
+                default:           d = 0xff;           return;
             }
         };
 
@@ -406,22 +406,22 @@ public:
             if (exp_ctx.io.dma_low) return; // switched out during dma
 
             switch (a & 0b11111) {
-                case REU::R::status:    return; // read-only
-                case REU::R::cmd:
+                case R::status:    return; // read-only
+                case R::cmd:
                     r.cmd = d;
                     if ((r.cmd & R_cmd::exec) && (r.cmd & R_cmd::no_ff00_trig)) start();
                     // TODO: ff00 trigger
                     return;
-                case REU::R::saddr_l:   r.a.saddr = r._a.saddr = (r._a.saddr & 0xff00) | d;        return;
-                case REU::R::saddr_h:   r.a.saddr = r._a.saddr = (r._a.saddr & 0x00ff) | (d << 8); return;
-                case REU::R::raddr_l:   r.a.raddr = r._a.raddr = ((r._a.raddr & ~REU::R_raddr::raddr_lo) | d);        return;
-                case REU::R::raddr_h:   r.a.raddr = r._a.raddr = ((r._a.raddr & ~REU::R_raddr::raddr_hi) | (d << 8)); return;
-                case REU::R::raddr_b:   r.a.raddr = r._a.raddr = ((r.a.raddr & ~REU::R_raddr::raddr_bank)
-                                                                    | ((d << 16) & REU::R_raddr::raddr_bank)); return;
-                case REU::R::tlen_l:    r.a.tlen = r._a.tlen = (r._a.tlen & 0xff00) | d;          return;
-                case REU::R::tlen_h:    r.a.tlen = r._a.tlen = (r._a.tlen & 0x00ff) | (d << 8);   return;
-                case REU::R::int_mask:  r.int_mask = d | REU::R_int_mask::unused_im; check_irq(); return; 
-                case REU::R::addr_ctrl: r.addr_ctrl = d | REU::R_addr_ctrl::unused_ac; return; 
+                case R::saddr_l:   r.a.saddr = r._a.saddr = (r._a.saddr & 0xff00) | d;        return;
+                case R::saddr_h:   r.a.saddr = r._a.saddr = (r._a.saddr & 0x00ff) | (d << 8); return;
+                case R::raddr_l:   r.a.raddr = r._a.raddr = ((r._a.raddr & ~R_raddr::raddr_lo) | d);        return;
+                case R::raddr_h:   r.a.raddr = r._a.raddr = ((r._a.raddr & ~R_raddr::raddr_hi) | (d << 8)); return;
+                case R::raddr_b:   r.a.raddr = r._a.raddr = ((r.a.raddr & ~R_raddr::raddr_bank)
+                                                                | ((d << 16) & R_raddr::raddr_bank)); return;
+                case R::tlen_l:    r.a.tlen = r._a.tlen = (r._a.tlen & 0xff00) | d;        return;
+                case R::tlen_h:    r.a.tlen = r._a.tlen = (r._a.tlen & 0x00ff) | (d << 8); return;
+                case R::int_mask:  r.int_mask = d | R_int_mask::unused_im; check_irq(); return;
+                case R::addr_ctrl: r.addr_ctrl = d | R_addr_ctrl::unused_ac; return;
                 default: return;
             }
         };
@@ -430,13 +430,13 @@ public:
             std::cout << "REU reset" << std::endl;
 
             r.status = 0x00;
-            r.cmd = 0b00000000 | REU::R_cmd::no_ff00_trig;
+            r.cmd = 0b00000000 | R_cmd::no_ff00_trig;
             r.a.saddr = 0x0000;
             r.a.raddr = 0x000000; // unused bits get 'set' when reading the reg (i.e. raddr_b appears to be 0xf8 after reset)
             r.a.tlen = 0xffff;
             r._a = r.a;
-            r.int_mask = 0x00 | REU::R_int_mask::unused_im;
-            r.addr_ctrl = 0x00 | REU::R_addr_ctrl::unused_ac;;
+            r.int_mask = 0x00 | R_int_mask::unused_im;
+            r.addr_ctrl = 0x00 | R_addr_ctrl::unused_ac;;
 
             exp_ctx.io.dma_low = false;
 
