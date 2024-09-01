@@ -19,7 +19,6 @@
 
 
 // gather everything required by an expansion (e.g. cart)
-// (TODO: nmi/irq when needed...)
 struct Expansion_ctx {
     struct IO {
         IO(const u16& ba_low_,
