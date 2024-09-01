@@ -24,6 +24,7 @@
 namespace System {
 
 class VIC_out;
+class Address_space;
 
 using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Address_space)
 using CIA = CIA::Core;
@@ -46,14 +47,11 @@ public:
     Address_space(
         u8* ram_, const ROM& rom,
         CIA& cia1_, CIA& cia2_, TheSID& sid_, VIC& vic_,
-        Color_RAM& col_ram_)
+        Color_RAM& col_ram_, Expansion_ctx::IO& exp_)
       :
         ram(ram_), bas(rom.basic), kern(rom.kernal), charr(rom.charr),
         cia1(cia1_), cia2(cia2_), sid(sid_), vic(vic_),
-        col_ram(col_ram_)
-    {
-        exp.exrom_game = [&](bool e, bool g) { set_exrom_game(e, g); };
-    }
+        col_ram(col_ram_), exp(exp_) {}
 
     void reset() {
         io_port_pd = io_port_state = 0x00;
@@ -101,7 +99,12 @@ public:
         }
     }
 
-    Expansion_ctx::Address_space exp;
+    void set_exrom_game(bool exrom, bool game) {
+        exrom_game = (exrom << 4) | (game << 3);
+        set_pla();
+
+        vic.set_ultimax(exrom && !game);
+    }
 
 private:
     enum IO_bits : u8 {
@@ -151,13 +154,6 @@ private:
         }
     }
 
-    void set_exrom_game(bool exrom, bool game) {
-        exrom_game = (exrom << 4) | (game << 3);
-        set_pla();
-
-        vic.set_ultimax(exrom && !game);
-    }
-
     void update_state() { // output bits set from 'pd', input bits unchanged
         io_port_state = (io_port_pd & io_port_dd) | (io_port_state & ~io_port_dd);
         set_pla();
@@ -190,6 +186,8 @@ private:
     TheSID& sid;
     VIC& vic;
     Color_RAM& col_ram;
+
+    Expansion_ctx::IO& exp;
 };
 
 
@@ -475,7 +473,8 @@ struct State {
     u8 ram[0x10000];
     u8 color_ram[Color_RAM::size] = {};
 
-    u16 rdy_low;
+    u16 ba_low;
+    u16 dma_low;
 
     VIC::State vic;
 
@@ -483,7 +482,7 @@ struct State {
     // emulation control data, ...
     // TODO: dynamic, or meh..? (although 640k is enough for everyone...except easyflash..)
     //       (nasty, if state saving is implemented)
-    u8 exp_mem[640 * 1024];
+    u8 exp_ram[640 * 1024];
 };
 
 
@@ -516,13 +515,14 @@ public:
         cia2(cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2, s.vic.cycle),
         sid(FRAME_RATE_MIN, Performance::min_sync_points, s.vic.cycle),
         col_ram(s.color_ram),
-        vic(s.vic, s.ram, col_ram, rom.charr, addr_space.exp.romh_r, s.rdy_low, vic_out),
+        vic(s.vic, s.ram, col_ram, rom.charr, exp_io.romh_r, s.ba_low, vic_out),
         c1541(cia2.port_a.ext_in, rom.c1541/*, run_cfg_change*/),
+        perf(),
         vid_out(perf.frame_rate.chosen),
         vic_out(int_hub, vid_out, host_input, sid, menu.vic_out_overlay, c1541.dc.status, rom.charr, perf),
         int_hub(cpu),
         input_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in, vic),
-        addr_space(s.ram, rom, cia1, cia2, sid, vic, col_ram),
+        addr_space(s.ram, rom, cia1, cia2, sid, vic, col_ram, exp_io),
         host_input(host_input_handlers),
         menu(
             {
@@ -550,6 +550,9 @@ public:
 
         cpu.sig_halt = cpu_trap;
 
+        // TODO: init elsewhere...?
+        exp_ctx.io.exrom_game = [&](bool e, bool g) { addr_space.set_exrom_game(e, g); };
+
         Cartridge::detach(exp_ctx);
     }
 
@@ -573,18 +576,21 @@ public:
         c1541.reset();
         exp_ctx.reset();
 
-        s.rdy_low = false;
+        s.ba_low = false;
+        s.dma_low = false;
     }
 
     void run() {
         reset_cold();
         vic_out.init_sync();
 
+        // TODO: consider special loops for different configs (e.g. REU with no 1541)
         for (shutdown = false; !shutdown;) {
             vic.tick();
 
             const auto rw = cpu.mrw();
-            if (s.rdy_low && rw == NMOS6502::MC::RW::r) {
+            const auto rdy_low = s.ba_low || s.dma_low;
+            if (rdy_low && rw == NMOS6502::MC::RW::r) {
                 c1541.tick();
             } else {
                 // 'Slip in' the C1541 cycle
@@ -593,6 +599,8 @@ public:
                 cpu.tick();
                 if (rw == NMOS6502::MC::RW::r) c1541.tick();
             }
+
+            if (exp_ctx.tick) exp_ctx.tick();
 
             cia1.tick(s.vic.cycle);
             cia2.tick(s.vic.cycle);
@@ -620,6 +628,8 @@ public:
     C1541::System c1541;
 
 private:
+    Performance perf;
+
     Host::Video_out vid_out;
     VIC_out vic_out;
 
@@ -778,9 +788,9 @@ private:
 
     std::vector<::Menu::Action> cart_menu_actions{
         {"CARTRIDGE / DETACH ?", [&](){ Cartridge::detach(exp_ctx); reset_cold(); }},
+        {"CARTRIDGE / ATTACH REU ?", [&]() { if ( Cartridge::attach_REU(exp_ctx)) reset_cold(); }},
     };
 
-    Performance perf;
     std::vector<::Menu::Knob> perf_menu_items{
         {"PERFORMANCE / FPS",  perf.frame_rate,
             [&]() {
@@ -804,8 +814,15 @@ private:
 
     Files::loader loader;
 
+    Expansion_ctx::IO exp_io{
+        s.ba_low,
+        //std::bind(&Address_space::access, addr_space, std::placeholders::_1),
+        [this](const u16& a, u8& d, const u8 rw) { addr_space.access(a, d, rw); },
+        int_hub,
+        s.dma_low
+    };
     Expansion_ctx exp_ctx{
-        addr_space.exp, s.ram, s.vic.cycle, s.exp_mem, nullptr
+        exp_io, s.ram, s.vic.cycle, s.exp_ram, nullptr, nullptr
     };
 
     static void install_tape_kernal_traps(u8* kernal, u8 trap_opc);

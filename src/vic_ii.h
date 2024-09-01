@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include "common.h"
+#include "cartridge.h"
 
 
 namespace VIC_II {
@@ -108,7 +109,7 @@ private:
 
         Address_space(
             State& s_, const u8* ram_, const u8* charr,
-            const Expansion_ctx::Address_space::r& romh_r_)
+            const Expansion_ctx::IO::r& romh_r_)
           : s(s_), ram(ram_), chr(charr), romh_r(romh_r_) { set_layout(); }
 
     private:
@@ -141,7 +142,7 @@ private:
         const u8* ram;
         const u8* chr;
 
-        const Expansion_ctx::Address_space::r& romh_r;
+        const Expansion_ctx::IO::r& romh_r;
     };
 
 
@@ -1376,7 +1377,7 @@ public:
     Core(
           State& s_,
           const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
-          const Expansion_ctx::Address_space::r& romh_r,
+          const Expansion_ctx::IO::r& romh_r,
           u16& ba_low, Out& out_)
         : s(s_),
           addr_space(s_.addr_space, ram_, charr, romh_r), irq(s, out_), ba(ba_low), lp(s, irq),

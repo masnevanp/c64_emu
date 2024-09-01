@@ -242,7 +242,7 @@ struct CRT {
         const u8 name[32];
 
         bool valid() const { // NOTE: loader checks the signature
-            if (hw_type > Cartridge_HW_type::last) return false;
+            if (hw_type > Cartridge_HW_type::last) return false; // TODO: does this buy anything?
             if (exrom > 1 || game > 1) return false;
 
             return true;

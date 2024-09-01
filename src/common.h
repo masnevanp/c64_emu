@@ -83,37 +83,6 @@ private:
 };
 
 
-// gather everything required by an expansion (e.g. cart)
-// (TODO: nmi/irq when needed...)
-struct Expansion_ctx {
-    struct Address_space {
-        using r = std::function<void (const u16& addr, u8& data)>;
-        using w = std::function<void (const u16& addr, const u8& data)>;
-
-        r roml_r;
-        w roml_w;
-        r romh_r;
-        w romh_w;
-
-        r io1_r;
-        w io1_w;
-        r io2_r;
-        w io2_w;
-
-        std::function<void (bool e, bool g)> exrom_game;
-    };
-
-    Address_space& as;
-
-    u8* sys_ram;
-    u64& sys_cycle;
-
-    u8* mem;
-
-    std::function<void ()> reset;
-};
-
-
 enum Color : u8 {
     black, white, red, cyan, purple, green, blue, yellow,
     orange, brown, light_red, gray_1, gray_2, light_green, light_blue, gray_3
