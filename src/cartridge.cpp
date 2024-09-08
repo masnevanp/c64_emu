@@ -427,8 +427,6 @@ public:
         };
 
         exp_ctx.reset = [&]() {
-            std::cout << "REU reset" << std::endl;
-
             r.status = 0x00;
             r.cmd = 0b00000000 | R_cmd::no_ff00_trig;
             r.a.saddr = 0x0000;
@@ -509,8 +507,8 @@ private:
         do_tlen();
 
         if (ds != dr) {
-            std::cout << "\n  VERR:: raddr: " << (int)(r.a.raddr) << ", saddr: " << (int)(r.a.saddr)
-                << ", tlen: " << (int)(r.a.tlen);
+            // std::cout << "\n  VERR:: raddr: " << (int)(r.a.raddr) << ", saddr: " << (int)(r.a.saddr)
+            //    << ", tlen: " << (int)(r.a.tlen);
             r.status |= R_status::ver_err;
             done(); // might be an extra 'done()' (if tlen was 1), but meh...
         }
@@ -551,22 +549,22 @@ private:
     };
 
     void start() {
-        std::cout << "raddr: " << (int)(r.a.raddr) << ", saddr: " << (int)(r.a.saddr)
-                << ", tlen: " << (int)(r.a.tlen) << ", cmd: " << (int)(r.cmd);
+        // std::cout << "raddr: " << (int)(r.a.raddr) << ", saddr: " << (int)(r.a.saddr)
+        //         << ", tlen: " << (int)(r.a.tlen) << ", cmd: " << (int)(r.cmd);
         exp_ctx.tick = tick_dispatch_op;
     }
 
     std::function<void ()> tick_dispatch_op {
         [this] {
             const auto op = ((r.cmd & R_cmd::xfer) << 2) | ((r.addr_ctrl & R_addr_ctrl::fix) >> 6);
-            std::cout << ", op: " << op;
+            // std::cout << ", op: " << op;
             exp_ctx.tick = Tick[op];
             exp_ctx.io.dma_low = true;
         }
     };
 
     void done() {
-        std::cout << " :: done, sr: " << (int)(r.status) << std::endl;
+        // std::cout << " :: done, sr: " << (int)(r.status) << std::endl;
         exp_ctx.tick = nullptr;
         exp_ctx.io.dma_low = false;
         if (r.a.tlen == 1) r.status |= R_status::eob;
@@ -582,9 +580,6 @@ bool Cartridge::attach_REU(Ctx& exp_ctx) {
     // TODO: check if already attached (prevent re-init & system reset)
     //       (e.g. somehow check if exp_ctx already has reu ops connected...?)
     //       (or might need to add a flag/status --> requires notification on detach)
-
-    std::cout << "CRT: REU attach" << std::endl;
-
     Cartridge::detach(exp_ctx);
 
     REU& reu = *(new REU(exp_ctx)); // TODO: allocate in expansion ram (placement new)
