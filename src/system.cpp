@@ -320,49 +320,30 @@ void System::Menu::update() {
 }
 
 
-/*void System::C64::keep_running() {
-    auto run_without_c1541 = [&]() {
-        while (!run_cfg_change) {
-            vic.tick();
+void System::C64::reset_warm() {
+    cia1.reset_warm(); // need to reset for correct irq handling
+    cia2.reset_warm();
+    cpu.reset_warm();
+    int_hub.reset();
+}
 
-            if (!s.rdy_low || cpu.mrw() == NMOS6502::MC::RW::w) {
-                addr_space.access(cpu.mar(), cpu.mdr(), cpu.mrw());
-                cpu.tick();
-            }
 
-            cia1.tick(s.vic.cycle);
-            cia2.tick(s.vic.cycle);
-            int_hub.tick();
-        }
-    };
+void System::C64::reset_cold() {
+    init_ram();
+    cia1.reset_cold();
+    cia2.reset_cold();
+    sid.reset();
+    vic.reset();
+    input_matrix.reset();
+    addr_space.reset();
+    cpu.reset_cold();
+    int_hub.reset();
+    c1541.reset();
+    exp_ctx.reset();
 
-    auto run_with_c1541 = [&]() {
-        while(!run_cfg_change) {
-            vic.tick();
-
-            const auto rw = cpu.mrw();
-            if (!s.rdy_low || rw == NMOS6502::MC::RW::w) {
-                // 'Slip in' the C1541 cycle
-                if (rw == NMOS6502::MC::RW::w) c1541.tick();
-                addr_space.access(cpu.mar(), cpu.mdr(), rw);
-                cpu.tick();
-                if (rw == NMOS6502::MC::RW::r) c1541.tick();
-            } else {
-                c1541.tick();
-            }
-
-            cia1.tick(s.vic.cycle);
-            cia2.tick(s.vic.cycle);
-            int_hub.tick();
-            if (s.vic.cycle % C1541::extra_cycle_freq == 0) c1541.tick();
-        }
-    };
-
-    run_cfg_change = false;
-
-    if (c1541.idle) run_without_c1541();
-    else run_with_c1541();
-}*/
+    s.ba_low = false;
+    s.dma_low = false;
+}
 
 
 std::string get_filename(u8* ram) {
@@ -469,7 +450,7 @@ void System::C64::init_ram() { // TODO: parameterize pattern (+ add 'randomness'
 
 // 'halt' instructions used for trapping (i.e. 'illegal' instructions that normally
 // would halt the CPU). The byte following the 'halt' is used to identify the 'request'.
-void System::C64::install_tape_kernal_traps(u8* kernal, u8 trap_opc) {
+void System::C64::install_kernal_tape_traps(u8* kernal, u8 trap_opc) {
     static constexpr u16 kernal_start = 0xe000;
     static constexpr u8  rts_opc = 0x60;
 

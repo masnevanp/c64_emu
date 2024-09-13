@@ -509,79 +509,19 @@ public:
         load = 0x01, save = 0x02,
     };
 
-
-    C64(const ROM& rom) :
-        cia1(cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1, s.vic.cycle),
-        cia2(cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2, s.vic.cycle),
-        sid(FRAME_RATE_MIN, Performance::min_sync_points, s.vic.cycle),
-        col_ram(s.color_ram),
-        vic(s.vic, s.ram, col_ram, rom.charr, exp_io.romh_r, s.ba_low, vic_out),
-        c1541(cia2.port_a.ext_in, rom.c1541/*, run_cfg_change*/),
-        perf(),
-        vid_out(perf.frame_rate.chosen),
-        vic_out(int_hub, vid_out, host_input, sid, menu.vic_out_overlay, c1541.dc.status, rom.charr, perf),
-        int_hub(cpu),
-        input_matrix(cia1.port_a.ext_in, cia1.port_b.ext_in, vic),
-        addr_space(s.ram, rom, cia1, cia2, sid, vic, col_ram, exp_io),
-        host_input(host_input_handlers),
-        menu(
-            {
-                {"RESET WARM !", [&](){ reset_warm(); } },
-                {"RESET COLD !", [&](){ reset_cold(); } },
-                {"SWAP JOYS !",  [&](){ host_input.swap_joysticks(); } },
-            },
-            {
-                {"SHUTDOWN ?",   [&](){ signal_shutdown(); } },
-            },
-            {
-                vid_out.settings_menu(),
-                sid.settings_menu(),
-                c1541.menu(),
-                ::Menu::Group("CARTRIDGE /", cart_menu_actions),
-                ::Menu::Group("PERFORMANCE /", perf_menu_items),
-            },
-            rom.charr
-        )
+    C64(const ROM& rom_) : rom(rom_)
     {
         // intercept load/save for tape device
-        install_tape_kernal_traps(const_cast<u8*>(rom.kernal), Trap_OPC::tape_routine);
-
-        loader = Files::Loader("data/prg", img_consumer); // TODO: init_dir configurable (program arg?)
+        install_kernal_tape_traps(const_cast<u8*>(rom.kernal), Trap_OPC::tape_routine);
 
         cpu.sig_halt = cpu_trap;
-
-        // TODO: init elsewhere...?
-        exp_ctx.io.exrom_game = [&](bool e, bool g) { addr_space.set_exrom_game(e, g); };
 
         Cartridge::detach(exp_ctx);
     }
 
-    void reset_warm() {
-        cia1.reset_warm(); // need to reset for correct irq handling
-        cia2.reset_warm();
-        cpu.reset_warm();
-        int_hub.reset();
-    }
-
-    void reset_cold() {
-        init_ram();
-        cia1.reset_cold();
-        cia2.reset_cold();
-        sid.reset();
-        vic.reset();
-        input_matrix.reset();
-        addr_space.reset();
-        cpu.reset_cold();
-        int_hub.reset();
-        c1541.reset();
-        exp_ctx.reset();
-
-        s.ba_low = false;
-        s.dma_low = false;
-    }
-
     void run() {
         reset_cold();
+
         vic_out.init_sync();
 
         // TODO: consider special loops for different configs (e.g. REU with no 1541)
@@ -607,46 +547,45 @@ public:
             int_hub.tick();
             if (s.vic.cycle % C1541::extra_cycle_freq == 0) c1541.tick();
         }
-
-        /*for (shutdown = false; !shutdown;) {
-            keep_running();
-        }*/
     }
+
+private:
+
+    const ROM& rom;
 
     State s;
 
     CPU cpu;
 
-    CIA cia1;
-    CIA cia2;
+    CIA cia1{cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1, s.vic.cycle};
+    CIA cia2{cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2, s.vic.cycle};
 
-    TheSID sid;
+    TheSID sid{int(FRAME_RATE_MIN), Performance::min_sync_points, s.vic.cycle};
 
-    Color_RAM col_ram;
-    VIC vic;
+    Color_RAM col_ram{s.color_ram};
 
-    C1541::System c1541;
+    VIC vic{s.vic, s.ram, col_ram, rom.charr, exp_io.romh_r, s.ba_low, vic_out};
 
-private:
-    Performance perf;
+    C1541::System c1541{cia2.port_a.ext_in, rom.c1541};
 
-    Host::Video_out vid_out;
-    VIC_out vic_out;
+    Address_space addr_space{s.ram, rom, cia1, cia2, sid, vic, col_ram, exp_io};
 
-    IO::Int_hub int_hub;
+    IO::Int_hub int_hub{cpu};
 
-    Input_matrix input_matrix;
+    Input_matrix input_matrix{cia1.port_a.ext_in, cia1.port_b.ext_in, vic};
 
-    Address_space addr_space;
+    Expansion_ctx::IO exp_io{
+        s.ba_low,
+        //std::bind(&Address_space::access, addr_space, std::placeholders::_1),
+        [this](const u16& a, u8& d, const u8 rw) { addr_space.access(a, d, rw); },
+        [this](bool e, bool g) { addr_space.set_exrom_game(e, g); },
+        int_hub,
+        s.dma_low
+    };
+    Expansion_ctx exp_ctx{
+        exp_io, s.ram, s.vic.cycle, s.exp_ram, nullptr, nullptr
+    };
 
-    // TODO: lump these (and future related things) together
-    //       (a simple 'Run_cfg' class that accepts requests to change the cfg (or to quit..))
-    bool shutdown;
-    // bool run_cfg_change;
-
-    Host::Input host_input;
-
-    /* -------------------- CIA port outputs -------------------- */
     IO::Port::PD_out cia1_port_a_out {
         [this](u8 state) { input_matrix.cia1_pa_out(state); }
     };
@@ -667,7 +606,6 @@ private:
     };
     IO::Port::PD_out cia2_port_b_out { [](u8 _) { UNUSED(_); } };
 
-    /* -------------------- Host input -------------------- */
     Host::Input::Handlers host_input_handlers {
         // client keyboard & controllers (including lightpen)
         input_matrix.keyboard,
@@ -706,6 +644,12 @@ private:
             // (e.g. if a disk is mounted, then other 'incoming' disks are ignored currently..)
         }
     };
+    Host::Input host_input{host_input_handlers};
+
+    VIC_out vic_out{
+        int_hub, vid_out, host_input, sid, menu.vic_out_overlay, c1541.dc.status, rom.charr, perf
+    };
+    Host::Video_out vid_out{perf.frame_rate.chosen};
 
     // TODO: verify that it is a valid kernal trap (e.g. 'addr_space.mapping(cpu.pc) == kernal')
     NMOS6502::Sig cpu_trap {
@@ -777,14 +721,21 @@ private:
         }
     };
 
-    //void keep_running();
+    Files::loader loader{Files::Loader("data/prg", img_consumer)}; // TODO: init_dir configurable (program arg?)
+
+    Performance perf{};
+
+    bool shutdown;
+
+    void reset_warm();
+    void reset_cold();
 
     void do_load();
     void do_save();
 
     void init_ram();
-    void signal_shutdown() { /*run_cfg_change =*/ shutdown = true; }
 
+    void signal_shutdown() { /*run_cfg_change =*/ shutdown = true; }
 
     std::vector<::Menu::Action> cart_menu_actions{
         {"CARTRIDGE / DETACH ?", [&](){ Cartridge::detach(exp_ctx); reset_cold(); }},
@@ -810,22 +761,26 @@ private:
         },
     };
 
-    Menu menu;
-
-    Files::loader loader;
-
-    Expansion_ctx::IO exp_io{
-        s.ba_low,
-        //std::bind(&Address_space::access, addr_space, std::placeholders::_1),
-        [this](const u16& a, u8& d, const u8 rw) { addr_space.access(a, d, rw); },
-        int_hub,
-        s.dma_low
+    Menu menu{
+        {
+            {"RESET WARM !", [&](){ reset_warm(); } },
+            {"RESET COLD !", [&](){ reset_cold(); } },
+            {"SWAP JOYS !",  [&](){ host_input.swap_joysticks(); } },
+        },
+        {
+            {"SHUTDOWN ?",   [&](){ signal_shutdown(); } },
+        },
+        {
+            vid_out.settings_menu(),
+            sid.settings_menu(),
+            c1541.menu(),
+            ::Menu::Group("CARTRIDGE /", cart_menu_actions),
+            ::Menu::Group("PERFORMANCE /", perf_menu_items),
+        },
+        rom.charr
     };
-    Expansion_ctx exp_ctx{
-        exp_io, s.ram, s.vic.cycle, s.exp_ram, nullptr, nullptr
-    };
 
-    static void install_tape_kernal_traps(u8* kernal, u8 trap_opc);
+    static void install_kernal_tape_traps(u8* kernal, u8 trap_opc);
 };
 
 
