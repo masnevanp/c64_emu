@@ -2,7 +2,6 @@
 #define CIA_H_INCLUDED
 
 #include "common.h"
-#include "io.h"
 
 
 namespace CIA {

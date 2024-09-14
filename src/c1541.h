@@ -4,7 +4,6 @@
 #include <iostream>
 #include <vector>
 #include "common.h"
-#include "io.h"
 #include "utils.h"
 #include "files.h"
 #include "nmos6502/nmos6502_core.h"

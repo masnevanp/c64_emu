@@ -12,7 +12,6 @@
 #include "vic_ii.h"
 #include "sid.h"
 #include "cia.h"
-#include "io.h"
 #include "c1541.h"
 #include "host.h"
 #include "menu.h"
@@ -566,8 +565,6 @@ private:
 
     VIC vic{s.vic, s.ram, col_ram, rom.charr, exp_io.romh_r, s.ba_low, vic_out};
 
-    C1541::System c1541{cia2.port_a.ext_in, rom.c1541};
-
     Address_space addr_space{s.ram, rom, cia1, cia2, sid, vic, col_ram, exp_io};
 
     IO::Int_hub int_hub{cpu};
@@ -585,6 +582,8 @@ private:
     Expansion_ctx exp_ctx{
         exp_io, s.ram, s.vic.cycle, s.exp_ram, nullptr, nullptr
     };
+
+    C1541::System c1541{cia2.port_a.ext_in, rom.c1541};
 
     IO::Port::PD_out cia1_port_a_out {
         [this](u8 state) { input_matrix.cia1_pa_out(state); }
