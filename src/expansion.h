@@ -1,5 +1,5 @@
-#ifndef CARTRIDGE_H_INCLUDED
-#define CARTRIDGE_H_INCLUDED
+#ifndef EXPANSION_H_INCLUDED
+#define EXPANSION_H_INCLUDED
 
 #include "common.h"
 #include "files.h"
@@ -45,8 +45,8 @@ struct Expansion_ctx {
         const u16& ba_low; // low == active
 
         // exp -> sys
-        std::function<void (const u16&, u8&, const u8 rw)> sys_addr_space;
-        std::function<void (bool e, bool g)> exrom_game;
+        const std::function<void (const u16&, u8&, const u8 rw)> sys_addr_space;
+        const std::function<void (bool e, bool g)> exrom_game;
 
         ::IO::Int_hub& int_hub;
 
@@ -75,4 +75,4 @@ bool attach_REU(Expansion_ctx& exp_ctx);
 }
 
 
-#endif // CARTRIDGE_H_INCLUDED
+#endif // EXPANSION_H_INCLUDED

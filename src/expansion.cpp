@@ -1,7 +1,7 @@
 
 #include <iostream>
 #include <optional>
-#include "cartridge.h"
+#include "expansion.h"
 #include "utils.h"
 #include "nmos6502/nmos6502_mc.h"
 

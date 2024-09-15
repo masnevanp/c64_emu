@@ -16,7 +16,7 @@
 #include "host.h"
 #include "menu.h"
 #include "files.h"
-#include "cartridge.h"
+#include "expansion.h"
 
 
 
@@ -549,7 +549,6 @@ public:
     }
 
 private:
-
     const ROM& rom;
 
     State s;
