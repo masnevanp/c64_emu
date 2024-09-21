@@ -15,7 +15,8 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
 
     mem[0xfffc] = 0x00; mem[0xfffd] = 0x04;
 
-    Core cpu;
+    Sig sig_halt = [](){ std::cout << "\nCPU halted!" << std::endl; };
+    Core cpu{sig_halt};
 
     for (int i = 0; i < 7; ++i) { // do reset...
         if (cpu.mrw() == MC::RW::r) cpu.mdr() = mem[cpu.mar()];

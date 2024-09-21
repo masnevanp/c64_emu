@@ -5,6 +5,7 @@
 #include <cmath>
 #include <vector>
 #include <filesystem>
+#include <iostream>
 #include "common.h"
 #include "utils.h"
 #include "dbg.h"
@@ -513,8 +514,6 @@ public:
         // intercept load/save for tape device
         install_kernal_tape_traps(const_cast<u8*>(rom.kernal), Trap_OPC::tape_routine);
 
-        cpu.sig_halt = cpu_trap;
-
         Cartridge::detach(exp_ctx);
     }
 
@@ -553,7 +552,7 @@ private:
 
     State s;
 
-    CPU cpu;
+    CPU cpu{cpu_trap};
 
     CIA cia1{cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1, s.vic.cycle};
     CIA cia2{cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2, s.vic.cycle};
@@ -680,7 +679,7 @@ private:
             if (proceed) {
                 ++cpu.mcp; // bump to recover from halt
             } else {
-                std::cout << "\n****** CPU halted! ******\n";
+                std::cout << "\n****** CPU halted! ******" << std::endl;
                 Dbg::print_status(cpu, s.ram);
             }
         }

@@ -8,7 +8,7 @@
 #include "files.h"
 #include "nmos6502/nmos6502_core.h"
 #include "menu.h"
-//#include "dbg.h"
+#include "dbg.h"
 
 
 /* TODO:
@@ -947,7 +947,7 @@ public:
     void tick();
 
     //bool idle;
-    CPU cpu;
+    CPU cpu{cpu_trap};
     IEC iec;
     Disk_ctrl dc;
     u8 ram[0x0800];
@@ -1026,6 +1026,13 @@ private:
         Disk* blank_disk = new C1541::D64_disk(Files::D64{d64_data}); // not truly blank...
         disk_carousel.insert(0, blank_disk, "blank"); // TODO: handle 0 free slots case
     }
+
+    NMOS6502::Sig cpu_trap {
+        [this]() {
+            std::cout << "\n****** C1541 CPU halted! ******" << std::endl;
+            Dbg::print_status(cpu, ram);
+        }
+    };
 
     std::vector<Menu::Kludge> menu_imm_actions{
         {"DISK / TOGGLE WRITE PROTECTION !", [&](){ disk_carousel.toggle_wp(); return nullptr; }},

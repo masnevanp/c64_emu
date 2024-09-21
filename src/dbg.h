@@ -2,6 +2,7 @@
 #define DBG_H_INCLUDED
 
 #include <string>
+#include <iostream>
 #include "common.h"
 #include "nmos6502/nmos6502.h"
 #include "nmos6502/nmos6502_core.h"
@@ -31,7 +32,7 @@ class System {
 public:
     System(u8* mem_, bool do_reset_=true) : mem(mem_) { if (do_reset_) do_reset(); }
     u8* mem;
-    Core cpu;
+    Core cpu{cpu_trap};
     uint64_t cn = 1;
     int tn = 0;
     void exec_cycle() {
@@ -44,6 +45,14 @@ public:
         if (cpu.mcp->mopc >= MC::MOPC::dispatch_cli && cpu.mcp->mopc <= MC::MOPC::dispatch_brk) tn = 0;
     }
     void do_reset() { cpu.reset_cold(); for (int i = 0; i < 7; ++i, ++cn) exec_cycle(); }
+
+private:
+    NMOS6502::Sig cpu_trap {
+        [this]() {
+            std::cout << "\n****** CPU halted! ******" << std::endl;
+            Dbg::print_status(cpu, mem);
+        }
+    };
 };
 
 } // namespace Dbg

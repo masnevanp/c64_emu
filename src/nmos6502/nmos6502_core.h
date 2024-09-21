@@ -21,10 +21,8 @@ public:
 
     const MC::MOP* mcp; // micro-code pointer ('mc pc')
 
-    Sig sig_halt = [](){};
 
-
-    Core();
+    Core(Sig& sig_halt_);
 
     void reset_warm();
     void reset_cold();
@@ -128,6 +126,8 @@ private:
             case 0x3: d = a & x; return;
         }
     }
+
+    Sig& sig_halt;
 
     u8 nmi_req;
     u8 irq_req;
