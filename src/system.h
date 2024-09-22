@@ -540,8 +540,8 @@ public:
 
             if (exp_ctx.tick) exp_ctx.tick();
 
-            cia1.tick(s.vic.cycle);
-            cia2.tick(s.vic.cycle);
+            cia1.tick();
+            cia2.tick();
             int_hub.tick();
             if (s.vic.cycle % C1541::extra_cycle_freq == 0) c1541.tick();
         }

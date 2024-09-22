@@ -70,20 +70,6 @@ template<typename T1, typename T2>
 using Sig2 = std::function<void (T1, T2)>;
 
 
-class Cycle_sync {
-public:
-    void tick() { ++cycle; }
-    bool ticked(const u64& ref_cycle) {
-        if (cycle == ref_cycle) return true;
-        tick();
-        return false;
-    }
-
-private:
-    u64 cycle = 0;
-};
-
-
 enum Color : u8 {
     black, white, red, cyan, purple, green, blue, yellow,
     orange, brown, light_red, gray_1, gray_2, light_green, light_blue, gray_3

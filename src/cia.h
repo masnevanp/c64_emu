@@ -59,7 +59,7 @@ public:
 
     void r(const u8& ri, u8& data) {
         _tick();
-        sync.tick();
+        r_ticked = true;
 
         switch (ri) {
             case pra:      data = port_a.r_pd();    return;
@@ -109,7 +109,7 @@ public:
         }
     }
 
-    void tick(const u64& system_cycle) { if (!sync.ticked(system_cycle)) _tick(); }
+    void tick() { if (!r_ticked) _tick(); else r_ticked = false; }
 
     void set_cnt(bool high) { // TODO (sdr...)
         if (high && !cnt) {
@@ -129,7 +129,8 @@ private:
         tod.tick();
     }
 
-    Cycle_sync sync;
+    // to keep in sync with the cpu (if cpu does a read, we must tick first)
+    bool r_ticked = false;
 
     const Sig sig_null = [](){};
 
