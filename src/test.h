@@ -96,6 +96,12 @@ void run_test_suite()
         for (int b = 2; b < sz; ++b)
             mem[addr++] = bin[b];
         init();
+
+        if (filename == "ANEB") {
+            // without this, the 'ANEB' test might get stuck in the 'waitborder' loop
+            // (since there is no VIC chip at 0xd011...)
+            sys.mem[0xd011] = 0xff;
+        }
     };
 
     auto to_ascii_chr = [&](u8 petscii_chr) -> char { // partial 'support'...
@@ -116,23 +122,6 @@ void run_test_suite()
     };
 
     load("_start");
-    //load("laxz");
-    //load("sbcb(eb)");
-    //load("alrb");
-    //load("arrb");
-    //load("ancb");
-    //load("sbxb");
-    //load("asoz");
-    //load("lsez");
-    //load("rraz");
-    //load("rlaz");
-    //load("insz");
-    //load("axsz");
-    //load("shaay");
-    //load("shaiy");
-    //load("shxay");
-    //load("branchwrap");
-    //load("brkn");
 
     Timer t;
     for (;;) {
@@ -154,6 +143,7 @@ void run_test_suite()
                         std::cout << "\n[ALL PASSED]";
                         goto exit;
                     }
+                    std::cout << " -> ";
                     load(filename);
                     rts();
                     sys.cpu.pc = 0x0816;
