@@ -132,12 +132,12 @@ private:
     u8 nmi_req;
     u8 irq_req;
 
-    u8 nmi_bit; // bit 1 (0x02 --> active)
-    u8 irq_bit; // bit 2 (0x04 --> active)
+    u8 nmi_bit; // bit 1 (set --> active)
+    u8 irq_bit; // bit 2 (set --> active)
     u8 brk_src; // bitmap (b0: sw, b1: nmi, b2: irq)
 
-    static constexpr u8 NMI_BIT = 0x02;
-    static constexpr u8 IRQ_BIT = 0x04;
+    static constexpr u8 NMI_BIT = 0b00000010;
+    static constexpr u8 IRQ_BIT = 0b00000100;
 
     struct BrkCtrl {
         u16 pc_t0;  // pc upd @t0

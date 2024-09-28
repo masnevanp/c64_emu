@@ -185,14 +185,12 @@ public:
         irq  = 0x0f, nmi  = 0xf0, // source mask
     };
 
-    Int_hub(NMOS6502::Core& cpu_) : cpu(cpu_) { }
-
     void reset() { state = old_state = 0x00; nmi_act = irq_act = false; }
 
     void set(Src s) { state |= s;  }
     void clr(Src s) { state &= ~s; }
 
-    void tick() {
+    void tick(NMOS6502::Core& cpu) {
         if (state != old_state) {
             old_state = state;
 
@@ -212,7 +210,6 @@ public:
     }
 
 private:
-    NMOS6502::Core& cpu; // TODO: replace with a generic signal? (or template this class)
     u8 state;
     u8 old_state;
     bool nmi_act;

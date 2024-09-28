@@ -542,7 +542,9 @@ public:
 
             cia1.tick();
             cia2.tick();
-            int_hub.tick();
+
+            int_hub.tick(cpu);
+
             if (s.vic.cycle % C1541::extra_cycle_freq == 0) c1541.tick();
         }
     }
@@ -565,7 +567,7 @@ private:
 
     Address_space addr_space{s.ram, rom, cia1, cia2, sid, vic, col_ram, exp_io};
 
-    IO::Int_hub int_hub{cpu};
+    IO::Int_hub int_hub;
 
     Input_matrix input_matrix{cia1.port_a.ext_in, cia1.port_b.ext_in, vic};
 
