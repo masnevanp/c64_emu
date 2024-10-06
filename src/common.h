@@ -177,6 +177,27 @@ struct Choice {
 namespace IO {
 
 
+/*
+    TODO:
+        A real bus implementation:
+            - phi1 and phi2 support
+            - cpu, vic and expansion port connections (e.g. a cart should be able to control the bus)
+            - aec emulation needed..?
+            - maybe include ba & dma signals here?
+*/
+class Bus {
+public:
+    Bus(NMOS6502::Core& cpu_) : cpu(cpu_) {}
+
+    u16  addr() const { return cpu.mar(); }
+    u8&  data() const { return cpu.mdr(); }
+    u8   rw()   const { return cpu.mrw(); }
+
+private:
+    NMOS6502::Core& cpu;
+};
+
+
 class Int_hub {
 public:
     enum Src : u8 {

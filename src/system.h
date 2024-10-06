@@ -567,6 +567,7 @@ private:
 
     Address_space addr_space{s.ram, rom, cia1, cia2, sid, vic, col_ram, exp_io};
 
+    IO::Bus bus{cpu};
     IO::Int_hub int_hub;
 
     Input_matrix input_matrix{cia1.port_a.ext_in, cia1.port_b.ext_in, vic};
@@ -580,7 +581,7 @@ private:
         s.dma_low
     };
     Expansion_ctx exp_ctx{
-        exp_io, s.ram, s.vic.cycle, s.exp_ram, nullptr, nullptr
+        exp_io, bus, s.ram, s.vic.cycle, s.exp_ram, nullptr, nullptr
     };
 
     C1541::System c1541{cia2.port_a.ext_in, rom.c1541};

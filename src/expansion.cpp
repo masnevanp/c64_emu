@@ -386,6 +386,7 @@ public:
                     d = r.status | R_status::sz_1764 | R_status::chip_ver_1764;
                     if (irq_on()) clr_irq();
                     r.status = 0x00;
+                    //std::cout << "(S: " << (int)(d) << ')';
                     return;
                 case R::cmd:       d = r.cmd;          return;
                 case R::saddr_l:   d = r.a.saddr;      return;
@@ -409,8 +410,9 @@ public:
                 case R::status:    return; // read-only
                 case R::cmd:
                     r.cmd = d;
-                    if ((r.cmd & R_cmd::exec) && (r.cmd & R_cmd::no_ff00_trig)) start();
-                    // TODO: ff00 trigger
+                    exp_ctx.tick = (r.cmd & R_cmd::exec)
+                        ? (r.cmd & R_cmd::no_ff00_trig) ? tick_dispatch_op : tick_wait_ff00
+                        : nullptr;
                     return;
                 case R::saddr_l:   r.a.saddr = r._a.saddr = (r._a.saddr & 0xff00) | d;        return;
                 case R::saddr_h:   r.a.saddr = r._a.saddr = (r._a.saddr & 0x00ff) | (d << 8); return;
@@ -507,8 +509,8 @@ private:
         do_tlen();
 
         if (ds != dr) {
-            // std::cout << "\n  VERR:: raddr: " << (int)(r.a.raddr) << ", saddr: " << (int)(r.a.saddr)
-            //    << ", tlen: " << (int)(r.a.tlen);
+            //std::cout << "\nVERR: raddr: " << (int)(r.a.raddr) << ", saddr: " << (int)(r.a.saddr)
+            //            << ", tlen: " << (int)(r.a.tlen);
             r.status |= R_status::ver_err;
             done(); // might be an extra 'done()' (if tlen was 1), but meh...
         }
@@ -548,29 +550,36 @@ private:
         [this] { if (ba()) { do_ver(); } },
     };
 
-    void start() {
-        // std::cout << "raddr: " << (int)(r.a.raddr) << ", saddr: " << (int)(r.a.saddr)
-        //         << ", tlen: " << (int)(r.a.tlen) << ", cmd: " << (int)(r.cmd);
-        exp_ctx.tick = tick_dispatch_op;
-    }
+    std::function<void ()> tick_wait_ff00 {
+        [this] {
+            const bool ff00_written = (
+                (exp_ctx.sys_bus.addr() == 0xff00) && (exp_ctx.sys_bus.rw() == NMOS6502::MC::RW::w)
+            );
+            if (ff00_written) tick_dispatch_op();
+        }
+    };
 
     std::function<void ()> tick_dispatch_op {
         [this] {
             const auto op = ((r.cmd & R_cmd::xfer) << 2) | ((r.addr_ctrl & R_addr_ctrl::fix) >> 6);
-            // std::cout << ", op: " << op;
             exp_ctx.tick = Tick[op];
             exp_ctx.io.dma_low = true;
+            //std::cout << "\n\nOP: raddr: " << (int)(r.a.raddr) << ", saddr: " << (int)(r.a.saddr)
+            //            << ", tlen: " << (int)(r.a.tlen) << ", cmd: " << (int)(r.cmd)
+            //            << ", op: " << op;
         }
     };
 
     void done() {
-        // std::cout << " :: done, sr: " << (int)(r.status) << std::endl;
         exp_ctx.tick = nullptr;
         exp_ctx.io.dma_low = false;
         if (r.a.tlen == 1) r.status |= R_status::eob;
         r.cmd = r.cmd & ~R_cmd::exec;
         r.cmd = r.cmd | R_cmd::no_ff00_trig;
         if (r.cmd & R_cmd::autoload) r.a = r._a;
+        //std::cout << "\nOP: done, sr: " << (int)(r.status);
+        //std::cout << "    raddr: " << (int)(r.a.raddr) << ", saddr: " << (int)(r.a.saddr)
+        //    << ", tlen: " << (int)(r.a.tlen) << ", cmd: " << (int)(r.cmd) << std::endl;
         check_irq();
     }
 };

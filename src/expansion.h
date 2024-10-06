@@ -55,6 +55,8 @@ struct Expansion_ctx {
 
     IO& io;
 
+    ::IO::Bus& sys_bus;
+
     u8* sys_ram;
     u64& sys_cycle;
 
