@@ -258,7 +258,6 @@ Video_out::SDL_frame::~SDL_frame() {
 
 
 void Video_out::SDL_frame::connect(SDL_Renderer* renderer) {
-    if (texture) SDL_DestroyTexture(texture);
     texture = create_texture(renderer, ta, bm, max_w, max_h);
 }
 
