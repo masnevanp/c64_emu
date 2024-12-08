@@ -501,6 +501,15 @@ private:
         return false;
     }
 
+    /* TOFIX (very low prio.... comments copied from 'vice/src/c64/cart/reu.c'):
+            * failed verify operations consume one extra cycle, except if
+            * the failed comparison happened on the last byte of the buffer.
+
+            * If the last byte failed, the "end of block transfer" bit is set, too
+
+            * If the next-to-last byte failed, the "end of block transfer" bit is
+            * set, but only if the last byte compares equal
+    */
     void do_ver() {
         u8 ds;
         exp_ctx.io.sys_addr_space(r.a.saddr, ds, NMOS6502::MC::RW::r);
