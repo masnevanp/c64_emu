@@ -104,7 +104,7 @@ public:
                 return;
             case crb:
                 timer_b.w_cr(data);
-                tod.set_w_dest(data & CRB::alarm);
+                tod.set_w_dst(TOD::Time(data >> 7));
                 return;
         }
     }
@@ -400,56 +400,57 @@ private:
     class TOD {
     public:
         enum HR { am = 0x00, pm = 0x80 };
+        enum Time { tod = 0, alarm = 1, latch = 2 };
 
         TOD(const u8& cra_, Int_ctrl& int_ctrl_, const u64& system_cycle_)
             : cra(cra_), int_ctrl(int_ctrl_), system_cycle(system_cycle_)
         { reset(); }
 
         void reset() {
-            time  = Time{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-            alarm = Time{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-            r_src = w_dest = &time;
+            time[Time::tod] = Time_rep{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+            time[Time::alarm] = Time_rep{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+            r_src = w_dst = Time::tod;
             stop();
         }
 
         void upd_todin() { if (running()) start(); }
-        void set_w_dest(bool al) { w_dest = al ? &alarm : &time; }
+        void set_w_dst(Time t) { w_dst = t; }
 
         u8 r_10th() {
-            const u8 tnth = r_src->tnth;
-            r_src = &time;
+            const u8 tnth = time[r_src].tnth;
+            r_src = Time::tod;
             return tnth;
         }
-        u8 r_sec() const { return r_src->sec_h | r_src->sec_l; }
-        u8 r_min() const { return r_src->min_h | r_src->min_l; }
+        u8 r_sec() const { return time[r_src].sec_h | time[r_src].sec_l; }
+        u8 r_min() const { return time[r_src].min_h | time[r_src].min_l; }
         u8 r_hr() {
-            if (r_src == &time) { // don't re-latch before unlatched
-                time_latch = time;
-                r_src = &time_latch;
+            if (r_src == Time::tod) { // don't re-latch before unlatched
+                time[Time::latch] = time[Time::tod];
+                r_src = Time::latch;
             }
-            return r_src->hr_pm | r_src->hr;
+            return time[r_src].hr_pm | time[r_src].hr;
         }
 
         void w_10th(const u8& data) {
-            w_dest->tnth = data & 0xf;
-            if (w_dest == &time) start();
+            time[w_dst].tnth = data & 0xf;
+            if (w_dst == Time::tod) start();
             check_alarm();
         }
         void w_sec(const u8& data) {
-            w_dest->sec_l = data & 0xf;
-            w_dest->sec_h = data & 0x70;
+            time[w_dst].sec_l = data & 0xf;
+            time[w_dst].sec_h = data & 0x70;
             check_alarm();
         }
         void w_min(const u8& data) {
-            w_dest->min_l = data & 0xf;
-            w_dest->min_h = data & 0x70;
+            time[w_dst].min_l = data & 0xf;
+            time[w_dst].min_h = data & 0x70;
             check_alarm();
         }
         void w_hr(const u8& data)  {
-            w_dest->hr = data & 0x1f;
-            w_dest->hr_pm = data & HR::pm;
-            if (w_dest == &time) {
-                if (w_dest->hr == 0x12) w_dest->hr_pm ^= HR::pm; // am/pm flip (but for the time only)
+            time[w_dst].hr = data & 0x1f;
+            time[w_dst].hr_pm = data & HR::pm;
+            if (w_dst == Time::tod) {
+                if (time[w_dst].hr == 0x12) time[w_dst].hr_pm ^= HR::pm; // am/pm flip (but for the time only)
                 stop();
             }
             check_alarm();
@@ -458,7 +459,7 @@ private:
         void tick() {
             if (running()) {
                 if (system_cycle % tick_freq == 0) {
-                    time.tick();
+                    time[Time::tod].tick();
                     check_alarm();
                 }
             }
@@ -471,9 +472,11 @@ private:
         }
         void stop() { tick_freq = 0; }
         bool running() const { return tick_freq; }
-        void check_alarm() { if (time == alarm) int_ctrl.set(Int_ctrl::Int_src::alrm); }
+        void check_alarm() {
+            if (time[Time::tod] == time[Time::alarm]) int_ctrl.set(Int_ctrl::Int_src::alrm);
+        }
 
-        struct Time {
+        struct Time_rep {
             u8 hr;
             u8 hr_pm;
             u8 min_l;
@@ -527,7 +530,7 @@ private:
                 tick_tnth();
             }
 
-            bool operator==(const Time& ct) {
+            bool operator==(const Time_rep& ct) {
                 return (tnth == ct.tnth)
                         && (sec_l == ct.sec_l) && (sec_h == ct.sec_h)
                         && (min_l == ct.min_l) && (min_h == ct.min_h)
@@ -535,14 +538,12 @@ private:
             }
         };
 
-        Time time;
-        Time time_latch;
-        Time alarm;
+        Time_rep time[3];
+
+        Time r_src;
+        Time w_dst;
 
         u32 tick_freq;
-
-        Time* r_src;
-        Time* w_dest;
 
         const u8& cra;
 
