@@ -100,7 +100,6 @@ public:
             case icr:      int_ctrl.w_icr(data); return;
             case cra: // NOTE! Timers store the full CR (although they don't use all the bits)
                 timer_a.w_cr(data);
-                tod.upd_todin();
                 return;
             case crb:
                 timer_b.w_cr(data);
@@ -396,9 +395,10 @@ private:
 
 
     // many thanks to 'VICE/testprogs/CIA/tod'
-    // TODO: many tests fail still...
     class TOD {
     public:
+        static constexpr u32 tod_pin_freq = CPU_FREQ_PAL / 50;
+
         enum HR { am = 0x00, pm = 0x80 };
         enum Time { tod = 0, alarm = 1, latch = 2 };
 
@@ -413,7 +413,6 @@ private:
             stop();
         }
 
-        void upd_todin() { if (running()) start(); }
         void set_w_dst(Time t) { w_dst = t; }
 
         u8 r_10th() {
@@ -432,46 +431,61 @@ private:
         }
 
         void w_10th(const u8& data) {
-            time[w_dst].tnth = data & 0xf;
-            if (w_dst == Time::tod) start();
-            check_alarm();
+            const u8 tnth = data & 0xf;
+            if (time[w_dst].tnth != tnth) {
+                time[w_dst].tnth = tnth;
+                check_alarm();
+            }
+            if (w_dst == Time::tod && !running()) start();
         }
         void w_sec(const u8& data) {
-            time[w_dst].sec_l = data & 0xf;
-            time[w_dst].sec_h = data & 0x70;
-            check_alarm();
+            if (r_sec() != data) {
+                time[w_dst].sec_l = data & 0xf;
+                time[w_dst].sec_h = data & 0x70;
+                check_alarm();
+            }
         }
         void w_min(const u8& data) {
-            time[w_dst].min_l = data & 0xf;
-            time[w_dst].min_h = data & 0x70;
-            check_alarm();
+            if (r_min() != data) {
+                time[w_dst].min_l = data & 0xf;
+                time[w_dst].min_h = data & 0x70;
+                check_alarm();
+            }
         }
-        void w_hr(const u8& data)  {
-            time[w_dst].hr = data & 0x1f;
-            time[w_dst].hr_pm = data & HR::pm;
+        void w_hr(u8 data)  {
+            const u8 hr = data & 0x1f;
+
             if (w_dst == Time::tod) {
-                if (time[w_dst].hr == 0x12) time[w_dst].hr_pm ^= HR::pm; // am/pm flip (but for the time only)
+                if (hr == 0x12) data ^= HR::pm; // am/pm flip (TOD only)
                 stop();
             }
-            check_alarm();
+
+            const u8 old = time[w_dst].hr_pm | time[w_dst].hr;
+            if (data != old) {
+                time[w_dst].hr = hr;
+                time[w_dst].hr_pm = data & HR::pm;
+                check_alarm();
+            }
         }
 
         void tick() {
-            if (running()) {
-                if (system_cycle % tick_freq == 0) {
+            const bool tod_pin_pulse = (system_cycle % tod_pin_freq == 0);
+            if (tod_pin_pulse && running()) {
+                const bool do_tod_tick = (tod_tick_timer == (6 - (cra >> 7)));
+                if (do_tod_tick) {
+                    tod_tick_timer = 1;
                     time[Time::tod].tick();
                     check_alarm();
+                } else {
+                    if (++tod_tick_timer == 7) tod_tick_timer = 1;
                 }
             }
         }
 
     private:
-        void start() {
-            const bool todin_50hz = cra & CRA::todin;
-            tick_freq = std::round((CPU_FREQ_PAL / 50) * (todin_50hz ? 5 : 6));
-        }
-        void stop() { tick_freq = 0; }
-        bool running() const { return tick_freq; }
+        void start() { tod_tick_timer = 1; }
+        void stop() { tod_tick_timer = 0; }
+        bool running() const { return tod_tick_timer > 0; }
         void check_alarm() {
             if (time[Time::tod] == time[Time::alarm]) int_ctrl.set(Int_ctrl::Int_src::alrm);
         }
@@ -543,7 +557,7 @@ private:
         Time r_src;
         Time w_dst;
 
-        u32 tick_freq;
+        int tod_tick_timer = 0;
 
         const u8& cra;
 
