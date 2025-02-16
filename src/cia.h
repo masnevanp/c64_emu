@@ -397,7 +397,7 @@ private:
     // many thanks to 'VICE/testprogs/CIA/tod'
     class TOD {
     public:
-        static constexpr u32 tod_pin_freq = CPU_FREQ_PAL / 50;
+        static constexpr u32 tod_pin_freq = u32((CPU_FREQ_PAL / 50) + 0.5); // round like a pro...
 
         enum HR { am = 0x00, pm = 0x80 };
         enum Time { tod = 0, alarm = 1, latch = 2 };
