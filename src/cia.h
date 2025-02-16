@@ -84,20 +84,20 @@ public:
     void w(const u8& ri, const u8& data) {
         //if (ri == cra) std::cout << "CIA-" << (int)id << ": w " << (int)ri << " " << (int)data << "\n"; //getchar();
         switch (ri) {
-            case pra:      port_a.w_pd(data);    return;
-            case prb:      port_b.w_pd(data);    return;
-            case ddra:     port_a.w_dd(data);    return;
-            case ddrb:     port_b.w_dd(data);    return;
-            case ta_lo:    timer_a.w_lo(data);   return;
-            case ta_hi:    timer_a.w_hi(data);   return;
-            case tb_lo:    timer_b.w_lo(data);   return;
-            case tb_hi:    timer_b.w_hi(data);   return;
-            case tod_10th: tod.w_10th(data);     return;
-            case tod_sec:  tod.w_sec(data);      return;
-            case tod_min:  tod.w_min(data);      return;
-            case tod_hr:   tod.w_hr(data);       return;
-            case sdr:                            return; // TODO
-            case icr:      int_ctrl.w_icr(data); return;
+            case pra:      port_a.w_pd(data);      return;
+            case prb:      port_b.w_pd(data);      return;
+            case ddra:     port_a.w_dd(data);      return;
+            case ddrb:     port_b.w_dd(data);      return;
+            case ta_lo:    timer_a.w_lo(data);     return;
+            case ta_hi:    timer_a.w_hi(data);     return;
+            case tb_lo:    timer_b.w_lo(data);     return;
+            case tb_hi:    timer_b.w_hi(data);     return;
+            case tod_10th: tod.w_10th(data & 0xf); return;
+            case tod_sec:  tod.w_sec(data & 0x7f); return;
+            case tod_min:  tod.w_min(data & 0x7f); return;
+            case tod_hr:   tod.w_hr(data & 0x9f);  return;
+            case sdr:                              return; // TODO
+            case icr:      int_ctrl.w_icr(data);   return;
             case cra: // NOTE! Timers store the full CR (although they don't use all the bits)
                 timer_a.w_cr(data);
                 return;
@@ -407,8 +407,8 @@ private:
         { reset(); }
 
         void reset() {
-            time[Time::tod] = Time_rep{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-            time[Time::alarm] = Time_rep{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+            time[Time::tod] = Time_rep{0x01, 0x00, 0x00, 0x00};
+            time[Time::alarm] = Time_rep{0x00, 0x00, 0x00, 0x00};
             r_src = w_dst = Time::tod;
             stop();
         }
@@ -420,50 +420,44 @@ private:
             r_src = Time::tod;
             return tnth;
         }
-        u8 r_sec() const { return time[r_src].sec_h | time[r_src].sec_l; }
-        u8 r_min() const { return time[r_src].min_h | time[r_src].min_l; }
+        u8 r_sec() const { return time[r_src].sec; }
+        u8 r_min() const { return time[r_src].min; }
         u8 r_hr() {
             if (r_src == Time::tod) { // don't re-latch before unlatched
                 time[Time::latch] = time[Time::tod];
                 r_src = Time::latch;
             }
-            return time[r_src].hr_pm | time[r_src].hr;
+            return time[r_src].hr;
         }
 
         void w_10th(const u8& data) {
-            const u8 tnth = data & 0xf;
-            if (time[w_dst].tnth != tnth) {
-                time[w_dst].tnth = tnth;
+            if (time[w_dst].tnth != data) {
+                time[w_dst].tnth = data;
                 check_alarm();
             }
             if (w_dst == Time::tod && !running()) start();
         }
         void w_sec(const u8& data) {
-            if (r_sec() != data) {
-                time[w_dst].sec_l = data & 0xf;
-                time[w_dst].sec_h = data & 0x70;
+            if (time[w_dst].sec != data) {
+                time[w_dst].sec = data;
                 check_alarm();
             }
         }
         void w_min(const u8& data) {
-            if (r_min() != data) {
-                time[w_dst].min_l = data & 0xf;
-                time[w_dst].min_h = data & 0x70;
+            if (time[w_dst].min != data) {
+                time[w_dst].min = data;
                 check_alarm();
             }
         }
         void w_hr(u8 data)  {
-            const u8 hr = data & 0x1f;
-
             if (w_dst == Time::tod) {
+                const u8 hr = data & 0x1f;
                 if (hr == 0x12) data ^= HR::pm; // am/pm flip (TOD only)
                 stop();
             }
 
-            const u8 old = time[w_dst].hr_pm | time[w_dst].hr;
-            if (data != old) {
-                time[w_dst].hr = hr;
-                time[w_dst].hr_pm = data & HR::pm;
+            if (time[w_dst].hr != data) {
+                time[w_dst].hr = data;
                 check_alarm();
             }
         }
@@ -492,25 +486,24 @@ private:
 
         struct Time_rep {
             u8 hr;
-            u8 hr_pm;
-            u8 min_l;
-            u8 min_h;
-            u8 sec_l;
-            u8 sec_h;
+            u8 min;
+            u8 sec;
             u8 tnth;
 
             void tick() {
                 auto tick_hr = [&]() {
-                    ++hr;
-                    if (hr == 10) hr = 0x10;
-                    else if (hr == 0x12) hr_pm ^= HR::pm;
-                    else if (hr == 0x13) hr = 0x01;
-                    else if (hr == 0x10) hr = 0x00;
-                    else if (hr == 0x20) hr = 0x10;
+                    const u8 hr_pm = hr & HR::pm;
+                    hr = (hr + 1) & 0x3f;
+                    if (hr == 10) hr = 0x10 | hr_pm;
+                    else if (hr == 0x12) hr = hr | (hr_pm ^ HR::pm);
+                    else if (hr == 0x13) hr = 0x01 | hr_pm;
+                    else if (hr == 0x10) hr = 0x00 | hr_pm;
+                    else if (hr == 0x20) hr = 0x10 | hr_pm;
                 };
 
                 auto tick_min = [&]() {
-                    min_l = (min_l + 1) & 0xf;
+                    u8 min_h = min & 0x70;
+                    u8 min_l = (min + 1) & 0xf;
                     if (min_l == 10) {
                         min_l = 0;
                         min_h = (min_h + 0x10) & 0x70;
@@ -519,10 +512,12 @@ private:
                             tick_hr();
                         }
                     }
+                    min = min_l | min_h;
                 };
 
                 auto tick_sec = [&]() {
-                    sec_l = (sec_l + 1) & 0xf;
+                    u8 sec_h = sec & 0x70;
+                    u8 sec_l = (sec + 1) & 0xf;
                     if (sec_l == 10) {
                         sec_l = 0;
                         sec_h = (sec_h + 0x10) & 0x70;
@@ -531,6 +526,7 @@ private:
                             tick_min();
                         }
                     }
+                    sec = sec_l | sec_h;
                 };
 
                 auto tick_tnth = [&]() {
@@ -545,10 +541,7 @@ private:
             }
 
             bool operator==(const Time_rep& ct) {
-                return (tnth == ct.tnth)
-                        && (sec_l == ct.sec_l) && (sec_h == ct.sec_h)
-                        && (min_l == ct.min_l) && (min_h == ct.min_h)
-                        && (hr == ct.hr) && (hr_pm == ct.hr_pm);
+                return (tnth == ct.tnth) && (sec == ct.sec) && (min == ct.min) && (hr == ct.hr);
             }
         };
 
