@@ -492,13 +492,14 @@ private:
 
             void tick() {
                 auto tick_hr = [&]() {
-                    const u8 hr_pm = hr & HR::pm;
-                    hr = (hr + 1) & 0x3f;
-                    if (hr == 10) hr = 0x10 | hr_pm;
-                    else if (hr == 0x12) hr = hr | (hr_pm ^ HR::pm);
-                    else if (hr == 0x13) hr = 0x01 | hr_pm;
-                    else if (hr == 0x10) hr = 0x00 | hr_pm;
-                    else if (hr == 0x20) hr = 0x10 | hr_pm;
+                    u8 hr_pm = hr & HR::pm;
+                    hr = (hr + 1) & 0x1f;
+                    if (hr == 0x0a) hr = 0x10;
+                    else if (hr == 0x12) hr_pm ^= HR::pm;
+                    else if (hr == 0x13) hr = 0x01;
+                    else if (hr == 0x10) hr = 0x00;
+                    else if (hr == 0x00) hr = 0x10;
+                    hr |= hr_pm;
                 };
 
                 auto tick_min = [&]() {
