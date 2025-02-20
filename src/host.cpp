@@ -252,7 +252,6 @@ Video_out::SDL_frame::SDL_frame(int max_w_, int max_h_, SDL_TextureAccess ta_, S
 
 
 Video_out::SDL_frame::~SDL_frame() {
-    if (texture) SDL_DestroyTexture(texture);
     delete[] pixels;
 }
 
