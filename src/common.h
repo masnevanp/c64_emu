@@ -198,43 +198,17 @@ private:
 };
 
 
-class Int_hub {
-public:
+struct Int_sig {
     enum Src : u8 {
         cia1 = 0x01, vic  = 0x02, exp_i = 0x04, // IRQ sources
         cia2 = 0x10, rstr = 0x20, exp_n = 0x40, // NMI sources
         irq  = 0x0f, nmi  = 0xf0, // source mask
     };
 
-    void reset() { state = old_state = 0x00; nmi_act = irq_act = false; }
+    using Sig = Sig1<Src>;
 
-    void set(Src s) { state |= s;  }
-    void clr(Src s) { state &= ~s; }
-
-    void tick(NMOS6502::Core& cpu) {
-        if (state != old_state) {
-            old_state = state;
-
-            bool act = (state & Src::nmi);
-            if (nmi_act != act) {
-                nmi_act = act;
-                cpu.set_nmi(nmi_act);
-                clr(Src::rstr); // auto clr (pulse)
-            }
-
-            act = (state & Src::irq);
-            if (irq_act != act) {
-                irq_act = act;
-                cpu.set_irq(irq_act);
-            }
-        }
-    }
-
-private:
-    u8 state;
-    u8 old_state;
-    bool nmi_act;
-    bool irq_act;
+    Sig set;
+    Sig clr;
 };
 
 

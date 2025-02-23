@@ -23,10 +23,10 @@ struct Expansion_ctx {
         IO(const u16& ba_low_,
             std::function<void (const u16&, u8&, const u8 rw)> sys_addr_space_,
             std::function<void (bool e, bool g)> exrom_game_,
-            ::IO::Int_hub& int_hub_,
+            ::IO::Int_sig& int_sig_,
             u16& dma_low_)
           : ba_low(ba_low_), sys_addr_space(sys_addr_space_), exrom_game(exrom_game_),
-            int_hub(int_hub_), dma_low(dma_low_) {}
+            int_sig(int_sig_), dma_low(dma_low_) {}
 
         using r = std::function<void (const u16& addr, u8& data)>;
         using w = std::function<void (const u16& addr, const u8& data)>;
@@ -48,7 +48,7 @@ struct Expansion_ctx {
         const std::function<void (const u16&, u8&, const u8 rw)> sys_addr_space;
         const std::function<void (bool e, bool g)> exrom_game;
 
-        ::IO::Int_hub& int_hub;
+        ::IO::Int_sig& int_sig;
 
         u16& dma_low; // low == active
     };

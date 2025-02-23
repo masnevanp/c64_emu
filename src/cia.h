@@ -28,10 +28,10 @@ public:
 
     Core(
         const PD_out& port_out_a, const PD_out& port_out_b,
-        IO::Int_hub& int_hub_, IO::Int_hub::Src int_src_, const u64& system_cycle)
+        IO::Int_sig& int_sig_, IO::Int_sig::Src int_src_, const u64& system_cycle)
       :
         port_a(port_out_a), port_b(port_out_b),
-        int_ctrl(int_hub_, int_src_),
+        int_ctrl(int_sig_, int_src_),
         timer_b(int_ctrl, sig_null, cnt, inmode_mask_b, Int_ctrl::Int_src::tb, port_b, tb_pb_bit),
         timer_a(int_ctrl, timer_b.tick_ta, cnt, inmode_mask_a, Int_ctrl::Int_src::ta, port_b, ta_pb_bit),
         tod(timer_a.cr, int_ctrl, system_cycle) {}
@@ -154,8 +154,8 @@ private:
             sc = 0x80,
         };
 
-        Int_ctrl(IO::Int_hub& int_hub_, IO::Int_hub::Src int_id_)
-                    : int_hub(int_hub_), int_id(int_id_)
+        Int_ctrl(IO::Int_sig& int_sig_, IO::Int_sig::Src int_id_)
+                    : int_sig(int_sig_), int_id(int_id_)
         { reset(); }
 
         void reset() { new_icr = icr = mask = 0x00; }
@@ -172,9 +172,9 @@ private:
         void tick() {
             if (icr & mask) {
                 icr |= ICR_R::ir;
-                int_hub.set(int_id);
+                int_sig.set(int_id);
             } else {
-                int_hub.clr(int_id);
+                int_sig.clr(int_id);
             }
 
             if (new_icr) {
@@ -195,8 +195,8 @@ private:
         u8 icr;
         u8 mask;
 
-        IO::Int_hub& int_hub;
-        const IO::Int_hub::Src int_id;
+        IO::Int_sig& int_sig;
+        const IO::Int_sig::Src int_id;
     };
 
 

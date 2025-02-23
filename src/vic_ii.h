@@ -156,23 +156,23 @@ private:
         void ien_upd()       { update(); }
         void req(u8 kind)    { r_ireg |= kind;  update(); }
 
-        IRQ(State& s, Out& out_)
-            : r_ireg(s.reg[R::ireg]), r_ien(s.reg[R::ien]), out(out_) { }
+        IRQ(State& s, IO::Int_sig& int_sig_)
+            : r_ireg(s.reg[R::ireg]), r_ien(s.reg[R::ien]), int_sig(int_sig_) { }
 
     private:
         void update() {
             if (r_ireg & r_ien) {
                 r_ireg |= Ireg::irq;
-                out.set_irq();
+                int_sig.set(IO::Int_sig::Src::vic);
             } else {
                 r_ireg &= ~Ireg::irq;
-                out.clr_irq();
+                int_sig.clr(IO::Int_sig::Src::vic);
             }
         }
 
         u8& r_ireg;
         const u8& r_ien;
-        Out& out;
+        IO::Int_sig& int_sig;
     };
 
 
@@ -1377,9 +1377,9 @@ public:
           State& s_,
           const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
           const std::function<void (const u16& addr, u8& data)>& romh_r,
-          u16& ba_low, Out& out_)
+          u16& ba_low, Out& out_, IO::Int_sig& int_sig)
         : s(s_),
-          addr_space(s_.addr_space, ram_, charr, romh_r), irq(s, out_), ba(ba_low), lp(s, irq),
+          addr_space(s_.addr_space, ram_, charr, romh_r), irq(s, int_sig), ba(ba_low), lp(s, irq),
           mobs(s, addr_space, ba, irq), gfx(s, addr_space, col_ram_, ba), border(s),
           out(out_) { }
 };

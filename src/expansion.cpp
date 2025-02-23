@@ -476,8 +476,8 @@ private:
 
     bool irq_on() const { return r.status & R_status::int_pend; }
 
-    void set_irq() { exp_ctx.io.int_hub.set(::IO::Int_hub::Src::exp_i); }
-    void clr_irq() { exp_ctx.io.int_hub.clr(::IO::Int_hub::Src::exp_i); }
+    void set_irq() { exp_ctx.io.int_sig.set(::IO::Int_sig::Src::exp_i); }
+    void clr_irq() { exp_ctx.io.int_sig.clr(::IO::Int_sig::Src::exp_i); }
 
     void do_sr() { exp_ctx.io.sys_addr_space(r.a.saddr, exp_ctx.ram[r.a.raddr], NMOS6502::MC::RW::r); }
     void do_rs() { exp_ctx.io.sys_addr_space(r.a.saddr, exp_ctx.ram[r.a.raddr], NMOS6502::MC::RW::w); }

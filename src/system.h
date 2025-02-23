@@ -191,6 +191,42 @@ private:
 };
 
 
+class Int_hub {
+public:
+    void reset() { state = old_state = 0x00; nmi_act = irq_act = false; }
+
+    IO::Int_sig int_sig {
+        { [this](IO::Int_sig::Src s) { state |= s; }},
+        { [this](IO::Int_sig::Src s) { state &= ~s; }}
+    };
+
+    void tick(CPU& cpu) {
+        if (state != old_state) {
+            old_state = state;
+
+            bool act = (state & IO::Int_sig::Src::nmi);
+            if (nmi_act != act) {
+                nmi_act = act;
+                cpu.set_nmi(nmi_act);
+                int_sig.clr(IO::Int_sig::Src::rstr); // auto clr (pulse)
+            }
+
+            act = (state & IO::Int_sig::Src::irq);
+            if (irq_act != act) {
+                irq_act = act;
+                cpu.set_irq(irq_act);
+            }
+        }
+    }
+
+private:
+    u8 state;
+    u8 old_state;
+    bool nmi_act;
+    bool irq_act;
+};
+
+
 struct Performance {
     struct Latency_settings {
         // @sync point: time syncing, input polling, and audio output
@@ -251,17 +287,14 @@ public:
     };
 
     VIC_out(
-        IO::Int_hub& int_hub_, Host::Video_out& vid_out_, Host::Input& host_input_,
+        Host::Video_out& vid_out_, Host::Input& host_input_,
         TheSID& sid_, Overlay& menu_overlay_,
         const C1541::Disk_ctrl::Status& c1541_status_, const u8* charrom_,
         const Performance& perf
     ) :
-        int_hub(int_hub_), vid_out(vid_out_), host_input(host_input_),
+        vid_out(vid_out_), host_input(host_input_),
         sid(sid_), menu_overlay(menu_overlay_), c1541_status_panel(c1541_status_, charrom_),
         frame_rate(perf.frame_rate.chosen), sync_freq(perf.latency.chosen.sync_freq) { }
-
-    void set_irq() { int_hub.set(IO::Int_hub::Src::vic); }
-    void clr_irq() { int_hub.clr(IO::Int_hub::Src::vic); }
 
     _Stopwatch watch;
     void init_sync() { // call if system has been 'paused'
@@ -292,8 +325,6 @@ public:
 
 private:
     double frame_duration_us() const { return 1000000.0 / frame_rate; }
-
-    IO::Int_hub& int_hub;
 
     Host::Video_out& vid_out;
     Host::Input& host_input;
@@ -556,19 +587,20 @@ private:
 
     CPU cpu{cpu_trap};
 
-    CIA cia1{cia1_port_a_out, cia1_port_b_out, int_hub, IO::Int_hub::Src::cia1, s.vic.cycle};
-    CIA cia2{cia2_port_a_out, cia2_port_b_out, int_hub, IO::Int_hub::Src::cia2, s.vic.cycle};
+    CIA cia1{cia1_port_a_out, cia1_port_b_out, int_hub.int_sig, IO::Int_sig::Src::cia1, s.vic.cycle};
+    CIA cia2{cia2_port_a_out, cia2_port_b_out, int_hub.int_sig, IO::Int_sig::Src::cia2, s.vic.cycle};
 
     TheSID sid{int(FRAME_RATE_MIN), Performance::min_sync_points, s.vic.cycle};
 
     Color_RAM col_ram{s.color_ram};
 
-    VIC vic{s.vic, s.ram, col_ram, rom.charr, exp_io.romh_r, s.ba_low, vic_out};
+    VIC vic{s.vic, s.ram, col_ram, rom.charr, exp_io.romh_r, s.ba_low, vic_out, int_hub.int_sig};
 
     Address_space addr_space{s.ram, rom, cia1, cia2, sid, vic, col_ram, exp_io};
 
+    Int_hub int_hub;
+
     IO::Bus bus{cpu};
-    IO::Int_hub int_hub;
 
     Input_matrix input_matrix{cia1.port_a.ext_in, cia1.port_b.ext_in, vic};
 
@@ -577,7 +609,7 @@ private:
         //std::bind(&Address_space::access, addr_space, std::placeholders::_1),
         [this](const u16& a, u8& d, const u8 rw) { addr_space.access(a, d, rw); },
         [this](bool e, bool g) { addr_space.set_exrom_game(e, g); },
-        int_hub,
+        int_hub.int_sig,
         s.dma_low
     };
     Expansion_ctx exp_ctx{
@@ -617,7 +649,7 @@ private:
             using kc = Key_code::System;
 
             if (!down) {
-                if (code == kc::rstre) int_hub.set(IO::Int_hub::Src::rstr);
+                if (code == kc::rstre) int_hub.int_sig.set(IO::Int_sig::Src::rstr);
                 return;
             }
 
@@ -647,7 +679,7 @@ private:
     Host::Input host_input{host_input_handlers};
 
     VIC_out vic_out{
-        int_hub, vid_out, host_input, sid, menu.vic_out_overlay, c1541.dc.status, rom.charr, perf
+        vid_out, host_input, sid, menu.vic_out_overlay, c1541.dc.status, rom.charr, perf
     };
     Host::Video_out vid_out{perf.frame_rate.chosen};
 
