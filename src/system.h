@@ -195,10 +195,7 @@ class Int_hub {
 public:
     void reset() { state = old_state = 0x00; nmi_act = irq_act = false; }
 
-    IO::Int_sig int_sig {
-        { [this](IO::Int_sig::Src s) { state |= s; }},
-        { [this](IO::Int_sig::Src s) { state &= ~s; }}
-    };
+    IO::Int_sig int_sig{state};
 
     void tick(CPU& cpu) {
         if (state != old_state) {

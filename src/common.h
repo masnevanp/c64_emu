@@ -198,17 +198,21 @@ private:
 };
 
 
-struct Int_sig {
+class Int_sig {
+public:
     enum Src : u8 {
         cia1 = 0x01, vic  = 0x02, exp_i = 0x04, // IRQ sources
         cia2 = 0x10, rstr = 0x20, exp_n = 0x40, // NMI sources
         irq  = 0x0f, nmi  = 0xf0, // source mask
     };
 
-    using Sig = Sig1<Src>;
+    Int_sig(u8& state_) : state(state_) {}
 
-    Sig set;
-    Sig clr;
+    void set(Src s) { state |= s; }
+    void clr(Src s) { state &= ~s; }
+
+private:
+    u8& state;
 };
 
 
