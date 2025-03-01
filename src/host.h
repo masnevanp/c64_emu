@@ -4,7 +4,6 @@
 #include <SDL.h>
 #include "common.h"
 #include "utils.h"
-#include "vic_ii.h"
 #include "menu.h"
 
 

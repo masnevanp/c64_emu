@@ -11,15 +11,6 @@ namespace VIC_II {
 static const int REG_COUNT = 64;
 
 
-// TODO: parameterize frame/border size (all fixed for now)
-static const int BORDER_SZ_V       = 32;
-static const int BORDER_SZ_H       = 24;
-
-static const int FRAME_WIDTH        = 320 + 2 * BORDER_SZ_V;
-static const int FRAME_HEIGHT       = 200 + 2 * BORDER_SZ_H;
-static const int FRAME_SIZE         = FRAME_WIDTH * FRAME_HEIGHT;
-
-
 static constexpr u8 CIA1_PB_LP_BIT = 0x10;
 
 
