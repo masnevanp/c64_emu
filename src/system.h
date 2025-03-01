@@ -29,7 +29,7 @@ class Address_space;
 using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Address_space)
 using CIA = CIA::Core;
 using TheSID = reSID_Wrapper; // 'The' due to nameclash
-using VIC = VIC_II::Core<VIC_out>;
+using VIC = VIC_II::Core;
 using Color_RAM = VIC_II::Color_RAM;
 
 
@@ -293,7 +293,7 @@ public:
         sid(sid_), menu_overlay(menu_overlay_), c1541_status_panel(c1541_status_, charrom_),
         frame_rate(perf.frame_rate.chosen), sync_freq(perf.latency.chosen.sync_freq) { }
 
-    _Stopwatch watch;
+    Stopwatch watch;
     void init_sync() { // call if system has been 'paused'
         vid_out.flip();
         sid.flush();
@@ -303,22 +303,29 @@ public:
 
     void frame(u8* frame);
 
-    void sync(u16 line) { // NOTE: not called on the 'frame done' line
-        const bool is_sync_point = (line % sync_freq == 0);
-        if (is_sync_point) {
-            host_input.poll();
+    VIC::Core::Sync_line sync_line {
+        [this] (VIC::State& vic_state) {
+            const bool is_sync_point = (vic_state.raster_y % sync_freq == 0);
+            if (is_sync_point) {
+                if (vic_state.raster_y == 0) {
+                    frame(vic_state.frame);
+                    return;
+                }
 
-            watch.stop();
+                host_input.poll();
 
-            const auto frame_progress = double(line) / double(FRAME_LINE_COUNT);
-            const auto frame_progress_us = frame_progress * frame_duration_us();
-            frame_timer.wait_elapsed(frame_progress_us);
+                watch.stop();
 
-            watch.start();
+                const auto frame_progress = double(vic_state.raster_y) / double(FRAME_LINE_COUNT);
+                const auto frame_progress_us = frame_progress * frame_duration_us();
+                frame_timer.wait_elapsed(frame_progress_us);
 
-            sid.output();
+                watch.start();
+
+                sid.output();
+            }
         }
-    }
+    };
 
 private:
     double frame_duration_us() const { return 1000000.0 / frame_rate; }
@@ -591,7 +598,7 @@ private:
 
     Color_RAM col_ram{s.color_ram};
 
-    VIC vic{s.vic, s.ram, col_ram, rom.charr, exp_io.romh_r, s.ba_low, vic_out, int_hub.int_sig};
+    VIC vic{s.vic, s.ram, col_ram, rom.charr, exp_io.romh_r, s.ba_low, vic_out.sync_line, int_hub.int_sig};
 
     Address_space addr_space{s.ram, rom, cia1, cia2, sid, vic, col_ram, exp_io};
 
