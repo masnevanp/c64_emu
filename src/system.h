@@ -227,7 +227,7 @@ private:
 struct Performance {
     struct Latency_settings {
         // @sync point: time syncing, input polling, and audio output
-        u16 sync_freq; // divisor of FRAME_LINE_COUNT (1, 2, 3, 4, 6, 8, 12, 13, 24, 26, 39, 52, 78, 104, 156, 312)
+        u16 sync_freq; // divisor of FRAME_CYCLE_COUNT
         u16 audio_buf_sz;
     };
 
@@ -248,117 +248,15 @@ struct Performance {
     static constexpr int min_sync_points = 1;
     Choice<Latency_settings> latency{
         {
-            { FRAME_LINE_COUNT / 8, 128 },
-            { FRAME_LINE_COUNT / 4, 256 },
-            { FRAME_LINE_COUNT / 2, 512 },
-            { FRAME_LINE_COUNT / min_sync_points, 1024 },
-            //{ FRAME_LINE_COUNT / 12, 128 },
-            //{ FRAME_LINE_COUNT / 24, 128 },
+            { FRAME_CYCLE_COUNT / 8, 128 },
+            { FRAME_CYCLE_COUNT / 4, 256 },
+            { FRAME_CYCLE_COUNT / 2, 512 },
+            { FRAME_CYCLE_COUNT / min_sync_points, 1024 },
+            //{ FRAME_CYCLE_COUNT / 12, 128 },
+            //{ FRAME_CYCLE_COUNT / 24, 128 },
         },
         {"FRAME/8", "FRAME/4", "FRAME/2", "1 FRAME"/*, "FRAME/12"*//*, "FRAME/24"*/},
     };
-};
-
-
-class VIC_out {
-public:
-    class Overlay {
-    public:
-        Overlay(u16 x_, u16 y_, u16 w_, u16 h_, const u8* charrom_)
-            : x(x_), y(y_), w(w_), h(h_), pixels(new u8[w * h]), charrom(charrom_) {}
-        ~Overlay() { delete[] pixels; }
-
-        // static constexpr u8 transparent = 0xff;
-
-        const u16 x; const u16 y; const u16 w; const u16 h;
-        bool visible = false;
-
-        void clear(u8 col) { for (int p = 0; p < w * h; ++p) pixels[p] = col; }
-        void draw_chr(u16 chr, u16 cx, u16 cy, Color fg, Color bg);
-
-    private:
-        friend class VIC_out;
-
-        u8* pixels;
-        const u8* charrom;
-    };
-
-    VIC_out(
-        Host::Video_out& vid_out_, Host::Input& host_input_,
-        TheSID& sid_, Overlay& menu_overlay_,
-        const C1541::Disk_ctrl::Status& c1541_status_, const u8* charrom_,
-        const Performance& perf
-    ) :
-        vid_out(vid_out_), host_input(host_input_),
-        sid(sid_), menu_overlay(menu_overlay_), c1541_status_panel(c1541_status_, charrom_),
-        frame_rate(perf.frame_rate.chosen), sync_freq(perf.latency.chosen.sync_freq) { }
-
-    Stopwatch watch;
-    void init_sync() { // call if system has been 'paused'
-        vid_out.flip();
-        sid.flush();
-        frame_timer.reset();
-        watch.start();
-    }
-
-    void frame(u8* frame);
-
-    VIC::Core::Sync_line sync_line {
-        [this] (VIC::State& vic_state) {
-            const bool is_sync_point = (vic_state.raster_y % sync_freq == 0);
-            if (is_sync_point) {
-                if (vic_state.raster_y == 0) {
-                    frame(vic_state.frame);
-                    return;
-                }
-
-                host_input.poll();
-
-                watch.stop();
-
-                const auto frame_progress = double(vic_state.raster_y) / double(FRAME_LINE_COUNT);
-                const auto frame_progress_us = frame_progress * frame_duration_us();
-                frame_timer.wait_elapsed(frame_progress_us);
-
-                watch.start();
-
-                sid.output();
-            }
-        }
-    };
-
-private:
-    double frame_duration_us() const { return 1000000.0 / frame_rate; }
-
-    Host::Video_out& vid_out;
-    Host::Input& host_input;
-
-    TheSID& sid;
-
-    Overlay& menu_overlay;
-
-    struct C1541_status_panel {
-        static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 16;
-        static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 12;
-
-        static const Color col_bg = Color::black;
-        static const Color col_led_on = Color::light_green;
-        static const Color col_led_off = Color::gray_1;
-
-        C1541_status_panel(const C1541::Disk_ctrl::Status& c1541_status_, const u8* charrom)
-          : c1541_status(c1541_status_), overlay(pos_x, pos_y, 8, 8, charrom) {}
-
-        const C1541::Disk_ctrl::Status& c1541_status;
-        Overlay overlay;
-
-        void update();
-    };
-    C1541_status_panel c1541_status_panel;
-
-    const double& frame_rate;
-    const u16& sync_freq;
-
-    Timer frame_timer;
 };
 
 
@@ -471,6 +369,24 @@ private:
 };
 
 
+struct Video_overlay {
+    Video_overlay(u16 x_, u16 y_, u16 w_, u16 h_, const u8* charrom_)
+        : x(x_), y(y_), w(w_), h(h_), pixels(new u8[w * h]), charrom(charrom_) {}
+    ~Video_overlay() { delete[] pixels; }
+
+    // static constexpr u8 transparent = 0xff;
+
+    const u16 x; const u16 y; const u16 w; const u16 h;
+
+    void clear(u8 col) { for (int p = 0; p < w * h; ++p) pixels[p] = col; }
+    void draw_chr(u16 chr, u16 cx, u16 cy, Color fg, Color bg);
+
+    bool visible = false;
+    u8* pixels;
+    const u8* charrom;
+};
+
+
 class Menu {
 public:
     static const int pos_x = VIC_II::BORDER_SZ_V + 1 * 8;
@@ -487,9 +403,9 @@ public:
     void handle_key(u8 code);
     void toggle_visibility();
 
-private:
-    friend class C64;
+    Video_overlay video_overlay;
 
+private:
     ::Menu::Group main_menu{"^"};
     std::vector<::Menu::Kludge> imm_actions;
     std::vector<::Menu::Action> actions;
@@ -498,9 +414,23 @@ private:
 
     ::Menu::Controller ctrl{&main_menu};
 
-    VIC_out::Overlay vic_out_overlay;
-
     void update();
+};
+
+
+struct C1541_status_panel {
+    static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 16;
+    static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 12;
+
+    static const Color col_bg = Color::black;
+    static const Color col_led_on = Color::light_green;
+    static const Color col_led_off = Color::gray_1;
+
+    Video_overlay video_overlay;
+
+    C1541_status_panel(const u8* charrom) : video_overlay(pos_x, pos_y, 8, 8, charrom) {}
+
+    void update(const C1541::Disk_ctrl::Status& c1541_status);
 };
 
 
@@ -555,8 +485,6 @@ public:
     void run() {
         reset_cold();
 
-        vic_out.init_sync();
-
         // TODO: consider special loops for different configs (e.g. REU with no 1541)
         for (shutdown = false; !shutdown;) {
             vic.tick();
@@ -581,6 +509,8 @@ public:
             int_hub.tick(cpu);
 
             if (s.vic.cycle % C1541::extra_cycle_freq == 0) c1541.tick();
+
+            check_sync();
         }
     }
 
@@ -598,7 +528,7 @@ private:
 
     Color_RAM col_ram{s.color_ram};
 
-    VIC vic{s.vic, s.ram, col_ram, rom.charr, exp_io.romh_r, s.ba_low, vic_out.sync_line, int_hub.int_sig};
+    VIC vic{s.vic, s.ram, col_ram, rom.charr, exp_io.romh_r, s.ba_low, int_hub.int_sig};
 
     Address_space addr_space{s.ram, rom, cia1, cia2, sid, vic, col_ram, exp_io};
 
@@ -682,9 +612,6 @@ private:
     };
     Host::Input host_input{host_input_handlers};
 
-    VIC_out vic_out{
-        vid_out, host_input, sid, menu.vic_out_overlay, c1541.dc.status, rom.charr, perf
-    };
     Host::Video_out vid_out{perf.frame_rate.chosen};
 
     // TODO: verify that it is a valid kernal trap (e.g. 'addr_space.mapping(cpu.pc) == kernal')
@@ -763,6 +690,18 @@ private:
 
     bool shutdown;
 
+    _Stopwatch watch;
+    Timer frame_timer;
+
+    void init_sync(); // call if system has been 'paused'
+    void sync();
+    void check_sync() {
+        const bool sync_point = (s.vic.cycle % perf.latency.chosen.sync_freq) == 0;
+        if (sync_point) sync();
+    }
+
+    void output_frame();
+
     void reset_warm();
     void reset_cold();
 
@@ -815,6 +754,8 @@ private:
         },
         rom.charr
     };
+
+    C1541_status_panel c1541_status_panel{rom.charr};
 
     static void install_kernal_tape_traps(u8* kernal, u8 trap_opc);
 };

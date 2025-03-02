@@ -325,8 +325,6 @@ void VIC_II::Core::tick() {
 
             gfx.ba_init();
 
-            sync_line(s);
-
             return;
         case  1: mobs.prep_dma(5); update_mobs(); return;
         case  2: mobs.do_dma(3);   update_mobs(); return;
@@ -446,8 +444,6 @@ void VIC_II::Core::tick() {
                     s.v_blank = V_blank::vb_off;
                     border.vb_end();
                 }
-
-                sync_line(s);
             } // else raster_y updated in the next cycle
 
             return;
@@ -459,7 +455,6 @@ void VIC_II::Core::tick() {
                 check_raster_irq();
                 s.beam_pos = 0;
                 lp.reset();
-                sync_line(s);
             }
             return;
         case  2 + V_blank::vb_on: mobs.do_dma(3);   update_mobs(); return;

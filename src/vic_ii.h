@@ -768,8 +768,6 @@ private:
     GFX gfx;
     Border border;
 
-    Sync_line& sync_line;
-
 public:
     enum LP_src { cia = 0x1, ctrl_port = 0x2, };
 
@@ -778,7 +776,7 @@ public:
 
         u8 reg[REG_COUNT];
 
-        u64 cycle = 1; // good for ~595K years...
+        u64 cycle = 0; // good for ~595K years...
         u16 raster_y = 0;
         u16 raster_y_cmp = 0;
         u8 raster_y_cmp_edge;
@@ -872,11 +870,10 @@ public:
           State& s_,
           const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
           const std::function<void (const u16& addr, u8& data)>& romh_r,
-          u16& ba_low, Sync_line& sync_line_, IO::Int_sig& int_sig)
+          u16& ba_low, IO::Int_sig& int_sig)
         : s(s_),
           addr_space(s_.addr_space, ram_, charr, romh_r), irq(s, int_sig), ba(ba_low), lp(s, irq),
-          mobs(s, addr_space, ba, irq), gfx(s, addr_space, col_ram_, ba), border(s),
-          sync_line(sync_line_) { }
+          mobs(s, addr_space, ba, irq), gfx(s, addr_space, col_ram_, ba), border(s) {}
 };
 
 

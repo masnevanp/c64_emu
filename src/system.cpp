@@ -179,8 +179,7 @@ const u8 System::Address_space::Mode_to_PLA_idx[32] = {
 };
 
 
-
-void System::VIC_out::Overlay::draw_chr(u16 chr, u16 cx, u16 cy, Color fg, Color bg) {
+void System::Video_overlay::draw_chr(u16 chr, u16 cx, u16 cy, Color fg, Color bg) {
     const u8* src = &charrom[chr * 8];
     for (int px_row = 0; px_row < 8; ++px_row, ++src) {
         u8* tgt = &pixels[(px_row + cy) * w + cx];
@@ -189,82 +188,17 @@ void System::VIC_out::Overlay::draw_chr(u16 chr, u16 cx, u16 cy, Color fg, Color
 }
 
 
-void System::VIC_out::frame(u8* frame) {
-    auto output_frame = [&]() {
-        auto output_overlay = [&](Overlay& ol) {
-            const u8* src = ol.pixels;
-            for (int y = 0; y < ol.h; ++y) {
-                u8* tgt = &frame[((ol.y + y) * VIC_II::FRAME_WIDTH) + ol.x];
-                for (int x = 0; x < ol.w; ++x, ++src) {
-                    const auto col = *(src);
-                    /*if (col != Overlay::transparent)*/ tgt[x] = col;
-                }
-            }
-        };
-
-        if (menu_overlay.visible) {
-            output_overlay(menu_overlay);
-            c1541_status_panel.update();
-            output_overlay(c1541_status_panel.overlay);
-        } else if (c1541_status_panel.c1541_status.head.active()) {
-            c1541_status_panel.update();
-            output_overlay(c1541_status_panel.overlay);
-        }
-
-        vid_out.put(frame);
-    };
-
-    host_input.poll();
-
-    watch.stop();
-
-    if (vid_out.v_synced()) {
-        output_frame();
-        frame_timer.reset();
-    } else {
-        frame_timer.wait_elapsed(frame_duration_us(), true);
-        output_frame();
-    }
-
-    watch.start();
-
-    sid.output();
-
-    watch.stop();
-    watch.reset();
-}
-
-
-void System::VIC_out::C1541_status_panel::update() {
-    static const u16 ch_led_wp = 0x0051;
-    static const u16 ch_led    = 0x0057;
-
-    const auto led_ch = c1541_status.wp_off() ? ch_led : ch_led_wp;
-    const auto led_col = c1541_status.led_on() ? col_led_on : col_led_off;
-    overlay.draw_chr(led_ch, 0, 0, led_col, col_bg);
-
-    /*
-    static constexpr u16 ch_zero   = 0x0030;
-    const auto track_n = (status.head.track_n / 2) + 1;
-    const auto tn_col = status.head.active() ? Color::green : Color::gray_2;
-    draw_char(ch_zero + track_n / 10, x + 8 + 2,  y, tn_col, col_bg);
-    draw_char(ch_zero + track_n % 10, x + 16 + 2, y, tn_col, col_bg);
-    */
-}
-
-
-
 System::Menu::Menu(std::initializer_list<std::pair<std::string, std::function<void ()>>> imm_actions_,
     std::initializer_list<std::pair<std::string, std::function<void ()>>> actions_,
     std::initializer_list<::Menu::Group> subs_,
     const u8* charrom)
-  : subs(subs_), vic_out_overlay(pos_x, pos_y, 36 * 8, 8, charrom)
+  : video_overlay(pos_x, pos_y, 36 * 8, 8, charrom), subs(subs_)
 {
     auto Imm_action = [&](const std::pair<std::string, std::function<void ()>>& a) {
-        return ::Menu::Kludge(a.first, [act = a.second, &vis = vic_out_overlay.visible](){ act(); vis = false; return nullptr; });
+        return ::Menu::Kludge(a.first, [act = a.second, &vis = video_overlay.visible](){ act(); vis = false; return nullptr; });
     };
     auto Action = [&](const std::pair<std::string, std::function<void ()>>& a) {
-        return ::Menu::Action(a.first, [act = a.second, &vis = vic_out_overlay.visible](){ act(); vis = false; return nullptr; });
+        return ::Menu::Action(a.first, [act = a.second, &vis = video_overlay.visible](){ act(); vis = false; return nullptr; });
     };
 
     for (auto a : imm_actions_) imm_actions.push_back(Imm_action(a));
@@ -287,14 +221,14 @@ System::Menu::Menu(std::initializer_list<std::pair<std::string, std::function<vo
 void System::Menu::handle_key(u8 code) {
     using kc = Key_code::System;
 
-    if (vic_out_overlay.visible) {
+    if (video_overlay.visible) {
         switch (code) {
             case kc::menu_ent:  ctrl.key_enter(); break;
             case kc::menu_up:   ctrl.key_up();    break;
             case kc::menu_down: ctrl.key_down();  break;
         }
     } else {
-        vic_out_overlay.visible = true;
+        video_overlay.visible = true;
     }
 
     update();
@@ -302,21 +236,109 @@ void System::Menu::handle_key(u8 code) {
 
 
 void System::Menu::toggle_visibility()  {
-    if (!vic_out_overlay.visible) ctrl.select(&main_menu);
-    vic_out_overlay.visible = !vic_out_overlay.visible;
+    if (!video_overlay.visible) ctrl.select(&main_menu);
+    video_overlay.visible = !video_overlay.visible;
     update();
 }
 
 
 void System::Menu::update() {
-    vic_out_overlay.clear(col_bg);
+    video_overlay.clear(col_bg);
 
     const std::string text = ctrl.state();
     auto x = 4;
     for (u8 ci = 0; ci < text.length(); ++ci, x += 8) {
         const auto c = (text[ci] % 64) + 256; // map ascii code to petscii (using the 'lower case' half)
-        vic_out_overlay.draw_chr(c, x, 0, col_fg, col_bg);
+        video_overlay.draw_chr(c, x, 0, col_fg, col_bg);
     }
+}
+
+
+void System::C1541_status_panel::update(const C1541::Disk_ctrl::Status& c1541_status) {
+    static const u16 ch_led_wp = 0x0051;
+    static const u16 ch_led    = 0x0057;
+
+    const auto led_ch = c1541_status.wp_off() ? ch_led : ch_led_wp;
+    const auto led_col = c1541_status.led_on() ? col_led_on : col_led_off;
+    video_overlay.draw_chr(led_ch, 0, 0, led_col, col_bg);
+
+    /*static constexpr u16 ch_zero   = 0x0030;
+    const auto track_n = (status.head.track_n / 2) + 1;
+    const auto tn_col = status.head.active() ? Color::green : Color::gray_2;
+    draw_char(ch_zero + track_n / 10, x + 8 + 2,  y, tn_col, col_bg);
+    draw_char(ch_zero + track_n % 10, x + 16 + 2, y, tn_col, col_bg);*/
+}
+
+
+void System::C64::init_sync() {
+    vid_out.flip();
+    sid.flush();
+    frame_timer.reset();
+    watch.start();
+}
+
+
+void System::C64::sync() {
+    const auto frame_duration_us = [&]() { return 1000000.0 / perf.frame_rate.chosen; };
+
+    const bool frame_done = (s.vic.cycle % FRAME_CYCLE_COUNT) == 0;
+    if (frame_done) {
+        host_input.poll();
+
+        watch.stop();
+
+        if (vid_out.v_synced()) {
+            output_frame();
+            frame_timer.reset();
+        } else {
+            frame_timer.wait_elapsed(frame_duration_us(), true);
+            output_frame();
+        }
+
+        watch.start();
+
+        sid.output();
+
+        watch.stop();
+        watch.reset();
+    } else {
+        host_input.poll();
+
+        watch.stop();
+
+        const auto frame_progress = double(s.vic.raster_y) / double(FRAME_LINE_COUNT);
+        const auto frame_progress_us = frame_progress * frame_duration_us();
+        frame_timer.wait_elapsed(frame_progress_us);
+
+        watch.start();
+
+        sid.output();
+    }
+}
+
+
+void System::C64::output_frame() {
+    auto output_overlay = [&](Video_overlay& ol) {
+        const u8* src = ol.pixels;
+        for (int y = 0; y < ol.h; ++y) {
+            u8* tgt = &s.vic.frame[((ol.y + y) * VIC_II::FRAME_WIDTH) + ol.x];
+            for (int x = 0; x < ol.w; ++x, ++src) {
+                const auto col = *(src);
+                /*if (col != Video_overlay::transparent)*/ tgt[x] = col;
+            }
+        }
+    };
+
+    if (menu.video_overlay.visible) {
+        output_overlay(menu.video_overlay);
+        c1541_status_panel.update(c1541.dc.status);
+        output_overlay(c1541_status_panel.video_overlay);
+    } else if (c1541.dc.status.head.active()) {
+        c1541_status_panel.update(c1541.dc.status);
+        output_overlay(c1541_status_panel.video_overlay);
+    }
+
+    vid_out.put(s.vic.frame);
 }
 
 
@@ -343,6 +365,8 @@ void System::C64::reset_cold() {
 
     s.ba_low = false;
     s.dma_low = false;
+
+    init_sync();
 }
 
 
