@@ -77,7 +77,7 @@ private:
             #pragma GCC diagnostic push
             #pragma GCC diagnostic ignored "-Wreturn-type"
 
-            switch (layout[addr >> 12]) {
+            switch (layouts[s.ultimax][s.bank][addr >> 12]) {
                 case ram_0: return ram[0x0000 | addr];
                 case ram_1: return ram[0x4000 | addr];
                 case ram_2: return ram[0x8000 | addr];
@@ -93,13 +93,13 @@ private:
             #pragma GCC diagnostic push
         }
 
-        void set_ultimax(bool act)  { s.ultimax = act; set_layout(); }
-        void set_bank(u8 va14_va15) { s.bank = va14_va15; set_layout(); }
+        void set_ultimax(bool act)  { s.ultimax = act; }
+        void set_bank(u8 va14_va15) { s.bank = va14_va15; }
 
         Address_space(
             State& s_, const u8* ram_, const u8* charr,
             const std::function<void (const u16& addr, u8& data)>& romh_r_)
-          : s(s_), ram(ram_), chr(charr), romh_r(romh_r_) { set_layout(); }
+          : s(s_), ram(ram_), chr(charr), romh_r(romh_r_) {}
 
     private:
         enum Mapping : u8 {
@@ -122,11 +122,7 @@ private:
             }
         };
 
-        void set_layout() { layout = &layouts[s.ultimax][s.bank][0]; }
-
         State& s;
-
-        const u8* layout;
 
         const u8* ram;
         const u8* chr;
@@ -237,8 +233,6 @@ private:
 
         struct MOB {
             static constexpr u8 transparent     = 0xff;
-            static constexpr u32 data_waiting   = 0b01;
-            static constexpr u32 data_scheduled = 0b10;
 
             void set_x_lo(u8 lo)  { x = (x & 0x100) | lo; }
             void set_ye(bool ye_) {
@@ -260,13 +254,13 @@ private:
             }
 
             void load_data(u32 d1, u32 d2, u32 d3) {
-                data = (d1 << 24) | (d2 << 16) | (d3 << 8) | data_waiting;
+                data = (d1 << 24) | (d2 << 16) | (d3 << 8) | Data_status::waiting;
             }
 
             // during blanking
             void update(u16 px, const u8 mob_bit, u8* mob_presence, u8& mmc) {
-                if (waiting()) {
-                    if (!scheduled()) {
+                if (is_waiting()) {
+                    if (!is_scheduled()) {
                         if (x < px || (x >= (px + 8))) return;
                         schedule(x - px);
                         return;
@@ -299,8 +293,8 @@ private:
                             const u8 mob_bit, u8* mob_output, u8* mob_presence,
                             u8& mdc, u8& mmc)
             {
-                if (waiting()) {
-                    if (!scheduled()) {
+                if (is_waiting()) {
+                    if (!is_scheduled()) {
                         if (x < px || (x >= (px + 8))) return;
                         schedule(x - px);
                         return;
@@ -356,15 +350,17 @@ private:
             u8 col[4] = { transparent, transparent, transparent, transparent };
 
         private:
-            bool waiting() const   { return data & data_waiting; }
-            bool scheduled() const { return data & data_scheduled; }
+            enum Data_status : u8 { waiting = 0b01, scheduled = 0b10 };
+
+            bool is_waiting() const   { return data & Data_status::waiting; }
+            bool is_scheduled() const { return data & Data_status::scheduled; }
             void schedule(u8 x_offset) {
-                data |= data_scheduled;
+                data |= Data_status::scheduled;
                 shift_timer = x_offset; // use as temp storage
                 shift_delay = shift_base_delay * shift_amount;
             }
             void release() {
-                data &= ~(data_waiting | data_scheduled);
+                data &= ~(Data_status::waiting | Data_status::scheduled);
                 shift_timer = 0;
             }
         };
