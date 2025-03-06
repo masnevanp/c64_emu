@@ -63,8 +63,6 @@ class Core { // 6569 (PAL-B)
 public:
     struct State;
 
-    using Sync_line = Sig1<State&>;
-
 private:
 
     class Address_space {
