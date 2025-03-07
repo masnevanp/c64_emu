@@ -3,12 +3,10 @@
 
 #include <iostream>
 #include "common.h"
+#include "state.h"
 
 
 namespace VIC_II {
-
-
-static const int REG_COUNT = 64;
 
 
 static constexpr u8 CIA1_PB_LP_BIT = 0x10;
@@ -29,13 +27,10 @@ private:
 };
 
 
-enum R : u8 {
-    m0x,  m0y,  m1x,  m1y,  m2x,  m2y,  m3x,  m3y,  m4x,  m4y,  m5x,  m5y,  m6x,  m6y,  m7x,  m7y,
-    mnx8, cr1,  rast, lpx,  lpy,  mne,  cr2,  mnye, mptr, ireg, ien,  mndp, mnmc, mnxe, mnm,  mnd,
-    ecol, bgc0, bgc1, bgc2, bgc3, mmc0, mmc1, m0c,  m1c,  m2c,  m3c,  m4c,  m5c,  m6c,  m7c,
-};
+using R = State::VIC_II::R;
 
-static constexpr u8 reg_unused[REG_COUNT] = {
+
+static constexpr u8 reg_unused[State::VIC_II::REG_COUNT] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x01, 0x70, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00,
     0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xff,
@@ -228,44 +223,46 @@ private:
 
     class MOBs {
     public:
-        static constexpr u8  mob_count = 8;
+        static constexpr int mob_count = ::State::VIC_II::MOB_COUNT;
         static constexpr u16 MP_BASE   = 0x3f8; // offset from vm_base
 
         struct MOB {
-            static constexpr u8 transparent     = 0xff;
+            static constexpr u8 transparent = ::State::VIC_II::MOB::transparent;
 
-            void set_x_lo(u8 lo)  { x = (x & 0x100) | lo; }
+            ::State::VIC_II::MOB& s;
+
+            void set_x_lo(u8 lo)  { s.x = (s.x & 0x100) | lo; }
             void set_ye(bool ye_) {
-                ye = ye_;
-                if (!ye) mdc_base_upd = true;
+                s.ye = ye_;
+                if (!s.ye) s.mdc_base_upd = true;
             }
-            void set_mc(bool mc)  { pixel_mask = 0b10 | mc; shift_amount = 1 + mc; }
-            void set_xe(bool xe)  { shift_base_delay = 1 + xe; }
-            void set_c(u8 c)      { col[2] = c; }
-            void set_mc0(u8 mc0)  { col[1] = mc0; }
-            void set_mc1(u8 mc1)  { col[3] = mc1; }
+            void set_mc(bool mc)  { s.pixel_mask = 0b10 | mc; s.shift_amount = 1 + mc; }
+            void set_xe(bool xe)  { s.shift_base_delay = 1 + xe; }
+            void set_c(u8 c)      { s.col[2] = c; }
+            void set_mc0(u8 mc0)  { s.col[1] = mc0; }
+            void set_mc1(u8 mc1)  { s.col[3] = mc1; }
 
-            bool dma_on() const   { return mdc_base < 63; }
-            bool dma_done() const { return mdc_base == 63; }
-            bool dma_off() const  { return mdc_base == 0xff; }
+            bool dma_on() const   { return s.mdc_base < 63; }
+            bool dma_done() const { return s.mdc_base == 63; }
+            bool dma_off() const  { return s.mdc_base == 0xff; }
             void set_dma_off() {
-                mdc_base = 0xff;
-                data = 0;
+                s.mdc_base = 0xff;
+                s.data = 0;
             }
 
             void load_data(u32 d1, u32 d2, u32 d3) {
-                data = (d1 << 24) | (d2 << 16) | (d3 << 8) | Data_status::waiting;
+                s.data = (d1 << 24) | (d2 << 16) | (d3 << 8) | Data_status::waiting;
             }
 
             // during blanking
             void update(u16 px, const u8 mob_bit, u8* mob_presence, u8& mmc) {
                 if (is_waiting()) {
                     if (!is_scheduled()) {
-                        if (x < px || (x >= (px + 8))) return;
+                        if (s.x < px || (x >= (px + 8))) return;
                         schedule(x - px);
                         return;
                     } else {
-                        px = shift_timer;
+                        px = s.shift_timer;
                         release();
                     }
                 } else {
@@ -273,20 +270,20 @@ private:
                 }
 
                 for (; px < 8; ++px) {
-                    const u8 p_col = col[(data >> 30) & pixel_mask];
+                    const u8 p_col = s.col[(s.data >> 30) & s.pixel_mask];
 
                     if (p_col != transparent) {
                         if (mob_presence[px]) mmc |= (mob_presence[px] | mob_bit);
                         mob_presence[px] |= mob_bit;
                     }
 
-                    if ((++shift_timer % shift_delay) == 0) {
-                        data <<= shift_amount;
-                        if (!data) return;
+                    if ((++s.shift_timer % s.shift_delay) == 0) {
+                        s.data <<= s.shift_amount;
+                        if (!s.data) return;
                     }
                 }
 
-                shift_delay = shift_base_delay * shift_amount;
+                s.shift_delay = s.shift_base_delay * s.shift_amount;
             }
 
             void output(u16 px, const u8* gfx_out, const u8 mdp,
@@ -295,11 +292,11 @@ private:
             {
                 if (is_waiting()) {
                     if (!is_scheduled()) {
-                        if (x < px || (x >= (px + 8))) return;
-                        schedule(x - px);
+                        if (s.x < px || (s.x >= (px + 8))) return;
+                        schedule(s.x - px);
                         return;
                     } else {
-                        px = shift_timer;
+                        px = s.shift_timer;
                         release();
                     }
                 } else {
@@ -307,7 +304,7 @@ private:
                 }
 
                 for (; px < 8; ++px) {
-                    const u8 p_col = col[(data >> 30) & pixel_mask];
+                    const u8 p_col = s.col[(s.data >> 30) & s.pixel_mask];
 
                     if (p_col != transparent) {
                         if (mob_presence[px]) mmc |= (mob_presence[px] | mob_bit);
@@ -318,60 +315,43 @@ private:
                         mob_output[px] = p_col | mdp;
                     }
 
-                    if ((++shift_timer % shift_delay) == 0) {
-                        data <<= shift_amount;
-                        if (!data) return;
+                    if ((++s.shift_timer % s.shift_delay) == 0) {
+                        s.data <<= s.shift_amount;
+                        if (!s.data) return;
                     }
                 }
 
                 // NOTE: this comes a few pixels late (should be done
                 //       inside the loop above, but meh..)
-                shift_delay = shift_base_delay * shift_amount;
+                s.shift_delay = s.shift_base_delay * s.shift_amount;
             }
-
-            u8 disp_on = false;
-
-            u8 ye;
-            u8 mdc_base_upd;
-
-            u8 mdc_base = 0xff;
-            u8 mdc;
-
-            u16 x;
-
-            u32 data;
-            u32 pixel_mask;
-
-            u8 shift_base_delay;
-            u8 shift_delay;
-            u8 shift_amount;
-            u8 shift_timer;
-
-            u8 col[4] = { transparent, transparent, transparent, transparent };
 
         private:
             enum Data_status : u8 { waiting = 0b01, scheduled = 0b10 };
 
-            bool is_waiting() const   { return data & Data_status::waiting; }
-            bool is_scheduled() const { return data & Data_status::scheduled; }
+            bool is_waiting() const   { return s.data & Data_status::waiting; }
+            bool is_scheduled() const { return s.data & Data_status::scheduled; }
             void schedule(u8 x_offset) {
-                data |= Data_status::scheduled;
-                shift_timer = x_offset; // use as temp storage
-                shift_delay = shift_base_delay * shift_amount;
+                s.data |= Data_status::scheduled;
+                s.shift_timer = x_offset; // use as temp storage
+                s.shift_delay = s.shift_base_delay * s.shift_amount;
             }
             void release() {
-                data &= ~(Data_status::waiting | Data_status::scheduled);
-                shift_timer = 0;
+                s.data &= ~(Data_status::waiting | Data_status::scheduled);
+                s.shift_timer = 0;
             }
         };
 
+        /*###########
+        TODO: work directly on mob state...?
+        ###########*/
 
         MOB (&mob)[mob_count]; // array reference (sweet syntax)
 
         void set_x_hi(u8 mnx8) {
             auto hi_bits = mnx8 << 8;
             for (auto& m : mob) {
-                m.x = (hi_bits & 0x100) | (m.x & 0x0ff);
+                m.s.x = (hi_bits & 0x100) | (m.s.x & 0x0ff);
                 hi_bits >>= 1;
             }
         }
@@ -383,10 +363,10 @@ private:
                 for (auto& m : mob) {
                     const bool ye_new = mnye & 0b1;
                     if (m.dma_on()) {
-                        const bool crunch_mob = (m.ye & (m.ye ^ ye_new));
+                        const bool crunch_mob = (m.s.ye & (m.s.ye ^ ye_new));
                         if (crunch_mob) {
-                            m.mdc = ((m.mdc_base & m.mdc) & 0b101010)
-                                        | ((m.mdc_base | m.mdc) & 0b010101);
+                            m.s.mdc = ((m.s.mdc_base & m.s.mdc) & 0b101010)
+                                        | ((m.s.mdc_base | m.s.mdc) & 0b010101);
                         }
                     }
                     m.set_ye(ye_new);
@@ -396,15 +376,15 @@ private:
         }
 
         void check_dma_ye() {
-            for (auto&m : mob) if (m.ye) m.mdc_base_upd = !m.mdc_base_upd;
+            for (auto&m : mob) if (m.s.ye) m.s.mdc_base_upd = !m.s.mdc_base_upd;
         }
         void check_dma_start() {
             for (u8 mn = 0, mb = 0x01; mn < mob_count; ++mn, mb <<= 1) {
                 MOB& m = mob[mn];
                 if ((reg[R::mne] & mb) && !m.dma_on()) {
                     if (reg[R::m0y + (mn * 2)] == (raster_y & 0xff)) {
-                        m.mdc_base = 0; // initiates dma
-                        m.mdc_base_upd = !m.ye;
+                        m.s.mdc_base = 0; // initiates dma
+                        m.s.mdc_base_upd = !m.s.ye;
                     }
                 }
             }
@@ -413,10 +393,10 @@ private:
             for (u8 mn = 0; mn < mob_count; ++mn) {
                 MOB& m = mob[mn];
                 if (m.dma_on()) {
-                    m.mdc = m.mdc_base;
+                    m.s.mdc = m.s.mdc_base;
                     const bool ry_match = (reg[R::m0y + (mn * 2)] == (raster_y & 0xff));
                     if (ry_match && (reg[R::mne] & (0b1 << mn))) {
-                        m.disp_on = true;
+                        m.s.disp_on = true;
                     }
                 }
             }
@@ -424,7 +404,7 @@ private:
 
         void upd_dma() {
             for(auto&m : mob) {
-                if (m.dma_on() && m.mdc_base_upd) m.mdc_base = m.mdc;
+                if (m.dma_on() && m.s.mdc_base_upd) m.s.mdc_base = m.s.mdc;
             }
         }
         void prep_dma(u8 mn) { if (mob[mn].dma_on()) ba.mob_start(mn); }
@@ -443,7 +423,7 @@ private:
     private:
         void _update(int start_mn, u16 x) {
             for (int mn = start_mn; mn < mob_count; ++mn) {
-                if (mob[mn].data) {
+                if (mob[mn].s.data) {
                     const u8 mob_bit = 0b1 << mn;
                     mob[mn].update(x, mob_bit, mob_presence, mmc);
                 }
@@ -460,7 +440,7 @@ private:
 
         void _output(int start_mn, u16 x, u8* to) { // also does collision detection
             for (int mn = start_mn; mn >= 0; --mn) {
-                if (mob[mn].data) {
+                if (mob[mn].s.data) {
                     const u8 mob_bit = 0b1 << mn;
                     const u8 mdp = (reg[R::mndp] << (7 - mn)) & 0b10000000;
                     mob[mn].output(x, to, mdp, mob_bit, mob_output, mob_presence, mdc, mmc);
@@ -490,7 +470,6 @@ private:
             }
         }
 
-        // TODO: MOB state
         u8 mob_output[8] = {
             MOB::transparent, MOB::transparent, MOB::transparent, MOB::transparent,
             MOB::transparent, MOB::transparent, MOB::transparent, MOB::transparent
@@ -785,7 +764,6 @@ public:
         u32 beam_pos = 0;
         u8 frame[FRAME_SIZE] = {};
 
-        // TODO: move out..?
         u8 cr1(u8 field) const { return reg[R::cr1] & field; }
         u8 cr2(u8 field) const { return reg[R::cr2] & field; }
 
@@ -796,7 +774,7 @@ public:
         u16 raster_x() const { return (400 + (line_cycle() * 8)) % (LINE_CYCLE_COUNT * 8); }
     };
 
-    void reset() { for (int r = 0; r < REG_COUNT; ++r) w(r, 0); }
+    void reset() { for (int r = 0; r < ::State::VIC_II::REG_COUNT; ++r) w(r, 0); }
 
     void set_ultimax(bool act)    { addr_space.set_ultimax(act); }
     void set_bank(u8 va14_va15)   { addr_space.set_bank(va14_va15); }
