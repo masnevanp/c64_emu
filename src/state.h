@@ -11,10 +11,12 @@ struct VIC_II {
     static constexpr int REG_COUNT = 64;
     static constexpr int MOB_COUNT = 8;
 
-    enum R : u8 {
-        m0x,  m0y,  m1x,  m1y,  m2x,  m2y,  m3x,  m3y,  m4x,  m4y,  m5x,  m5y,  m6x,  m6y,  m7x,  m7y,
-        mnx8, cr1,  rast, lpx,  lpy,  mne,  cr2,  mnye, mptr, ireg, ien,  mndp, mnmc, mnxe, mnm,  mnd,
-        ecol, bgc0, bgc1, bgc2, bgc3, mmc0, mmc1, m0c,  m1c,  m2c,  m3c,  m4c,  m5c,  m6c,  m7c,
+    struct R {
+        enum u8 {
+            m0x,  m0y,  m1x,  m1y,  m2x,  m2y,  m3x,  m3y,  m4x,  m4y,  m5x,  m5y,  m6x,  m6y,  m7x,  m7y,
+            mnx8, cr1,  rast, lpx,  lpy,  mne,  cr2,  mnye, mptr, ireg, ien,  mndp, mnmc, mnxe, mnm,  mnd,
+            ecol, bgc0, bgc1, bgc2, bgc3, mmc0, mmc1, m0c,  m1c,  m2c,  m3c,  m4c,  m5c,  m6c,  m7c,
+        };
     };
 
     enum V_blank : u8 { vb_off = 0, vb_on = 63 };
@@ -54,7 +56,7 @@ struct VIC_II {
     };
 
     struct GFX {
-        u8 mode = scm;
+        u8 mode = 0;
 
         u8 y_scroll;
 
@@ -82,6 +84,7 @@ struct VIC_II {
     };
 
     struct Border {
+        static constexpr u32 not_set = 0xffffffff;
         // indicate beam_pos at which border should start/end
         u32 on_at  = not_set;
         u32 off_at = not_set;
@@ -97,7 +100,7 @@ struct VIC_II {
 
     Address_space addr_space;
     Light_pen lp;
-    typename MOBs::MOB mob[MOBs::mob_count];
+    MOB mob[MOB_COUNT];
     GFX gfx;
     Border border;
 
@@ -112,6 +115,23 @@ struct VIC_II {
 
     // TODO: apply an offset in LP usage (this value is good for mob timinig...)
     u16 raster_x() const { return (400 + (line_cycle() * 8)) % (LINE_CYCLE_COUNT * 8); }
+};
+
+
+struct System {
+    u8 ram[0x10000];
+    u8 color_ram[::VIC_II::Color_RAM::size] = {};
+
+    u16 ba_low;
+    u16 dma_low;
+
+    VIC_II vic;
+
+    // holds all the memory that an expansion (e.g. a cart) requires: ROM, RAM,
+    // emulation control data, ...
+    // TODO: dynamic, or meh..? (although 640k is enough for everyone...except easyflash..)
+    //       (nasty, if state saving is implemented)
+    u8 exp_ram[640 * 1024];
 };
 
 

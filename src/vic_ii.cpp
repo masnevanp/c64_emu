@@ -2,14 +2,14 @@
 
 
 void VIC_II::Core::MOBs::do_dma(u8 mn)  { // do p&s -accesses
-    MOB& m = mob[mn];
+    VS::MOB& m = mob[mn];
     // if dma_on, then cpu has already been stopped --> safe to read all at once (1p + 3s)
-    if (!m.dma_off()) {
-        if (m.dma_on()) {
+    if (!MOB{m}.dma_off()) {
+        if (MOB{m}.dma_on()) {
             if (m.disp_on) {
                 const u16 mb = ((reg[R::mptr] & MPTR::vm) << 6) | MP_BASE;
                 const u16 mp = addr_space.r(mb | mn) << 6;
-                m.load_data(
+                MOB{m}.load_data(
                     addr_space.r(mp | ((m.mdc + 0) & 63)),
                     addr_space.r(mp | ((m.mdc + 1) & 63)),
                     addr_space.r(mp | ((m.mdc + 2) & 63))
@@ -18,7 +18,7 @@ void VIC_II::Core::MOBs::do_dma(u8 mn)  { // do p&s -accesses
             m.mdc = (m.mdc + 3) & 63;
             ba.mob_done(mn);
         } else { // in 'dma done' mode
-            m.set_dma_off();
+            MOB{m}.set_dma_off();
             m.disp_on = false;
         }
     }
@@ -48,7 +48,7 @@ void VIC_II::Core::MOBs::output(u16 x, u8* to) {
 void VIC_II::Core::GFX::read_vm() {
     if (gs.ba_line) {
         activate(); // delayed - possibly (in case 'DMA delay' was triggered)
-        if (ba.phi2_aec_high(cs.line_cycle())) {
+        if (ba.phi2_aec_high(vs.line_cycle())) {
             gs.vm[gs.vmri].data = 0xff;
             /*
             'The MOS 6567/6569 video controller (VIC-II) and its application in the Commodore 64 (by Christian Bauer)' states:
@@ -77,14 +77,14 @@ void VIC_II::Core::GFX::read_gd() {
         gs.vc = (gs.vc + 1) & 0x3ff;
         gs.vmri += 1;
     } else {
-        const u16 addr = cs.cr1(CR1::ecm) ? (addr_idle & addr_ecm_mask) : addr_idle;
+        const u16 addr = vs.cr1(CR1::ecm) ? (addr_idle & addr_ecm_mask) : addr_idle;
         gs.gd = addr_space.r(addr);
     }
 }
 
 
 void VIC_II::Core::GFX::feed_pipeline() {
-    const auto xs = cs.cr2(CR2::x_scroll);
+    const auto xs = vs.cr2(CR2::x_scroll);
     const u64 gd_slot = u64(0x000000000000ffff) << (40 - xs);
     gs.pipeline &= ~gd_slot; // clear leftovers (in case xs was decremented)
     gs.pipeline |= (u64(gs.gd) << (48 - xs)); // feed gd
@@ -300,7 +300,7 @@ void VIC_II::Core::output() {
 
 
 void VIC_II::Core::tick() {
-    using V_blank = typename State::V_blank;
+    using V_blank = VS::V_blank;
 
     ++s.cycle;
 

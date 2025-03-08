@@ -184,7 +184,22 @@ static const int FRAME_WIDTH        = 320 + 2 * BORDER_SZ_V;
 static const int FRAME_HEIGHT       = 200 + 2 * BORDER_SZ_H;
 static const int FRAME_SIZE         = FRAME_WIDTH * FRAME_HEIGHT;
 
-}
+
+class Color_RAM {
+public:
+    static const u16 size = 0x0400;
+
+    void r(const u16& addr, u8& data) const { data = ram[addr]; }
+    void w(const u16& addr, const u8& data) { ram[addr] = data & 0xf; } // masking the write is enough
+
+    Color_RAM(u8* ram_) : ram(ram_) {}
+
+private:
+    u8* ram; // just the lower nibble is actually used
+
+};
+
+} // namespace VIC_II
 
 
 namespace IO {

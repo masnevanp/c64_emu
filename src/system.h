@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <iostream>
 #include "common.h"
+#include "state.h"
 #include "utils.h"
 #include "dbg.h"
 #include "nmos6502/nmos6502_core.h"
@@ -433,24 +434,6 @@ struct C1541_status_panel {
     void update(const C1541::Disk_ctrl::Status& c1541_status);
 };
 
-
-struct State {
-    u8 ram[0x10000];
-    u8 color_ram[Color_RAM::size] = {};
-
-    u16 ba_low;
-    u16 dma_low;
-
-    VIC::State vic;
-
-    // holds all the memory that an expansion (e.g. a cart) requires: ROM, RAM,
-    // emulation control data, ...
-    // TODO: dynamic, or meh..? (although 640k is enough for everyone...except easyflash..)
-    //       (nasty, if state saving is implemented)
-    u8 exp_ram[640 * 1024];
-};
-
-
 /*
     // intercepts kernal calls: untlk, talk, unlsn, listen, tksa, second, acptr, ciout
     // (fast but very low compatibility)
@@ -517,7 +500,7 @@ public:
 private:
     const ROM& rom;
 
-    State s;
+    State::System s;
 
     CPU cpu{cpu_trap};
 

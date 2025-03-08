@@ -12,25 +12,11 @@ namespace VIC_II {
 static constexpr u8 CIA1_PB_LP_BIT = 0x10;
 
 
-class Color_RAM {
-public:
-    static const u16 size = 0x0400;
-
-    void r(const u16& addr, u8& data) const { data = ram[addr]; }
-    void w(const u16& addr, const u8& data) { ram[addr] = data & 0xf; } // masking the write is enough
-
-    Color_RAM(u8* ram_) : ram(ram_) {}
-
-private:
-    u8* ram; // just the lower nibble is actually used
-
-};
-
-
+using VS = State::VIC_II;
 using R = State::VIC_II::R;
 
 
-static constexpr u8 reg_unused[State::VIC_II::REG_COUNT] = {
+static constexpr u8 reg_unused[VS::REG_COUNT] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x00, 0x01, 0x70, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00,
     0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xf0, 0xff,
@@ -56,16 +42,86 @@ enum MPTR : u8 { vm = 0xf0, cg = 0x0e, };
 
 class Core { // 6569 (PAL-B)
 public:
-    struct State;
+    enum LP_src { cia = 0x1, ctrl_port = 0x2, };
+
+    Core(
+          VS& s_,
+          const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
+          const std::function<void (const u16& addr, u8& data)>& romh_r,
+          u16& ba_low, IO::Int_sig& int_sig)
+        : s(s_),
+          addr_space(s_.addr_space, ram_, charr, romh_r), irq(s, int_sig), ba(ba_low), lp(s, irq),
+          mobs(s, addr_space, ba, irq), gfx(s, addr_space, col_ram_, ba), border(s) {}
+
+    void reset() { for (int r = 0; r < VS::REG_COUNT; ++r) w(r, 0); }
+
+    void set_ultimax(bool act)    { addr_space.set_ultimax(act); }
+    void set_bank(u8 va14_va15)   { addr_space.set_bank(va14_va15); }
+    void set_lp(u8 src, u8 bit)   { lp.set(src, bit ^ CIA1_PB_LP_BIT); }
+
+    void r(const u8& ri, u8& data) {
+        switch (ri) {
+            case R::cr1:
+                data = (s.reg[R::cr1] & ~CR1::rst8) | ((s.raster_y & 0x100) >> 1);
+                return;
+            case R::rast:
+                data = s.raster_y;
+                return;
+            case R::mnm: case R::mnd:
+                data = s.reg[ri];
+                s.reg[ri] = 0;
+                return;
+            default:
+                data = s.reg[ri] | reg_unused[ri];
+        }
+    }
+
+    void w(const u8& ri, const u8& data) {
+        u8 d = data & ~reg_unused[ri];
+        s.reg[ri] = d;
+
+        switch (ri) {
+            case R::m0x: case R::m1x: case R::m2x: case R::m3x:
+            case R::m4x: case R::m5x: case R::m6x: case R::m7x:
+                MOB{s.mob[ri >> 1]}.set_x_lo(d);
+                break;
+            case R::mnx8: mobs.set_x_hi(d);   break;
+            case R::cr1:  gfx.cr1_upd(d);     // fall through
+            case R::rast: upd_raster_y_cmp(); break;
+            case R::cr2:  gfx.cr2_upd(d);     break;
+            case R::ireg: irq.w_ireg(d);      break;
+            case R::ien:  irq.ien_upd();      break;
+            case R::mnye: mobs.set_ye(d, s.line_cycle()); break;
+            case R::mnmc: for (auto& m : s.mob) { MOB{m}.set_mc(d & 0x1); d >>= 1; } break;
+            case R::mnxe: for (auto& m : s.mob) { MOB{m}.set_xe(d & 0x1); d >>= 1; } break;
+            case R::mmc0: for (auto& m : s.mob) MOB{m}.set_mc0(d); break;
+            case R::mmc1: for (auto& m : s.mob) MOB{m}.set_mc1(d); break;
+            case R::m0c: case R::m1c: case R::m2c: case R::m3c:
+            case R::m4c: case R::m5c: case R::m6c: case R::m7c:
+                MOB{s.mob[ri - R::m0c]}.set_c(d);
+                break;
+        }
+    }
+
+    /* NOTE:
+        mobs.prep_dma/do_dma pair is done, so that it takes the specified
+        5 cycles in total. do_dma is done at the last moment possible, and
+        all the memory access is then done at once (which is not how it is
+        done in reality). Normally this is not an issue since the CPU is asleep
+        all the way through (and hence, cannot modify the memory). But...
+      TODO:
+        Might a cartridge modify the memory during these cycles? Surely not in
+        a 'safe' way since VIC has/uses the bus for both phases, right?
+        Anyway, the current MOB access would not be 100% cycle/memory accurate
+        in those cases. */
+
+    void tick();
 
 private:
 
     class Address_space {
     public:
-        struct State {
-            u8 ultimax = false;
-            u8 bank = 0b11;
-        };
+        using State = VS::Address_space;
 
         u8 r(const u16& addr) const { // addr is 14bits
             // silence compiler (we do handle all the cases)
@@ -137,7 +193,7 @@ private:
         void ien_upd()       { update(); }
         void req(u8 kind)    { r_ireg |= kind;  update(); }
 
-        IRQ(State& s, IO::Int_sig& int_sig_)
+        IRQ(VS& s, IO::Int_sig& int_sig_)
             : r_ireg(s.reg[R::ireg]), r_ien(s.reg[R::ien]), int_sig(int_sig_) { }
 
     private:
@@ -180,11 +236,6 @@ private:
 
     class Light_pen {
     public:
-        struct State {
-            u8 triggered = 0;
-            u8 trigger_at_phi1 = false;
-        };
-
         void reset() {
             if (s.lp.triggered & ~per_frame) trigger();
             else s.lp.triggered = 0;
@@ -206,11 +257,11 @@ private:
             }
         }
 
-        Light_pen(Core::State& s_, IRQ& irq_) : s(s_), irq(irq_) {}
+        Light_pen(VS& s_, IRQ& irq_) : s(s_), irq(irq_) {}
     private:
         static const u8 per_frame = 0x80;
 
-        Core::State& s;
+        VS& s;
         IRQ& irq;
 
         void trigger() {
@@ -221,182 +272,179 @@ private:
     };
 
 
+    struct MOB { // a (zero state) helper for individual mobs
+        static constexpr u8 transparent = VS::MOB::transparent;
+
+        VS::MOB& s;
+
+        void set_x_lo(u8 lo)  { s.x = (s.x & 0x100) | lo; }
+        void set_ye(bool ye_) {
+            s.ye = ye_;
+            if (!s.ye) s.mdc_base_upd = true;
+        }
+        void set_mc(bool mc)  { s.pixel_mask = 0b10 | mc; s.shift_amount = 1 + mc; }
+        void set_xe(bool xe)  { s.shift_base_delay = 1 + xe; }
+        void set_c(u8 c)      { s.col[2] = c; }
+        void set_mc0(u8 mc0)  { s.col[1] = mc0; }
+        void set_mc1(u8 mc1)  { s.col[3] = mc1; }
+
+        bool dma_on() const   { return s.mdc_base < 63; }
+        bool dma_done() const { return s.mdc_base == 63; }
+        bool dma_off() const  { return s.mdc_base == 0xff; }
+        void set_dma_off() {
+            s.mdc_base = 0xff;
+            s.data = 0;
+        }
+
+        void load_data(u32 d1, u32 d2, u32 d3) {
+            s.data = (d1 << 24) | (d2 << 16) | (d3 << 8) | Data_status::waiting;
+        }
+
+        // during blanking
+        void update(u16 px, const u8 mob_bit, u8* mob_presence, u8& mmc) {
+            if (is_waiting()) {
+                if (!is_scheduled()) {
+                    if (s.x < px || (s.x >= (px + 8))) return;
+                    schedule(s.x - px);
+                    return;
+                } else {
+                    px = s.shift_timer;
+                    release();
+                }
+            } else {
+                px = 0;
+            }
+
+            for (; px < 8; ++px) {
+                const u8 p_col = s.col[(s.data >> 30) & s.pixel_mask];
+
+                if (p_col != transparent) {
+                    if (mob_presence[px]) mmc |= (mob_presence[px] | mob_bit);
+                    mob_presence[px] |= mob_bit;
+                }
+
+                if ((++s.shift_timer % s.shift_delay) == 0) {
+                    s.data <<= s.shift_amount;
+                    if (!s.data) return;
+                }
+            }
+
+            s.shift_delay = s.shift_base_delay * s.shift_amount;
+        }
+
+        void output(u16 px, const u8* gfx_out, const u8 mdp,
+                        const u8 mob_bit, u8* mob_output, u8* mob_presence,
+                        u8& mdc, u8& mmc)
+        {
+            if (is_waiting()) {
+                if (!is_scheduled()) {
+                    if (s.x < px || (s.x >= (px + 8))) return;
+                    schedule(s.x - px);
+                    return;
+                } else {
+                    px = s.shift_timer;
+                    release();
+                }
+            } else {
+                px = 0;
+            }
+
+            for (; px < 8; ++px) {
+                const u8 p_col = s.col[(s.data >> 30) & s.pixel_mask];
+
+                if (p_col != transparent) {
+                    if (mob_presence[px]) mmc |= (mob_presence[px] | mob_bit);
+                    mob_presence[px] |= mob_bit;
+
+                    if (gfx_out[px] & GFX::foreground) mdc |= mob_bit;
+
+                    mob_output[px] = p_col | mdp;
+                }
+
+                if ((++s.shift_timer % s.shift_delay) == 0) {
+                    s.data <<= s.shift_amount;
+                    if (!s.data) return;
+                }
+            }
+
+            // NOTE: this comes a few pixels late (should be done
+            //       inside the loop above, but meh..)
+            s.shift_delay = s.shift_base_delay * s.shift_amount;
+        }
+
+    private:
+        enum Data_status : u8 { waiting = 0b01, scheduled = 0b10 };
+
+        bool is_waiting() const   { return s.data & Data_status::waiting; }
+        bool is_scheduled() const { return s.data & Data_status::scheduled; }
+        void schedule(u8 x_offset) {
+            s.data |= Data_status::scheduled;
+            s.shift_timer = x_offset; // use as temp storage
+            s.shift_delay = s.shift_base_delay * s.shift_amount;
+        }
+        void release() {
+            s.data &= ~(Data_status::waiting | Data_status::scheduled);
+            s.shift_timer = 0;
+        }
+    };
+
+
     class MOBs {
     public:
-        static constexpr int mob_count = ::State::VIC_II::MOB_COUNT;
+        static constexpr int mob_count = VS::MOB_COUNT;
         static constexpr u16 MP_BASE   = 0x3f8; // offset from vm_base
 
-        struct MOB {
-            static constexpr u8 transparent = ::State::VIC_II::MOB::transparent;
-
-            ::State::VIC_II::MOB& s;
-
-            void set_x_lo(u8 lo)  { s.x = (s.x & 0x100) | lo; }
-            void set_ye(bool ye_) {
-                s.ye = ye_;
-                if (!s.ye) s.mdc_base_upd = true;
-            }
-            void set_mc(bool mc)  { s.pixel_mask = 0b10 | mc; s.shift_amount = 1 + mc; }
-            void set_xe(bool xe)  { s.shift_base_delay = 1 + xe; }
-            void set_c(u8 c)      { s.col[2] = c; }
-            void set_mc0(u8 mc0)  { s.col[1] = mc0; }
-            void set_mc1(u8 mc1)  { s.col[3] = mc1; }
-
-            bool dma_on() const   { return s.mdc_base < 63; }
-            bool dma_done() const { return s.mdc_base == 63; }
-            bool dma_off() const  { return s.mdc_base == 0xff; }
-            void set_dma_off() {
-                s.mdc_base = 0xff;
-                s.data = 0;
-            }
-
-            void load_data(u32 d1, u32 d2, u32 d3) {
-                s.data = (d1 << 24) | (d2 << 16) | (d3 << 8) | Data_status::waiting;
-            }
-
-            // during blanking
-            void update(u16 px, const u8 mob_bit, u8* mob_presence, u8& mmc) {
-                if (is_waiting()) {
-                    if (!is_scheduled()) {
-                        if (s.x < px || (x >= (px + 8))) return;
-                        schedule(x - px);
-                        return;
-                    } else {
-                        px = s.shift_timer;
-                        release();
-                    }
-                } else {
-                    px = 0;
-                }
-
-                for (; px < 8; ++px) {
-                    const u8 p_col = s.col[(s.data >> 30) & s.pixel_mask];
-
-                    if (p_col != transparent) {
-                        if (mob_presence[px]) mmc |= (mob_presence[px] | mob_bit);
-                        mob_presence[px] |= mob_bit;
-                    }
-
-                    if ((++s.shift_timer % s.shift_delay) == 0) {
-                        s.data <<= s.shift_amount;
-                        if (!s.data) return;
-                    }
-                }
-
-                s.shift_delay = s.shift_base_delay * s.shift_amount;
-            }
-
-            void output(u16 px, const u8* gfx_out, const u8 mdp,
-                            const u8 mob_bit, u8* mob_output, u8* mob_presence,
-                            u8& mdc, u8& mmc)
-            {
-                if (is_waiting()) {
-                    if (!is_scheduled()) {
-                        if (s.x < px || (s.x >= (px + 8))) return;
-                        schedule(s.x - px);
-                        return;
-                    } else {
-                        px = s.shift_timer;
-                        release();
-                    }
-                } else {
-                    px = 0;
-                }
-
-                for (; px < 8; ++px) {
-                    const u8 p_col = s.col[(s.data >> 30) & s.pixel_mask];
-
-                    if (p_col != transparent) {
-                        if (mob_presence[px]) mmc |= (mob_presence[px] | mob_bit);
-                        mob_presence[px] |= mob_bit;
-
-                        if (gfx_out[px] & GFX::foreground) mdc |= mob_bit;
-
-                        mob_output[px] = p_col | mdp;
-                    }
-
-                    if ((++s.shift_timer % s.shift_delay) == 0) {
-                        s.data <<= s.shift_amount;
-                        if (!s.data) return;
-                    }
-                }
-
-                // NOTE: this comes a few pixels late (should be done
-                //       inside the loop above, but meh..)
-                s.shift_delay = s.shift_base_delay * s.shift_amount;
-            }
-
-        private:
-            enum Data_status : u8 { waiting = 0b01, scheduled = 0b10 };
-
-            bool is_waiting() const   { return s.data & Data_status::waiting; }
-            bool is_scheduled() const { return s.data & Data_status::scheduled; }
-            void schedule(u8 x_offset) {
-                s.data |= Data_status::scheduled;
-                s.shift_timer = x_offset; // use as temp storage
-                s.shift_delay = s.shift_base_delay * s.shift_amount;
-            }
-            void release() {
-                s.data &= ~(Data_status::waiting | Data_status::scheduled);
-                s.shift_timer = 0;
-            }
-        };
-
-        /*###########
-        TODO: work directly on mob state...?
-        ###########*/
-
-        MOB (&mob)[mob_count]; // array reference (sweet syntax)
+        VS::MOB (&mob)[mob_count]; // array reference
 
         void set_x_hi(u8 mnx8) {
             auto hi_bits = mnx8 << 8;
             for (auto& m : mob) {
-                m.s.x = (hi_bits & 0x100) | (m.s.x & 0x0ff);
+                m.x = (hi_bits & 0x100) | (m.x & 0x0ff);
                 hi_bits >>= 1;
             }
         }
         void set_ye(u8 mnye, const int line_cycle) {
             const bool no_crunch = line_cycle != 14;
             if (no_crunch) {
-                for (auto& m : mob) { m.set_ye(mnye & 0b1); mnye >>= 1; }
+                for (auto& m : mob) { MOB{m}.set_ye(mnye & 0b1); mnye >>= 1; }
             } else {
                 for (auto& m : mob) {
                     const bool ye_new = mnye & 0b1;
-                    if (m.dma_on()) {
-                        const bool crunch_mob = (m.s.ye & (m.s.ye ^ ye_new));
+                    if (MOB{m}.dma_on()) {
+                        const bool crunch_mob = (m.ye & (m.ye ^ ye_new));
                         if (crunch_mob) {
-                            m.s.mdc = ((m.s.mdc_base & m.s.mdc) & 0b101010)
-                                        | ((m.s.mdc_base | m.s.mdc) & 0b010101);
+                            m.mdc = ((m.mdc_base & m.mdc) & 0b101010)
+                                        | ((m.mdc_base | m.mdc) & 0b010101);
                         }
                     }
-                    m.set_ye(ye_new);
+                    MOB{m}.set_ye(ye_new);
                     mnye >>= 1;
                 }
             }
         }
 
         void check_dma_ye() {
-            for (auto&m : mob) if (m.s.ye) m.s.mdc_base_upd = !m.s.mdc_base_upd;
+            for (auto&m : mob) if (m.ye) m.mdc_base_upd = !m.mdc_base_upd;
         }
         void check_dma_start() {
             for (u8 mn = 0, mb = 0x01; mn < mob_count; ++mn, mb <<= 1) {
-                MOB& m = mob[mn];
-                if ((reg[R::mne] & mb) && !m.dma_on()) {
+                VS::MOB& m = mob[mn];
+                if ((reg[R::mne] & mb) && !MOB{m}.dma_on()) {
                     if (reg[R::m0y + (mn * 2)] == (raster_y & 0xff)) {
-                        m.s.mdc_base = 0; // initiates dma
-                        m.s.mdc_base_upd = !m.s.ye;
+                        m.mdc_base = 0; // initiates dma
+                        m.mdc_base_upd = !m.ye;
                     }
                 }
             }
         }
         void check_disp() {
             for (u8 mn = 0; mn < mob_count; ++mn) {
-                MOB& m = mob[mn];
-                if (m.dma_on()) {
-                    m.s.mdc = m.s.mdc_base;
+                VS::MOB& m = mob[mn];
+                if (MOB{m}.dma_on()) {
+                    m.mdc = m.mdc_base;
                     const bool ry_match = (reg[R::m0y + (mn * 2)] == (raster_y & 0xff));
                     if (ry_match && (reg[R::mne] & (0b1 << mn))) {
-                        m.s.disp_on = true;
+                        m.disp_on = true;
                     }
                 }
             }
@@ -404,10 +452,10 @@ private:
 
         void upd_dma() {
             for(auto&m : mob) {
-                if (m.dma_on() && m.s.mdc_base_upd) m.s.mdc_base = m.s.mdc;
+                if (MOB{m}.dma_on() && m.mdc_base_upd) m.mdc_base = m.mdc;
             }
         }
-        void prep_dma(u8 mn) { if (mob[mn].dma_on()) ba.mob_start(mn); }
+        void prep_dma(u8 mn) { if (MOB{mob[mn]}.dma_on()) ba.mob_start(mn); }
         void do_dma(u8 mn); // do p&s -accesses
 
         void update(u16 x); // update during blanks
@@ -415,7 +463,7 @@ private:
         void output(u16 x, u8* to);
 
         MOBs(
-              State& s, Address_space& addr_space_,
+              VS& s, Address_space& addr_space_,
               BA_phi2& ba_, IRQ& irq_)
             : mob(s.mob), addr_space(addr_space_), reg(s.reg), raster_y(s.raster_y),
               ba(ba_), irq(irq_) {}
@@ -423,9 +471,9 @@ private:
     private:
         void _update(int start_mn, u16 x) {
             for (int mn = start_mn; mn < mob_count; ++mn) {
-                if (mob[mn].s.data) {
+                if (mob[mn].data) {
                     const u8 mob_bit = 0b1 << mn;
-                    mob[mn].update(x, mob_bit, mob_presence, mmc);
+                    MOB{mob[mn]}.update(x, mob_bit, mob_presence, mmc);
                 }
             }
 
@@ -440,10 +488,10 @@ private:
 
         void _output(int start_mn, u16 x, u8* to) { // also does collision detection
             for (int mn = start_mn; mn >= 0; --mn) {
-                if (mob[mn].s.data) {
+                if (mob[mn].data) {
                     const u8 mob_bit = 0b1 << mn;
                     const u8 mdp = (reg[R::mndp] << (7 - mn)) & 0b10000000;
-                    mob[mn].output(x, to, mdp, mob_bit, mob_output, mob_presence, mdc, mmc);
+                    MOB{mob[mn]}.output(x, to, mdp, mob_bit, mob_output, mob_presence, mdc, mmc);
                 }
             }
 
@@ -488,37 +536,11 @@ private:
 
     class GFX {
     public:
+        using State = VS::GFX;
+
         static const u16 vma_start_ry = 48;
         static const u16 vma_done_ry  = 248;
         static const u8  foreground   = 0b10000000;
-
-        struct State {
-            u8 mode = scm;
-
-            u8 y_scroll;
-
-            u8 ba_area = false; // set for each frame (at the top of disp.win)
-            u8 ba_line = false;
-
-            struct VM_data { // video-matrix data
-                u8 data = 0; // 'screen memory' data
-                u8 col = 0;  // color-ram data
-            };
-            VM_data vm[40]; // vm row buffer
-
-            u64 pipeline;
-            u16 vc_base;
-            u16 vc;
-            u16 rc;
-            u16 gfx_addr;
-            VM_data vmd;
-            u8 act;
-            u8 gd;
-            u8 blocked; // if blocked, only output bg col (toggled by border unit)
-            u8 vmri; // vm read index
-            u8 vmoi; // vm output index
-            u8 px; // for storing 2bit pixels across 'output()' runs
-        };
 
         void cr1_upd(const u8& cr1) { // @phi2
             const u8 ecm_bmm = (cr1 & (CR1::ecm | CR1::bmm)) >> 4;
@@ -527,7 +549,7 @@ private:
 
             gs.y_scroll = cr1 & CR1::y_scroll;
 
-            const auto cycle = cs.line_cycle();
+            const auto cycle = vs.line_cycle();
             if (cycle < 62) {
                 gs.ba_area |= ((raster_y == vma_start_ry) && (cr1 & CR1::den));
 
@@ -546,7 +568,7 @@ private:
             gs.mode = ecm_bmm | mcm;
         }
 
-        void vma_start() { gs.ba_area = cs.cr1(CR1::den); gs.vc_base = 0; }
+        void vma_start() { gs.ba_area = vs.cr1(CR1::den); gs.vc_base = 0; }
         void vma_done()  { gs.ba_area = false;  }
 
         void ba_init() {
@@ -591,10 +613,10 @@ private:
         void output_border(u8* to);
 
         GFX(
-            Core::State& cs_, Address_space& addr_space_,
+            VS& vs_, Address_space& addr_space_,
             const Color_RAM& col_ram_, BA_phi2& ba_)
-          : cs(cs_), gs(cs_.gfx), addr_space(addr_space_), col_ram(col_ram_), reg(cs.reg),
-            raster_y(cs.raster_y), ba(ba_) {}
+          : vs(vs_), gs(vs_.gfx), addr_space(addr_space_), col_ram(col_ram_), reg(vs.reg),
+            raster_y(vs.raster_y), ba(ba_) {}
 
     private:
         enum Mode_bit : u8 {
@@ -622,7 +644,7 @@ private:
         void deactivate()   { gs.act = false; }
         bool active() const { return gs.act; }
 
-        const Core::State& cs;
+        const VS& vs;
         State& gs;
         const Address_space& addr_space;
         const Color_RAM& col_ram;
@@ -634,73 +656,69 @@ private:
 
     class Border {
     public:
-        static constexpr u32 not_set = 0xffffffff;
+        using State = VS::Border;
 
-        struct State {
-            // indicate beam_pos at which border should start/end
-            u32 on_at  = not_set;
-            u32 off_at = not_set;
-        };
+        static constexpr u32 not_set = VS::Border::not_set;
 
         void check_left(u8 cmp_csel) {
-            if (cs.cr2(CR2::csel) == cmp_csel) {
+            if (vs.cr2(CR2::csel) == cmp_csel) {
                 check_lock();
                 if (!is_locked() && is_on()) {
-                    b.off_at = cs.beam_pos + (7 + (cmp_csel >> 3));
+                    s.off_at = vs.beam_pos + (7 + (cmp_csel >> 3));
                 }
             }
         }
 
         void check_right(u8 cmp_csel) {
-            if (!is_on() && cs.cr2(CR2::csel) == cmp_csel) {
-                b.on_at = cs.beam_pos + (7 + (cmp_csel >> 3));
-                b.off_at = not_set;
+            if (!is_on() && vs.cr2(CR2::csel) == cmp_csel) {
+                s.on_at = vs.beam_pos + (7 + (cmp_csel >> 3));
+                s.off_at = not_set;
             }
         }
 
         void check_right_vb(u8 cmp_csel) { // v-blank
-            if (!is_on() && cs.cr2(CR2::csel) == cmp_csel) {
-                b.on_at = 0;
-                b.off_at = not_set;
+            if (!is_on() && vs.cr2(CR2::csel) == cmp_csel) {
+                s.on_at = 0;
+                s.off_at = not_set;
             }
         }
 
         void line_done() { check_lock(); }
 
-        void vb_end() { if (is_on()) b.on_at = 0; }
+        void vb_end() { if (is_on()) s.on_at = 0; }
 
         void output(u32 upto_pos) {
             if (is_on()) {
                 if (going_off()) {
-                    while (b.on_at < b.off_at) cs.frame[b.on_at++] = cs.reg[R::ecol];
-                    b.on_at = not_set;
+                    while (s.on_at < s.off_at) vs.frame[s.on_at++] = vs.reg[R::ecol];
+                    s.on_at = not_set;
                 } else {
-                    while (b.on_at < upto_pos) cs.frame[b.on_at++] = cs.reg[R::ecol];
+                    while (s.on_at < upto_pos) vs.frame[s.on_at++] = vs.reg[R::ecol];
                 }
             }
         }
 
-        Border(Core::State& cs_) : cs(cs_), b(cs_.border) {}
+        Border(VS& vs_) : vs(vs_), s(vs_.border) {}
 
     private:
-        bool is_on()     const { return b.on_at != not_set; }
-        bool going_off() const { return b.off_at != not_set; }
-        bool is_locked() const { return cs.gfx.blocked; }
+        bool is_on()     const { return s.on_at != not_set; }
+        bool going_off() const { return s.off_at != not_set; }
+        bool is_locked() const { return vs.gfx.blocked; }
 
         // (if border 'locked', gfx unit shall output only bg color)
-        void lock()   { cs.gfx.blocked = true; }
-        void unlock() { cs.gfx.blocked = false; }
+        void lock()   { vs.gfx.blocked = true; }
+        void unlock() { vs.gfx.blocked = false; }
 
-        bool top()    const { return cs.raster_y == ( 55 - (cs.cr1(CR1::rsel) >> 1)); }
-        bool bottom() const { return cs.raster_y == (247 + (cs.cr1(CR1::rsel) >> 1)); }
+        bool top()    const { return vs.raster_y == ( 55 - (vs.cr1(CR1::rsel) >> 1)); }
+        bool bottom() const { return vs.raster_y == (247 + (vs.cr1(CR1::rsel) >> 1)); }
 
         void check_lock() {
             if (bottom()) lock();
-            else if (top() && cs.cr1(CR1::den)) unlock();
+            else if (top() && vs.cr1(CR1::den)) unlock();
         }
 
-        Core::State& cs;
-        State& b;
+        VS& vs;
+        State& s;
     };
 
     void check_raster_irq() {
@@ -731,7 +749,7 @@ private:
 
     void output();
 
-    State& s;
+    VS& s;
 
     Address_space addr_space;
     IRQ irq;
@@ -741,111 +759,6 @@ private:
     GFX gfx;
     Border border;
 
-public:
-    enum LP_src { cia = 0x1, ctrl_port = 0x2, };
-
-    struct State {
-        enum V_blank : u8 { vb_off = 0, vb_on = 63 };
-
-        u8 reg[REG_COUNT];
-
-        u64 cycle = 0; // good for ~595K years...
-        u16 raster_y = 0;
-        u16 raster_y_cmp = 0;
-        u8 raster_y_cmp_edge;
-        V_blank v_blank = V_blank::vb_on;
-
-        typename Address_space::State addr_space;
-        typename Light_pen::State lp;
-        typename MOBs::MOB mob[MOBs::mob_count];
-        typename GFX::State gfx;
-        typename Border::State border;
-
-        u32 beam_pos = 0;
-        u8 frame[FRAME_SIZE] = {};
-
-        u8 cr1(u8 field) const { return reg[R::cr1] & field; }
-        u8 cr2(u8 field) const { return reg[R::cr2] & field; }
-
-        int line_cycle() const  { return cycle % LINE_CYCLE_COUNT; }
-        int frame_cycle() const { return cycle % FRAME_CYCLE_COUNT; }
-
-        // TODO: apply an offset in LP usage (this value is good for mob timinig...)
-        u16 raster_x() const { return (400 + (line_cycle() * 8)) % (LINE_CYCLE_COUNT * 8); }
-    };
-
-    void reset() { for (int r = 0; r < ::State::VIC_II::REG_COUNT; ++r) w(r, 0); }
-
-    void set_ultimax(bool act)    { addr_space.set_ultimax(act); }
-    void set_bank(u8 va14_va15)   { addr_space.set_bank(va14_va15); }
-    void set_lp(u8 src, u8 bit)   { lp.set(src, bit ^ CIA1_PB_LP_BIT); }
-
-    void r(const u8& ri, u8& data) {
-        switch (ri) {
-            case R::cr1:
-                data = (s.reg[R::cr1] & ~CR1::rst8) | ((s.raster_y & 0x100) >> 1);
-                return;
-            case R::rast:
-                data = s.raster_y;
-                return;
-            case R::mnm: case R::mnd:
-                data = s.reg[ri];
-                s.reg[ri] = 0;
-                return;
-            default:
-                data = s.reg[ri] | reg_unused[ri];
-        }
-    }
-
-    void w(const u8& ri, const u8& data) {
-        u8 d = data & ~reg_unused[ri];
-        s.reg[ri] = d;
-
-        switch (ri) {
-            case R::m0x: case R::m1x: case R::m2x: case R::m3x:
-            case R::m4x: case R::m5x: case R::m6x: case R::m7x:
-                mobs.mob[ri >> 1].set_x_lo(d);
-                break;
-            case R::mnx8: mobs.set_x_hi(d);   break;
-            case R::cr1:  gfx.cr1_upd(d);     // fall through
-            case R::rast: upd_raster_y_cmp(); break;
-            case R::cr2:  gfx.cr2_upd(d);     break;
-            case R::ireg: irq.w_ireg(d);      break;
-            case R::ien:  irq.ien_upd();      break;
-            case R::mnye: mobs.set_ye(d, s.line_cycle()); break;
-            case R::mnmc: for (auto& m : mobs.mob) { m.set_mc(d & 0x1); d >>= 1; } break;
-            case R::mnxe: for (auto& m : mobs.mob) { m.set_xe(d & 0x1); d >>= 1; } break;
-            case R::mmc0: for (auto& m : mobs.mob) m.set_mc0(d); break;
-            case R::mmc1: for (auto& m : mobs.mob) m.set_mc1(d); break;
-            case R::m0c: case R::m1c: case R::m2c: case R::m3c:
-            case R::m4c: case R::m5c: case R::m6c: case R::m7c:
-                mobs.mob[ri - R::m0c].set_c(d);
-                break;
-        }
-    }
-
-    /* NOTE:
-        mobs.prep_dma/do_dma pair is done, so that it takes the specified
-        5 cycles in total. do_dma is done at the last moment possible, and
-        all the memory access is then done at once (which is not how it is
-        done in reality). Normally this is not an issue since the CPU is asleep
-        all the way through (and hence, cannot modify the memory). But...
-      TODO:
-        Might a cartridge modify the memory during these cycles? Surely not in
-        a 'safe' way since VIC has/uses the bus for both phases, right?
-        Anyway, the current MOB access would not be 100% cycle/memory accurate
-        in those cases. */
-
-    void tick();
-
-    Core(
-          State& s_,
-          const u8* ram_, const Color_RAM& col_ram_, const u8* charr,
-          const std::function<void (const u16& addr, u8& data)>& romh_r,
-          u16& ba_low, IO::Int_sig& int_sig)
-        : s(s_),
-          addr_space(s_.addr_space, ram_, charr, romh_r), irq(s, int_sig), ba(ba_low), lp(s, irq),
-          mobs(s, addr_space, ba, irq), gfx(s, addr_space, col_ram_, ba), border(s) {}
 };
 
 
