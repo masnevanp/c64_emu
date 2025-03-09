@@ -6,6 +6,7 @@
 
 namespace State {
 
+// TODO: optimize data layouts (hot data, proper alignment, etc...)
 
 struct VIC_II {
     static constexpr int REG_COUNT = 64;
