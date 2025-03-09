@@ -250,7 +250,13 @@ public:
     using PD_in  = Sig2<u8, u8>; // bits, bit_vals
     using PD_out = Sig1<u8>; // bit_vals
 
-    Port(const PD_out& ext_out_) : ext_out(ext_out_) { reset(); }
+    struct State {
+        u8 out_bits;
+        u8 p_in;
+        u8 p_out;
+    };
+
+    Port(State& s_, const PD_out& ext_out_) : s(s_), ext_out(ext_out_) { reset(); }
 
     /*  The port pins are set as inputs and port registers to
         zero (although a read of the ports will return all high
@@ -258,39 +264,34 @@ public:
     */
     void reset() {
         set_dd(0b00000000);
-        p_in  = 0b11111111;
-        p_out = 0b00000000;
+        s.p_in  = 0b11111111;
+        s.p_out = 0b00000000;
     }
 
-    u8   r_dd() const     { return out_bits; }
+    u8   r_dd() const     { return s.out_bits; }
     void w_dd(u8 dd)      { set_dd(dd); output(); }
 
-    u8   r_pd() const     { return (((p_out & out_bits) | in_bits()) & p_in); }
-    void w_pd(u8 d)       { p_out = d; output(); }
+    u8   r_pd() const     { return (((s.p_out & s.out_bits) | in_bits()) & s.p_in); }
+    void w_pd(u8 d)       { s.p_out = d; output(); }
 
     void _set_p_out(u8 bits, u8 vals) { // for CIA to directly set port value (timer PB usage)
-        p_out = (p_out & ~bits) | (vals & bits);
+        s.p_out = (s.p_out & ~bits) | (vals & bits);
         output();
     }
 
     PD_in ext_in {
-        [this](u8 e_in_bits, u8 e_bit_vals) {
-            p_in = (p_in & ~e_in_bits) | (e_in_bits & e_bit_vals);
-        }
+        [this](u8 bits, u8 vals) { s.p_in = (s.p_in & ~bits) | (bits & vals); }
     };
 
 private:
-    void set_dd(u8 dd) { out_bits = dd; }
+    void set_dd(u8 dd) { s.out_bits = dd; }
 
-    u8 in_bits() const { return ~out_bits; }
+    u8 in_bits() const { return ~s.out_bits; }
 
-    void output() const { ext_out((p_out & out_bits) | in_bits()); }
+    void output() const { ext_out((s.p_out & s.out_bits) | in_bits()); }
 
+    State& s;
     const PD_out& ext_out;
-
-    u8 out_bits;
-    u8 p_in;
-    u8 p_out;
 };
 
 

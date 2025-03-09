@@ -504,8 +504,8 @@ private:
 
     CPU cpu{cpu_trap};
 
-    CIA cia1{cia1_port_a_out, cia1_port_b_out, int_hub.int_sig, IO::Int_sig::Src::cia1, s.vic.cycle};
-    CIA cia2{cia2_port_a_out, cia2_port_b_out, int_hub.int_sig, IO::Int_sig::Src::cia2, s.vic.cycle};
+    CIA cia1{s.cia1, cia1_pa_out, cia1_pb_out, int_hub.int_sig, IO::Int_sig::Src::cia1, s.vic.cycle};
+    CIA cia2{s.cia2, cia2_pa_out, cia2_pb_out, int_hub.int_sig, IO::Int_sig::Src::cia2, s.vic.cycle};
 
     TheSID sid{int(FRAME_RATE_MIN), Performance::min_sync_points, s.vic.cycle};
 
@@ -535,13 +535,13 @@ private:
 
     C1541::System c1541{cia2.port_a.ext_in, rom.c1541};
 
-    IO::Port::PD_out cia1_port_a_out {
+    IO::Port::PD_out cia1_pa_out {
         [this](u8 state) { input_matrix.cia1_pa_out(state); }
     };
-    IO::Port::PD_out cia1_port_b_out {
+    IO::Port::PD_out cia1_pb_out {
         [this](u8 state) { input_matrix.cia1_pb_out(state); }
     };
-    IO::Port::PD_out cia2_port_a_out {
+    IO::Port::PD_out cia2_pa_out {
         [this](u8 state) {
             const u8 va14_va15 = state & 0b11;
             vic.set_bank(va14_va15);
@@ -553,7 +553,7 @@ private:
             }*/
         }
     };
-    IO::Port::PD_out cia2_port_b_out { [](u8 _) { UNUSED(_); } };
+    IO::Port::PD_out cia2_pb_out { [](u8 _) { UNUSED(_); } };
 
     Host::Input::Handlers host_input_handlers {
         // client keyboard & controllers (including lightpen)

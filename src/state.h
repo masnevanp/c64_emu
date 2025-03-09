@@ -118,6 +118,68 @@ struct VIC_II {
 };
 
 
+struct CIA {
+    struct Int_ctrl {
+        u16 new_icr;
+
+        u8 icr;
+        u8 mask;
+    };
+
+    struct Timer {
+        u8 cr;
+
+        u8 pb_bit;
+        u8 pb_bit_val;
+
+        u8 t_ctrl;
+        u8 t_os;
+
+        u8 inmode;
+
+        u16 timer;
+        u16 latch;
+
+        u8 pb_toggle;
+        u8 pb_pulse;
+    };
+
+    struct TOD {
+        struct Time_rep {
+            enum Kind { tod = 0, alarm = 1, latch = 2 };
+
+            u8 hr;
+            u8 min;
+            u8 sec;
+            u8 tnth;
+
+            bool operator==(const Time_rep& ct) {
+                return (tnth == ct.tnth) && (sec == ct.sec) && (min == ct.min) && (hr == ct.hr);
+            }
+        };
+
+        Time_rep time[3];
+
+        Time_rep::Kind r_src;
+        Time_rep::Kind w_dst;
+
+        int tod_tick_timer = 0;
+    };
+
+    IO::Port::State port_a;
+    IO::Port::State port_b;
+
+    Int_ctrl int_ctrl;
+
+    Timer timer_a;
+    Timer timer_b;
+
+    TOD tod;
+
+    bool cnt;
+};
+
+
 struct System {
     u8 ram[0x10000];
     u8 color_ram[::VIC_II::Color_RAM::size] = {};
@@ -126,6 +188,9 @@ struct System {
     u16 dma_low;
 
     VIC_II vic;
+
+    CIA cia1;
+    CIA cia2;
 
     // holds all the memory that an expansion (e.g. a cart) requires: ROM, RAM,
     // emulation control data, ...

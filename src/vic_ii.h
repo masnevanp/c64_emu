@@ -37,11 +37,11 @@ struct CR2 {
     };
 };
 
-enum MPTR : u8 { vm = 0xf0, cg = 0x0e, };
-
 
 class Core { // 6569 (PAL-B)
 public:
+    enum MPTR : u8 { vm = 0xf0, cg = 0x0e, };
+
     enum LP_src { cia = 0x1, ctrl_port = 0x2, };
 
     Core(

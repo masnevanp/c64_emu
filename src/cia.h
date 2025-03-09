@@ -2,9 +2,13 @@
 #define CIA_H_INCLUDED
 
 #include "common.h"
+#include "state.h"
 
 
 namespace CIA {
+
+
+using CS = State::CIA;
 
 
 // TODO: SDR
@@ -23,18 +27,20 @@ public:
 
     enum Timer_PB_bit : u8 { ta_pb_bit = 0x40, tb_pb_bit = 0x80 };
 
-    IO::Port port_a;
-    IO::Port port_b;
-
     Core(
+        CS& cs_,
         const PD_out& port_out_a, const PD_out& port_out_b,
         IO::Int_sig& int_sig_, IO::Int_sig::Src int_src_, const u64& system_cycle)
       :
-        port_a(port_out_a), port_b(port_out_b),
-        int_ctrl(int_sig_, int_src_),
-        timer_b(int_ctrl, sig_null, cnt, inmode_mask_b, Int_ctrl::Int_src::tb, port_b, tb_pb_bit),
-        timer_a(int_ctrl, timer_b.tick_ta, cnt, inmode_mask_a, Int_ctrl::Int_src::ta, port_b, ta_pb_bit),
-        tod(timer_a.cr, int_ctrl, system_cycle) {}
+        port_a(cs_.port_a, port_out_a), port_b(cs_.port_b, port_out_b),
+        s(cs_),
+        int_ctrl(cs_.int_ctrl, int_sig_, int_src_),
+        timer_b(cs_.timer_b, Int_ctrl::Int_src::tb, tb_pb_bit, cs_.cnt, int_ctrl, sig_null, port_b),
+        timer_a(cs_.timer_a, Int_ctrl::Int_src::ta, ta_pb_bit, cs_.cnt, int_ctrl, timer_b.tick_ta, port_b),
+        tod(cs_.tod, timer_a.s.cr, int_ctrl, system_cycle) {}
+
+    IO::Port port_a;
+    IO::Port port_b;
 
     void reset_warm() { int_ctrl.reset(); }
 
@@ -47,7 +53,7 @@ public:
             registers are set to zero and the timer latches to all
             ones. All other registers are reset to zero.
         */
-        cnt = true;
+        s.cnt = true;
 
         port_a.reset();
         port_b.reset();
@@ -76,8 +82,8 @@ public:
             case tod_hr:   data = tod.r_hr();       return;
             case sdr:      data = 0x00;             return; // TODO
             case icr:      data = int_ctrl.r_icr(); return;
-            case cra:      data = timer_a.cr;       return;
-            case crb:      data = timer_b.cr;       return;
+            case cra:      data = timer_a.s.cr;     return;
+            case crb:      data = timer_b.s.cr;     return;
         }
     }
 
@@ -99,11 +105,11 @@ public:
             case sdr:                              return; // TODO
             case icr:      int_ctrl.w_icr(data);   return;
             case cra: // NOTE! Timers store the full CR (although they don't use all the bits)
-                timer_a.w_cr(data);
+                timer_a.w_cr(data, inmode_mask_a);
                 return;
             case crb:
-                timer_b.w_cr(data);
-                tod.set_w_dst(TOD::Time(data >> 7));
+                timer_b.w_cr(data, inmode_mask_b);
+                tod.set_w_dst(CS::TOD::Time_rep::Kind(data >> 7));
                 return;
         }
     }
@@ -111,11 +117,11 @@ public:
     void tick() { if (!r_ticked) _tick(); else r_ticked = false; }
 
     void set_cnt(bool high) { // TODO (sdr...)
-        if (high && !cnt) {
+        if (high && !s.cnt) {
             timer_a.tick_cnt();
             timer_b.tick_cnt();
         }
-        cnt = high;
+        s.cnt = high;
     }
 
 private:
@@ -136,14 +142,16 @@ private:
     u8 r_prb() { // includes the (possible) timer pb-bits to read value
         // TODO: This ignores the possible 0 value on an input bit
         //       (it would pull the port value to zero too, right?)
-        u8 t_bits = timer_a.pb_bit | timer_b.pb_bit;
-        u8 t_vals = timer_a.pb_bit_val | timer_b.pb_bit_val;
+        u8 t_bits = timer_a.s.pb_bit | timer_b.s.pb_bit;
+        u8 t_vals = timer_a.s.pb_bit_val | timer_b.s.pb_bit_val;
         return (port_b.r_pd() & ~t_bits) | (t_vals & t_bits);
     }
 
 
     class Int_ctrl {
     public:
+        using State = CS::Int_ctrl;
+
         enum Int_src : u8 {
             ta = 0x01, tb = 0x02, alrm = 0x04, sp = 0x08, flg = 0x10,
         };
@@ -154,46 +162,43 @@ private:
             sc = 0x80,
         };
 
-        Int_ctrl(IO::Int_sig& int_sig_, IO::Int_sig::Src int_id_)
-                    : int_sig(int_sig_), int_id(int_id_)
+        Int_ctrl(State& s_, IO::Int_sig& int_sig_, IO::Int_sig::Src int_id_)
+                    : s(s_), int_sig(int_sig_), int_id(int_id_)
         { reset(); }
 
-        void reset() { new_icr = icr = mask = 0x00; }
+        void reset() { s.new_icr = s.icr = s.mask = 0x00; }
 
-        void set(const u8& int_src) { icr |= int_src; }
+        void set(const u8& int_src) { s.icr |= int_src; }
 
         u8 r_icr() { // 'acked'
-            u8 r = icr;
-            icr = 0x00;
+            u8 r = s.icr;
+            s.icr = 0x00;
             return r;
         }
-        void w_icr(const u8& data) { new_icr = data | 0x100; }
+        void w_icr(const u8& data) { s.new_icr = data | 0x100; }
 
         void tick() {
-            if (icr & mask) {
-                icr |= ICR_R::ir;
+            if (s.icr & s.mask) {
+                s.icr |= ICR_R::ir;
                 int_sig.set(int_id);
             } else {
                 int_sig.clr(int_id);
             }
 
-            if (new_icr) {
-                if (new_icr & 0x100) {
-                    new_icr &= 0xff;
+            if (s.new_icr) {
+                if (s.new_icr & 0x100) {
+                    s.new_icr &= 0xff;
                 } else {
-                    mask = (new_icr & ICR_W::sc) // set/clr?
-                                ? ((mask | new_icr) & ~ICR_W::sc) // set
-                                : (mask & ~new_icr); // clr
-                    new_icr = 0x00;
+                    s.mask = (s.new_icr & ICR_W::sc) // set/clr?
+                                ? ((s.mask | s.new_icr) & ~ICR_W::sc) // set
+                                : (s.mask & ~s.new_icr); // clr
+                    s.new_icr = 0x00;
                 }
             }
         }
 
     private:
-        u16 new_icr;
-
-        u8 icr;
-        u8 mask;
+        State& s;
 
         IO::Int_sig& int_sig;
         const IO::Int_sig::Src int_id;
@@ -203,6 +208,8 @@ private:
     // Implements both timer A&B functionality (they differ slightly)
     class Timer {
     public:
+        using State = CS::Timer;
+
         enum CR {
             run = 0x01,   pbon   = 0x02, togglemode = 0x04, oneshot = 0x08,
             load  = 0x10, sp_out = 0x40,
@@ -210,21 +217,22 @@ private:
         enum Inmode { im_phi2 = 0, im_cnt, im_ta, im_ta_w_cnt };
 
         Timer(
-            Int_ctrl& int_ctrl_, const Sig& sig_underflow_, bool& cnt_,
-            u8 inmode_mask_, u8 int_src_,
-            IO::Port& port_b_,
-            u8 pb_bit_pos_
+            State& s_,
+            u8 int_src_, u8 pb_bit_pos_, bool& cnt_,
+            Int_ctrl& int_ctrl_, const Sig& sig_underflow_, IO::Port& port_b_
         )
-          : int_ctrl(int_ctrl_), sig_underflow(sig_underflow_), cnt(cnt_),
-            inmode_mask(inmode_mask_), int_src(int_src_),
-            port_b(port_b_), pb_bit_pos(pb_bit_pos_)
+          : s(s_),
+            int_src(int_src_), pb_bit_pos(pb_bit_pos_), cnt(cnt_),
+            int_ctrl(int_ctrl_), sig_underflow(sig_underflow_), port_b(port_b_)
         {
             reset();
         }
 
+        State& s;
+
         void reset() {
-            timer = latch = 0xffff;
-            t_ctrl = t_os = pb_bit = pb_pulse = pb_toggle = 0x00;
+            s.timer = s.latch = 0xffff;
+            s.t_ctrl = s.t_os = s.pb_bit = s.pb_pulse = s.pb_toggle = 0x00;
         }
 
         /* NOTE:
@@ -234,52 +242,47 @@ private:
              (Need to maybe do some bit stitching? We'll see...)
         */
 
-        u8 cr;
-
-        u8 pb_bit;
-        u8 pb_bit_val;
-
-        u8 r_lo() const { return timer; }
-        u8 r_hi() const { return timer >> 8; }
+        u8 r_lo() const { return s.timer; }
+        u8 r_hi() const { return s.timer >> 8; }
 
         void w_lo(const u8& data) {
-            latch = (latch & 0xff00) | data;
+            s.latch = (s.latch & 0xff00) | data;
         }
         void w_hi(const u8& data) {
-            latch = (latch & 0x00ff) | (data << 8);
+            s.latch = (s.latch & 0x00ff) | (data << 8);
             if (!is_running()) reload();
         }
 
-        void w_cr(const u8& data) {
-            inmode = (data & inmode_mask) >> 5;
+        void w_cr(const u8& data, u8 inmode_mask) {
+            s.inmode = (data & inmode_mask) >> 5;
 
             if (data & CR::run) {
-                if (!is_running()) pb_toggle = pb_bit_pos;
-                if (inmode == im_phi2) t_ctrl |= (timer == 0x0000) ? 0x10 : 0x40;
+                if (!is_running()) s.pb_toggle = pb_bit_pos;
+                if (s.inmode == im_phi2) s.t_ctrl |= (s.timer == 0x0000) ? 0x10 : 0x40;
             }
 
             if (data & CR::load) {
-                t_ctrl |= 0x20;  // load @ t+2
-                cr = (data & ~CR::load); // bit not stored
+                s.t_ctrl |= 0x20;  // load @ t+2
+                s.cr = (data & ~CR::load); // bit not stored
             } else {
-                cr = data;
+                s.cr = data;
             }
 
-            pb_bit = (cr & CR::pbon) ? pb_bit_pos : 0x00;
+            s.pb_bit = (s.cr & CR::pbon) ? pb_bit_pos : 0x00;
 
             update_pb();
         }
 
         void tick_phi2() {
-            if (pb_pulse) {
-                pb_pulse = 0x00;
+            if (s.pb_pulse) {
+                s.pb_pulse = 0x00;
                 update_pb();
             }
 
             tick();
 
             // queue up a tick @ t+2 (possibly)
-            t_ctrl |= (((inmode == im_phi2) & (cr & CR::run)) << 4);
+            s.t_ctrl |= (((s.inmode == im_phi2) & (s.cr & CR::run)) << 4);
         }
 
         void tick_cnt()  {
@@ -290,73 +293,61 @@ private:
         Sig tick_ta  { // on timer A underflow (only ever called for timer B)
             [this]() {
                 if (is_running()) {
-                    if ((inmode == im_ta) || ((inmode == im_ta_w_cnt) && cnt)) {
-                        t_ctrl |= ((timer == 0x0000) ? 0x04 : 0x10); // tick @ t+1|t+2
+                    if ((s.inmode == im_ta) || ((s.inmode == im_ta_w_cnt) && cnt)) {
+                        s.t_ctrl |= ((s.timer == 0x0000) ? 0x04 : 0x10); // tick @ t+1|t+2
                     }
                 }
             }
         };
 
     private:
-        Int_ctrl& int_ctrl;
-        const Sig& sig_underflow;
+        // TODO: get rid of these...?
+        const u8 int_src;
+        const u8 pb_bit_pos;
 
         bool& cnt;
 
-        u8 inmode_mask;
-        u8 int_src;
+        Int_ctrl& int_ctrl;
+        const Sig& sig_underflow;
         IO::Port& port_b;
 
-        const u8 pb_bit_pos;
-
-        u8 t_ctrl;
-        u8 t_os;
-
-        u8 inmode;
-
-        u16 timer;
-        u16 latch;
-
-        u8 pb_toggle;
-        u8 pb_pulse;
-
-        void reload()                  { timer = latch; }
-        void record_one_shot()         { t_os >>= 1; t_os |= (cr & CR::oneshot); }
+        void reload()                  { s.timer = s.latch; }
+        void record_one_shot()         { s.t_os >>= 1; s.t_os |= (s.cr & CR::oneshot); }
         void check_one_shot() {
-            if (t_os & 0x6) { // (was it OS @t+1|t+2)
-                if (!(t_ctrl & 0x10)) { // (not (re)started @t+0?)
-                    cr &= (~CR::run);
+            if (s.t_os & 0x6) { // (was it OS @t+1|t+2)
+                if (!(s.t_ctrl & 0x10)) { // (not (re)started @t+0?)
+                    s.cr &= (~CR::run);
                 }
-                t_ctrl &= 0xfa; // remove 2 ticks
-                t_os = 0x00;
+                s.t_ctrl &= 0xfa; // remove 2 ticks
+                s.t_os = 0x00;
             }
         }
 
-        bool is_running() const        { return cr & CR::run; }
-        bool is_pb_on() const          { return pb_bit; }
-        bool is_one_shot() const       { return cr & CR::oneshot; }
-        bool is_in_toggle_mode() const { return cr & CR::togglemode; }
+        bool is_running() const        { return s.cr & CR::run; }
+        bool is_pb_on() const          { return s.pb_bit; }
+        bool is_one_shot() const       { return s.cr & CR::oneshot; }
+        bool is_in_toggle_mode() const { return s.cr & CR::togglemode; }
 
         //Takes a stream of 2bit actions ('x1' -> tick, '1x' -> force load) from t_ctrl.
         void tick() {
             record_one_shot();
 
             // pop next
-            auto action = t_ctrl;
-            t_ctrl >>= 2;
+            auto action = s.t_ctrl;
+            s.t_ctrl >>= 2;
 
             if (action & 0x1) { // tick?
-                if (timer > 0x0001) {
-                    --timer;
+                if (s.timer > 0x0001) {
+                    --s.timer;
                     goto _check_reload;
                 }
 
-                if (timer == 0x0001) {
-                    timer = 0x0000;
-                    if (t_ctrl & 0x1) t_ctrl ^= 0x1; // remove next tick
+                if (s.timer == 0x0001) {
+                    s.timer = 0x0000;
+                    if (s.t_ctrl & 0x1) s.t_ctrl ^= 0x1; // remove next tick
                     else goto _check_reload;
                 } else if (!is_pb_on()) { // timer == 0x0000
-                    t_ctrl &= ~0x1; // remove next tick
+                    s.t_ctrl &= ~0x1; // remove next tick
                 }
 
                 underflow();
@@ -366,11 +357,11 @@ private:
 
         _check_reload:
             if (action & 0x2) { // force reload?
-                if ((t_ctrl & 0x1) && timer == 0x0000 && latch != 0x0000) {
+                if ((s.t_ctrl & 0x1) && s.timer == 0x0000 && s.latch != 0x0000) {
                     underflow();
                 }
                 reload();
-                t_ctrl &= ~0x1; // remove next tick
+                s.t_ctrl &= ~0x1; // remove next tick
             }
         }
 
@@ -382,14 +373,14 @@ private:
         }
 
         void tick_pb() {
-            pb_toggle ^= pb_bit_pos;
-            pb_pulse = pb_bit;
+            s.pb_toggle ^= pb_bit_pos;
+            s.pb_pulse = s.pb_bit;
             update_pb();
         }
 
         void update_pb() {
-            pb_bit_val = is_in_toggle_mode() ? pb_toggle : pb_pulse;
-            if (pb_bit) port_b._set_p_out(pb_bit, pb_bit_val);
+            s.pb_bit_val = is_in_toggle_mode() ? s.pb_toggle : s.pb_pulse;
+            if (s.pb_bit) port_b._set_p_out(s.pb_bit, s.pb_bit_val);
         }
     };
 
@@ -397,67 +388,65 @@ private:
     // many thanks to 'VICE/testprogs/CIA/tod'
     class TOD {
     public:
-        static constexpr u32 tod_pin_freq = u32((CPU_FREQ_PAL / 50) + 0.5); // round like a pro...
+        using State = CS::TOD;
+        using TR_kind = State::Time_rep::Kind;
 
-        enum HR { pm = 0x80 };
-        enum Time { tod = 0, alarm = 1, latch = 2 };
-
-        TOD(const u8& cra_, Int_ctrl& int_ctrl_, const u64& system_cycle_)
-            : cra(cra_), int_ctrl(int_ctrl_), system_cycle(system_cycle_)
+        TOD(State& s_, const u8& cra_, Int_ctrl& int_ctrl_, const u64& system_cycle_)
+            : s(s_), cra(cra_), int_ctrl(int_ctrl_), system_cycle(system_cycle_)
         { reset(); }
 
         void reset() {
-            time[Time::tod] = Time_rep{0x01, 0x00, 0x00, 0x00};
-            time[Time::alarm] = Time_rep{0x00, 0x00, 0x00, 0x00};
-            r_src = w_dst = Time::tod;
+            s.time[TR_kind::tod] = State::Time_rep{0x01, 0x00, 0x00, 0x00};
+            s.time[TR_kind::alarm] = State::Time_rep{0x00, 0x00, 0x00, 0x00};
+            s.r_src = s.w_dst = TR_kind::tod;
             stop();
         }
 
-        void set_w_dst(Time t) { w_dst = t; }
+        void set_w_dst(TR_kind t) { s.w_dst = t; }
 
         u8 r_10th() {
-            const u8 tnth = time[r_src].tnth;
-            r_src = Time::tod;
+            const u8 tnth = s.time[s.r_src].tnth;
+            s.r_src = TR_kind::tod;
             return tnth;
         }
-        u8 r_sec() const { return time[r_src].sec; }
-        u8 r_min() const { return time[r_src].min; }
+        u8 r_sec() const { return s.time[s.r_src].sec; }
+        u8 r_min() const { return s.time[s.r_src].min; }
         u8 r_hr() {
-            if (r_src == Time::tod) { // don't re-latch before unlatched
-                time[Time::latch] = time[Time::tod];
-                r_src = Time::latch;
+            if (s.r_src == TR_kind::tod) { // don't re-latch before unlatched
+                s.time[TR_kind::latch] = s.time[TR_kind::tod];
+                s.r_src = TR_kind::latch;
             }
-            return time[r_src].hr;
+            return s.time[s.r_src].hr;
         }
 
         void w_10th(const u8& data) {
-            if (time[w_dst].tnth != data) {
-                time[w_dst].tnth = data;
+            if (s.time[s.w_dst].tnth != data) {
+                s.time[s.w_dst].tnth = data;
                 check_alarm();
             }
-            if (w_dst == Time::tod && !running()) start();
+            if (s.w_dst == TR_kind::tod && !running()) start();
         }
         void w_sec(const u8& data) {
-            if (time[w_dst].sec != data) {
-                time[w_dst].sec = data;
+            if (s.time[s.w_dst].sec != data) {
+                s.time[s.w_dst].sec = data;
                 check_alarm();
             }
         }
         void w_min(const u8& data) {
-            if (time[w_dst].min != data) {
-                time[w_dst].min = data;
+            if (s.time[s.w_dst].min != data) {
+                s.time[s.w_dst].min = data;
                 check_alarm();
             }
         }
         void w_hr(u8 data)  {
-            if (w_dst == Time::tod) {
+            if (s.w_dst == TR_kind::tod) {
                 const u8 hr = data & 0x1f;
                 if (hr == 0x12) data ^= HR::pm; // am/pm flip (TOD only)
                 stop();
             }
 
-            if (time[w_dst].hr != data) {
-                time[w_dst].hr = data;
+            if (s.time[s.w_dst].hr != data) {
+                s.time[s.w_dst].hr = data;
                 check_alarm();
             }
         }
@@ -465,93 +454,83 @@ private:
         void tick() {
             const bool tod_pin_pulse = (system_cycle % tod_pin_freq == 0);
             if (tod_pin_pulse && running()) {
-                const bool do_tod_tick = (tod_tick_timer == (6 - (cra >> 7)));
+                const bool do_tod_tick = (s.tod_tick_timer == (6 - (cra >> 7)));
                 if (do_tod_tick) {
-                    tod_tick_timer = 1;
-                    time[Time::tod].tick();
+                    s.tod_tick_timer = 1;
+                    tick_tod();
                     check_alarm();
                 } else {
-                    if (++tod_tick_timer == 7) tod_tick_timer = 1;
+                    if (++s.tod_tick_timer == 7) s.tod_tick_timer = 1;
                 }
             }
         }
 
     private:
-        void start() { tod_tick_timer = 1; }
-        void stop() { tod_tick_timer = 0; }
-        bool running() const { return tod_tick_timer > 0; }
+        static constexpr u32 tod_pin_freq = u32((CPU_FREQ_PAL / 50) + 0.5); // round like a pro...
+
+        enum HR { pm = 0x80 };
+
+        void start()         { s.tod_tick_timer = 1; }
+        void stop()          { s.tod_tick_timer = 0; }
+        bool running() const { return s.tod_tick_timer > 0; }
         void check_alarm() {
-            if (time[Time::tod] == time[Time::alarm]) int_ctrl.set(Int_ctrl::Int_src::alrm);
+            if (s.time[TR_kind::tod] == s.time[TR_kind::alarm]) int_ctrl.set(Int_ctrl::Int_src::alrm);
         }
 
-        struct Time_rep {
-            u8 hr;
-            u8 min;
-            u8 sec;
-            u8 tnth;
+        void tick_tod() {
+            State::Time_rep& t = s.time[TR_kind::tod];
 
-            void tick() {
-                auto tick_hr = [&]() {
-                    u8 hr_pm = hr & HR::pm;
-                    hr = (hr + 1) & 0x1f;
-                    if (hr == 0x0a) hr = 0x10;
-                    else if (hr == 0x12) hr_pm ^= HR::pm;
-                    else if (hr == 0x13) hr = 0x01;
-                    else if (hr == 0x10) hr = 0x00;
-                    else if (hr == 0x00) hr = 0x10;
-                    hr |= hr_pm;
-                };
+            auto tick_hr = [&]() {
+                u8 hr_pm = t.hr & HR::pm;
+                t.hr = (t.hr + 1) & 0x1f;
+                if (t.hr == 0x0a) t.hr = 0x10;
+                else if (t.hr == 0x12) hr_pm ^= HR::pm;
+                else if (t.hr == 0x13) t.hr = 0x01;
+                else if (t.hr == 0x10) t.hr = 0x00;
+                else if (t.hr == 0x00) t.hr = 0x10;
+                t.hr |= hr_pm;
+            };
 
-                auto tick_min = [&]() {
-                    u8 min_h = min & 0x70;
-                    u8 min_l = (min + 1) & 0xf;
-                    if (min_l == 10) {
-                        min_l = 0;
-                        min_h = (min_h + 0x10) & 0x70;
-                        if (min_h == 0x60) {
-                            min_h = 0x00;
-                            tick_hr();
-                        }
+            auto tick_min = [&]() {
+                u8 min_h = t.min & 0x70;
+                u8 min_l = (t.min + 1) & 0xf;
+                if (min_l == 10) {
+                    min_l = 0;
+                    min_h = (min_h + 0x10) & 0x70;
+                    if (min_h == 0x60) {
+                        min_h = 0x00;
+                        tick_hr();
                     }
-                    min = min_l | min_h;
-                };
+                }
+                t.min = min_l | min_h;
+            };
 
-                auto tick_sec = [&]() {
-                    u8 sec_h = sec & 0x70;
-                    u8 sec_l = (sec + 1) & 0xf;
-                    if (sec_l == 10) {
-                        sec_l = 0;
-                        sec_h = (sec_h + 0x10) & 0x70;
-                        if (sec_h == 0x60) {
-                            sec_h = 0x00;
-                            tick_min();
-                        }
+            auto tick_sec = [&]() {
+                u8 sec_h = t.sec & 0x70;
+                u8 sec_l = (t.sec + 1) & 0xf;
+                if (sec_l == 10) {
+                    sec_l = 0;
+                    sec_h = (sec_h + 0x10) & 0x70;
+                    if (sec_h == 0x60) {
+                        sec_h = 0x00;
+                        tick_min();
                     }
-                    sec = sec_l | sec_h;
-                };
+                }
+                t.sec = sec_l | sec_h;
+            };
 
-                auto tick_tnth = [&]() {
-                    tnth = (tnth + 1) & 0xf;
-                    if (tnth == 10) {
-                        tnth = 0;
-                        tick_sec();
-                    }
-                };
+            auto tick_tnth = [&]() {
+                t.tnth = (t.tnth + 1) & 0xf;
+                if (t.tnth == 10) {
+                    t.tnth = 0;
+                    tick_sec();
+                }
+            };
 
-                tick_tnth();
-            }
+            tick_tnth();
+        }
 
-            bool operator==(const Time_rep& ct) {
-                return (tnth == ct.tnth) && (sec == ct.sec) && (min == ct.min) && (hr == ct.hr);
-            }
-        };
-
-        Time_rep time[3];
-
-        Time r_src;
-        Time w_dst;
-
-        int tod_tick_timer = 0;
+        State& s;
 
         const u8& cra;
 
@@ -559,7 +538,7 @@ private:
         const u64& system_cycle;
     };
 
-    bool cnt;
+    CS& s;
 
     Int_ctrl int_ctrl;
     Timer timer_b;
