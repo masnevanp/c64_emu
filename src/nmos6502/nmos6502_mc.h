@@ -74,8 +74,12 @@ namespace NMOS6502 {
             }
         };
 
-        extern const MOP** OPC_MC;   // map: opc -> micro-code (reset @ OPC_MC[0x100])
+        //extern const MOP** OPC_MC;   // map: opc -> micro-code (reset @ OPC_MC[0x100])
         //extern const u8* OPC_MSOPC;  // map: opc -> micro-code sub-op
+
+        extern const MOP* code;
+        extern const int* opc_start;
+
     } // namespace MC
 
 } // namespace NMOS6502

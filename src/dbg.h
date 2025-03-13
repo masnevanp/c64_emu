@@ -42,7 +42,7 @@ public:
         cpu.tick();
         ++cn; ++tn;
         // BEWARE
-        if (cpu.mcp->mopc >= MC::MOPC::dispatch_cli && cpu.mcp->mopc <= MC::MOPC::dispatch_brk) tn = 0;
+        if (MC::code[cpu.mcc].mopc >= MC::MOPC::dispatch_cli && MC::code[cpu.mcc].mopc <= MC::MOPC::dispatch_brk) tn = 0;
     }
     void do_reset() { cpu.reset_cold(); for (int i = 0; i < 7; ++i, ++cn) exec_cycle(); }
 

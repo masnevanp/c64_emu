@@ -1,5 +1,8 @@
 
 #include "nmos6502_mc.h"
+#include <vector>
+#include <map>
+#include <iostream>
 
 
 using namespace NMOS6502;
@@ -470,8 +473,52 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
         MSOPC::sb_sed, MSOPC::rm_sbc, MSOPC::nop, MSOPC::ud_isc, MSOPC::nop, MSOPC::rm_sbc, MSOPC::rmw_inc, MSOPC::ud_isc,
     };*/
 
+
+    MOP* code;
+    int* opc_start;
+
+    bool init_code_and_opc() {
+        std::vector<MOP> opc_mc;
+        std::map<const MOP*, int> opc_mc_start;
+        opc_start = new int[0x101];
+
+        for (int o = 0x00; o <= 0x100; ++o) {
+            std::cout << "\no:" << o; 
+            const bool opc_mc_missing = opc_mc_start.count(OPC_MC[o]) == 0;
+            std::cout << " m:" << opc_mc_missing;
+            if (opc_mc_missing) {
+                opc_mc_start[OPC_MC[o]] = opc_mc.size();
+                std::cout << " s:" << opc_mc.size() << " ";
+                for (const MOP* m = OPC_MC[o];;) {
+                    std::cout << ".";
+                    opc_mc.push_back(*m);
+                    const auto mopc = (*m).mopc;
+                    // last one is dispatch_cli, dispatch_sei, dispatch, or dispatch_brk
+                    if (mopc == MOPC::dispatch || mopc == MOPC::dispatch_brk
+                            || mopc == MOPC::dispatch_sei || mopc == MOPC::dispatch_cli) {
+                        break;
+                    }
+                    ++m;
+                }
+            }
+
+            opc_start[o] = opc_mc_start[OPC_MC[o]];
+            std::cout << " S:" << opc_mc_start[OPC_MC[o]] << std::endl;
+        }
+
+        code = new MOP[opc_mc.size()];
+        std::copy(opc_mc.begin(), opc_mc.end(), code);
+
+        return true;
+    }
+
+    auto _ = init_code_and_opc();
+
 } // namespace _MC
 
 
-const MC::MOP** MC::OPC_MC = _MC::OPC_MC;
+//const MC::MOP** MC::OPC_MC = _MC::OPC_MC;
 //const u8* MC::OPC_MSOPC = _MC::OPC_MSOPC;
+
+const MC::MOP* MC::code = _MC::code;
+const int* MC::opc_start = _MC::opc_start;

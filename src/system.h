@@ -168,7 +168,7 @@ private:
 
     // There is a PLA_Line for each mode, and for each mode there are separate r/w configs
     struct PLA_Line {
-        const u8 pl[2][16]; // [w/r][bank]
+        const Mapping pl[2][16]; // [w/r][bank]
     };
 
     static const PLA_Line PLA[14];       // 14 unique configs
@@ -626,7 +626,7 @@ private:
             }
 
             if (proceed) {
-                ++cpu.mcp; // bump to recover from halt
+                ++cpu.mcc; // bump to recover from halt
             } else {
                 std::cout << "\n****** CPU halted! ******" << std::endl;
                 Dbg::print_status(cpu, s.ram);
@@ -673,7 +673,7 @@ private:
 
     bool shutdown;
 
-    _Stopwatch watch;
+    Stopwatch watch;
     Timer frame_timer;
 
     void init_sync(); // call if system has been 'paused'

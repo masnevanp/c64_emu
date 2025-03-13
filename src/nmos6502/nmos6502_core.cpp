@@ -18,7 +18,7 @@ void NMOS6502::Core::reset_warm() {
     brk_src = 0x00;
     nmi_req = irq_req = 0x00;
     nmi_bit = irq_bit = 0x00;
-    mcp = MC::OPC_MC[0x100];
+    mcc = MC::opc_start[0x100];
     a1 = spf; --sp; a2 = spf; --sp; a3 = spf; --sp;
     a4 = Vec::rst;
 }
@@ -42,11 +42,11 @@ void NMOS6502::Core::exec(const u8 mop) {
         case rm_zp_y: zpa += y; return;
         case rm_x:
             a1l += x;
-            if (a1l < x) { a2 = a1 + 0x0100; mcp += 2; }
+            if (a1l < x) { a2 = a1 + 0x0100; mcc += 2; }
             return;
         case rm_y:
             a1l += y;
-            if (a1l < y) { a2 = a1 + 0x0100; mcp += 2; }
+            if (a1l < y) { a2 = a1 + 0x0100; mcc += 2; }
             return;
         case rm_idx_ind: zpa += x; a2 = (u8)(zpa + 0x01); return;
         case a_nz: set_nz(a); return;
@@ -127,21 +127,21 @@ void NMOS6502::Core::exec(const u8 mop) {
         case st_idx_ind: zpa += x; a2 = (u8)(zpa + 0x01); // fall through
         case st_reg: st_reg_sel(); return;
         case jmp_ind: ++a1l; return;
-        case bpl: if (is_set(Flag::N)) { mcp += 7; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bmi: if (is_clr(Flag::N)) { mcp += 6; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bvc: if (is_set(Flag::V)) { mcp += 5; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bvs: if (is_clr(Flag::V)) { mcp += 4; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bcc: if (is_set(Flag::C)) { mcp += 3; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bcs: if (is_clr(Flag::C)) { mcp += 2; /*T2 (no bra)*/ return; } else goto bra_take;
-        case beq: if (is_clr(Flag::Z)) { mcp += 1; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bpl: if (is_set(Flag::N)) { mcc += 7; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bmi: if (is_clr(Flag::N)) { mcc += 6; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bvc: if (is_set(Flag::V)) { mcc += 5; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bvs: if (is_clr(Flag::V)) { mcc += 4; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bcc: if (is_set(Flag::C)) { mcc += 3; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bcs: if (is_clr(Flag::C)) { mcc += 2; /*T2 (no bra)*/ return; } else goto bra_take;
+        case beq: if (is_clr(Flag::Z)) { mcc += 1; /*T2 (no bra)*/ return; } else goto bra_take;
         case bne: if (is_set(Flag::Z)) /*T2 (no bra)*/ return;
             // fall through
         bra_take:
-            mcp = MC::OPC_MC[OPC_bne] + 2; // T2 (no page cross)
+            mcc = MC::opc_start[OPC_bne] + 2; // T2 (no page cross)
             a2 = pc;
             pc += (i8)d;
             if ((a2 ^ pc) & 0xff00) {
-                mcp += 2; // T2 (page cross)
+                mcc += 2; // T2 (page cross)
                 a1 = a2;
                 a1l += d;
             }
@@ -204,11 +204,11 @@ void NMOS6502::Core::exec(const u8 mop) {
                 a4 = spf; --sp;
             }
 
-            mcp = MC::OPC_MC[ir];
+            mcc = MC::opc_start[ir];
 
             return;
         case sig_hlt: sig_halt(); return;
-        case hlt: --mcp; return; // stuck
+        case hlt: --mcc; return; // stuck
         case reset: a1 = Vec::rst + 0x0001; set(Flag::I); return;
     }
 }
