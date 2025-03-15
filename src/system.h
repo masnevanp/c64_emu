@@ -502,7 +502,7 @@ private:
 
     State::System s;
 
-    CPU cpu{cpu_trap};
+    CPU cpu{s.cpu, cpu_trap};
 
     CIA cia1{s.cia1, cia1_pa_out, cia1_pb_out, int_hub.int_sig, IO::Int_sig::Src::cia1, s.vic.cycle};
     CIA cia2{s.cia2, cia2_pa_out, cia2_pb_out, int_hub.int_sig, IO::Int_sig::Src::cia2, s.vic.cycle};

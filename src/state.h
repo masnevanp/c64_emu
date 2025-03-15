@@ -2,11 +2,16 @@
 #define STATE_H_INCLUDED
 
 #include "common.h"
+#include "nmos6502/nmos6502_core.h"
 
 
 namespace State {
 
-// TODO: optimize data layouts (hot data, proper alignment, etc...)
+// TODO: - optimize data layouts (hot data, proper alignment, etc...)
+//       - for better data locality, move all the data here...?
+//         (even things that strictly speaking don't need to be here)?
+//         (currently only data needed for 'save/load -state' included)
+//
 
 struct VIC_II {
     static constexpr int REG_COUNT = 64;
@@ -189,6 +194,8 @@ struct System {
     u16 dma_low;
 
     VIC_II vic;
+
+    NMOS6502::Core::State cpu;
 
     CIA cia1;
     CIA cia2;

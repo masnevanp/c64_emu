@@ -2,7 +2,8 @@
 #include "nmos6502_core.h"
 
 
-NMOS6502::Core::Core(Sig& sig_halt_) :
+NMOS6502::Core::Core(State& s_, Sig& sig_halt_) :
+    s(s_),
     r8((Reg8*)s.r16),
     pc(s.r16[R16::pc]), spf(s.r16[R16::spf]), zpaf(s.r16[R16::zpaf]),
     a1(s.r16[R16::a1]), a2(s.r16[R16::a2]), a3(s.r16[R16::a3]), a4(s.r16[R16::a4]),

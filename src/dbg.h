@@ -32,7 +32,8 @@ class System {
 public:
     System(u8* mem_, bool do_reset_=true) : mem(mem_) { if (do_reset_) do_reset(); }
     u8* mem;
-    Core cpu{cpu_trap};
+    NMOS6502::Core::State cpu_state;
+    Core cpu{cpu_state, cpu_trap};
     uint64_t cn = 1;
     int tn = 0;
     void exec_cycle() {

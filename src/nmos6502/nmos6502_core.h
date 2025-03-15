@@ -23,7 +23,7 @@ public:
         u8 irq_bit; // bit 2 (set --> active)
         u8 brk_src; // bitmap (b0: sw, b1: nmi, b2: irq)
     };
-    State s;
+    State& s;
 
     Reg8* r8; // private ?
 
@@ -31,7 +31,7 @@ public:
     Reg8& pcl; Reg8& pch; Reg8& sp; Reg8& p; Reg8& a; Reg8& x; Reg8& y;
     Reg8& d; Reg8& ir; Reg8& zpa; Reg8& a1l; Reg8& a1h;
 
-    Core(Sig& sig_halt_);
+    Core(State& s_, Sig& sig_halt_);
 
     void reset_warm();
     void reset_cold();
