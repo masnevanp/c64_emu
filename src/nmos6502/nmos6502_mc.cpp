@@ -519,12 +519,11 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
 
 
     MOP* code;
-    int* opc_addr;
+    int opc_addr[OPC::_last + 1];
 
     bool init_code_and_opc() {
         std::vector<MOP> opc_mc;
         std::map<const MOP*, int> opc_mc_addr;
-        opc_addr = new int[0x101];
 
         for (int o = 0x00; o <= OPC::reset; ++o) {
             const bool opc_mc_missing = opc_mc_addr.count(OPC_MC[o]) == 0;

@@ -41,7 +41,8 @@ namespace NMOS6502 {
 
     enum OPC {
         brk = 0x00, bne = 0xd0,
-        reset = 0x100
+        reset = 0x100,
+        _last = reset
     };
 
 } // namespace NMOS6502

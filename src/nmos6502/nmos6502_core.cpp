@@ -14,8 +14,6 @@ NMOS6502::Core::Core(Sig& sig_halt_) :
 }
 
 
-#include <iostream>
-
 void NMOS6502::Core::reset_warm() {
     brk_src = 0x00;
     nmi_req = irq_req = 0x00;
@@ -35,6 +33,8 @@ void NMOS6502::Core::reset_cold() {
 
 void NMOS6502::Core::exec(const MC::MOPC mopc) {
     using namespace NMOS6502::MC;
+
+    static constexpr u8 NMI_taken = 0x80;
 
     switch (mopc) {
         case abs_x: a2 = a1 + x; a1l += x; return;

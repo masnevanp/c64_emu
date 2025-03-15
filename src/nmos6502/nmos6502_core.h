@@ -81,8 +81,6 @@ public:
     }
 
 private:
-    static constexpr u8 NMI_taken = 0x80;
-
     void exec(const MC::MOPC mopc);
 
     // carry & borrow
@@ -144,10 +142,10 @@ private:
     static constexpr u8 IRQ_BIT = 0b00000100;
 
     struct BrkCtrl {
-        u16 pc_t0;  // pc upd @t0
-        u16 pc_t1;  // pc upd @t1
-        u16 vec;    // int.vec. addr.
-        u8  p_mask; // for reseting b (if not a sw brk)
+        const u16 pc_t0;  // pc upd @t0
+        const u16 pc_t1;  // pc upd @t1
+        const u16 vec;    // int.vec. addr.
+        const u8  p_mask; // for reseting b (if not a sw brk)
     };
     static constexpr BrkCtrl brk_ctrl[8] = {
         { 0, 0, 0,        0,           }, // unused
