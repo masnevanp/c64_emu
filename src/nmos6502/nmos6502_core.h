@@ -10,10 +10,22 @@ namespace NMOS6502 {
 
 class Core {
 public:
-    static constexpr int REG_CNT = 10;
 
-    Reg16 r16[REG_CNT]; // pc, sp, p|a, x|y, d|ir, zpaf, a1, a2, a3, a4
-    Reg8* r8;
+    struct State {
+        Reg16 r16[R16::_sz]; // pc, sp, p|a, x|y, d|ir, zpaf, a1, a2, a3, a4
+
+        int mcc; // micro-code counter
+
+        u8 nmi_req;
+        u8 irq_req;
+
+        u8 nmi_bit; // bit 1 (set --> active)
+        u8 irq_bit; // bit 2 (set --> active)
+        u8 brk_src; // bitmap (b0: sw, b1: nmi, b2: irq)
+    };
+    State s;
+
+    Reg8* r8; // private ?
 
     Reg16& pc; Reg16& spf; Reg16& zpaf; Reg16& a1; Reg16& a2; Reg16& a3; Reg16& a4;
     Reg8& pcl; Reg8& pch; Reg8& sp; Reg8& p; Reg8& a; Reg8& x; Reg8& y;
@@ -24,11 +36,11 @@ public:
     void reset_warm();
     void reset_cold();
 
-    const MC::MOP& mop() const { return MC::code[mcc]; } // current micro-op
+    const MC::MOP& mop() const { return MC::code[s.mcc]; } // current micro-op
     bool halted() const { return mop().mopc == MC::hlt; }
     bool resume() {
         if (halted()) {
-            ++mcc;
+            ++s.mcc;
             return true;
         } else return false;
     }
@@ -46,37 +58,37 @@ public:
                core.tick();
            }
     */
-    u16 mar() const { return r16[mop().ar]; }
+    u16 mar() const { return s.r16[mop().ar]; }
     u8& mdr() const { return r8[mop().dr]; }
     u8  mrw() const { return mop().rw; }
 
     void set_nmi(bool act = true) {
         if (act) {
-            if (nmi_req == 0x00) nmi_req = 0x01;
+            if (s.nmi_req == 0x00) s.nmi_req = 0x01;
         } else {
-            if (nmi_req == 0x02) nmi_bit = NMI_BIT;
-            nmi_req = 0x00;
+            if (s.nmi_req == 0x02) s.nmi_bit = NMI_BIT;
+            s.nmi_req = 0x00;
         }
     }
 
     void set_irq(bool act = true) {
-        if (act) { irq_req |= 0x01; }
-        else irq_req = irq_bit = 0x00;
+        if (act) { s.irq_req |= 0x01; }
+        else s.irq_req = s.irq_bit = 0x00;
     }
 
     void tick() {
-        if (nmi_req == 0x01) nmi_req = 0x02;
-        else if (nmi_req == 0x02) {
-            nmi_bit = NMI_BIT;
-            nmi_req = 0x03;
+        if (s.nmi_req == 0x01) s.nmi_req = 0x02;
+        else if (s.nmi_req == 0x02) {
+            s.nmi_bit = NMI_BIT;
+            s.nmi_req = 0x03;
         }
 
-        if (irq_req & 0x02) irq_bit = IRQ_BIT;
-        irq_req <<= 1;
+        if (s.irq_req & 0x02) s.irq_bit = IRQ_BIT;
+        s.irq_req <<= 1;
 
         pc += mop().pc_inc;
 
-        const auto mopc = MC::code[mcc++].mopc;
+        const auto mopc = MC::code[s.mcc++].mopc;
         if(mopc != NMOS6502::MC::nmop) exec(mopc);
     }
 
@@ -128,15 +140,6 @@ private:
     }
 
     Sig& sig_halt;
-
-    int mcc; // micro-code counter
-
-    u8 nmi_req;
-    u8 irq_req;
-
-    u8 nmi_bit; // bit 1 (set --> active)
-    u8 irq_bit; // bit 2 (set --> active)
-    u8 brk_src; // bitmap (b0: sw, b1: nmi, b2: irq)
 
     static constexpr u8 NMI_BIT = 0b00000010;
     static constexpr u8 IRQ_BIT = 0b00000100;

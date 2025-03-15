@@ -3,9 +3,9 @@
 
 
 NMOS6502::Core::Core(Sig& sig_halt_) :
-    r8((Reg8*)r16),
-    pc(r16[R16::pc]), spf(r16[R16::spf]), zpaf(r16[R16::zpaf]),
-    a1(r16[R16::a1]), a2(r16[R16::a2]), a3(r16[R16::a3]), a4(r16[R16::a4]),
+    r8((Reg8*)s.r16),
+    pc(s.r16[R16::pc]), spf(s.r16[R16::spf]), zpaf(s.r16[R16::zpaf]),
+    a1(s.r16[R16::a1]), a2(s.r16[R16::a2]), a3(s.r16[R16::a3]), a4(s.r16[R16::a4]),
     pcl(r8[R8::pcl]), pch(r8[R8::pch]), sp(r8[R8::sp]), p(r8[R8::p]), a(r8[R8::a]), x(r8[R8::x]), y(r8[R8::y]),
     d(r8[R8::d]), ir(r8[R8::ir]), zpa(r8[R8::zpa]), a1l(r8[R8::a1l]), a1h(r8[R8::a1h]),
     sig_halt(sig_halt_)
@@ -15,10 +15,10 @@ NMOS6502::Core::Core(Sig& sig_halt_) :
 
 
 void NMOS6502::Core::reset_warm() {
-    brk_src = 0x00;
-    nmi_req = irq_req = 0x00;
-    nmi_bit = irq_bit = 0x00;
-    mcc = MC::opc_addr[OPC::reset];
+    s.brk_src = 0x00;
+    s.nmi_req = s.irq_req = 0x00;
+    s.nmi_bit = s.irq_bit = 0x00;
+    s.mcc = MC::opc_addr[OPC::reset];
     a1 = spf; --sp; a2 = spf; --sp; a3 = spf; --sp;
     a4 = Vec::rst;
 }
@@ -44,11 +44,11 @@ void NMOS6502::Core::exec(const MC::MOPC mopc) {
         case rm_zp_y: zpa += y; return;
         case rm_x:
             a1l += x;
-            if (a1l < x) { a2 = a1 + 0x0100; mcc += 2; }
+            if (a1l < x) { a2 = a1 + 0x0100; s.mcc += 2; }
             return;
         case rm_y:
             a1l += y;
-            if (a1l < y) { a2 = a1 + 0x0100; mcc += 2; }
+            if (a1l < y) { a2 = a1 + 0x0100; s.mcc += 2; }
             return;
         case rm_idx_ind: zpa += x; a2 = (u8)(zpa + 0x01); return;
         case a_nz: set_nz(a); return;
@@ -129,29 +129,29 @@ void NMOS6502::Core::exec(const MC::MOPC mopc) {
         case st_idx_ind: zpa += x; a2 = (u8)(zpa + 0x01); // fall through
         case st_reg: st_reg_sel(); return;
         case jmp_ind: ++a1l; return;
-        case bpl: if (is_set(Flag::N)) { mcc += 7; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bmi: if (is_clr(Flag::N)) { mcc += 6; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bvc: if (is_set(Flag::V)) { mcc += 5; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bvs: if (is_clr(Flag::V)) { mcc += 4; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bcc: if (is_set(Flag::C)) { mcc += 3; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bcs: if (is_clr(Flag::C)) { mcc += 2; /*T2 (no bra)*/ return; } else goto bra_take;
-        case beq: if (is_clr(Flag::Z)) { mcc += 1; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bpl: if (is_set(Flag::N)) { s.mcc += 7; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bmi: if (is_clr(Flag::N)) { s.mcc += 6; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bvc: if (is_set(Flag::V)) { s.mcc += 5; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bvs: if (is_clr(Flag::V)) { s.mcc += 4; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bcc: if (is_set(Flag::C)) { s.mcc += 3; /*T2 (no bra)*/ return; } else goto bra_take;
+        case bcs: if (is_clr(Flag::C)) { s.mcc += 2; /*T2 (no bra)*/ return; } else goto bra_take;
+        case beq: if (is_clr(Flag::Z)) { s.mcc += 1; /*T2 (no bra)*/ return; } else goto bra_take;
         case MOPC::bne:
                   if (is_set(Flag::Z)) /*T2 (no bra)*/ return;
             // fall through
         bra_take:
-            mcc = MC::opc_addr[OPC::bne] + 2; // T2 (no page cross)
+            s.mcc = MC::opc_addr[OPC::bne] + 2; // T2 (no page cross)
             a2 = pc;
             pc += (i8)d;
             if ((a2 ^ pc) & 0xff00) {
-                mcc += 2; // T2 (page cross)
+                s.mcc += 2; // T2 (page cross)
                 a1 = a2;
                 a1l += d;
             }
             return;
         case hold_ints:
-            if (nmi_req == 0x02) nmi_req = 0x01;
-            if (irq_req && (irq_req < 0x04)) irq_req = 0x01;
+            if (s.nmi_req == 0x02) s.nmi_req = 0x01;
+            if (s.irq_req && (s.irq_req < 0x04)) s.irq_req = 0x01;
             return;
         case php: p |= (Flag::B | Flag::u); // fall through
         case pha: a1 = spf; --sp; return;
@@ -162,21 +162,21 @@ void NMOS6502::Core::exec(const MC::MOPC mopc) {
         case inc_sp: ++sp; return;
         case MOPC::brk:
             // brk_src |= (irq_bit & ~p); // no effect (the same vector used anyway)
-            if (nmi_req & 0x3) { // Potential hijacking by nmi
-                brk_src |= NMI_BIT;
-                nmi_req = NMI_taken;
+            if (s.nmi_req & 0x3) { // Potential hijacking by nmi
+                s.brk_src |= NMI_BIT;
+                s.nmi_req = NMI_taken;
             }
-            a2 = brk_ctrl[brk_src].vec;
+            a2 = brk_ctrl[s.brk_src].vec;
             a3 = a2 + 0x0001;
-            brk_src = 0x00;
+            s.brk_src = 0x00;
             set(Flag::I);
             return;
         case dispatch_cli: // post cli dispatch
-            brk_src |= (irq_bit & ~p);       // bit 2
+            s.brk_src |= (s.irq_bit & ~p);       // bit 2
             clr(Flag::I);
             goto dispatch_post_cli_sei;
         case dispatch_sei: // post sei dispatch
-            brk_src |= (irq_bit & ~p);       // bit 2
+            s.brk_src |= (s.irq_bit & ~p);       // bit 2
             set(Flag::I);
             goto dispatch_post_cli_sei;
         case dispatch: // 'normal' T0 case (all interrupts taken normally)
@@ -186,32 +186,32 @@ void NMOS6502::Core::exec(const MC::MOPC mopc) {
                - T0&T1 PC, and pushed b-flag according to the former (lower prio)
                - vector address according to the latter (higher prio)
             */
-            brk_src |= (irq_bit & ~p);   // bit 2
+            s.brk_src |= (s.irq_bit & ~p);   // bit 2
         dispatch_post_cli_sei: // irq has been taken based on 'old' i-flag value (still can hijack a sw brk!)
-            if (nmi_bit) {
-                brk_src |= nmi_bit;      // bit 1
-                nmi_bit = 0x00;
-                if (nmi_req) nmi_req = NMI_taken;
+            if (s.nmi_bit) {
+                s.brk_src |= s.nmi_bit;      // bit 1
+                s.nmi_bit = 0x00;
+                if (s.nmi_req) s.nmi_req = NMI_taken;
             }
             // fall through
         case dispatch_brk: // hw-ints not taken on the instruction following a brk (sw or hw)
-            brk_src |= (ir == OPC::brk); // bit 0
+            s.brk_src |= (ir == OPC::brk); // bit 0
 
-            if (brk_src) {
+            if (s.brk_src) {
                 ir = 0x00;
-                p = (p | (Flag::B | Flag::u)) & brk_ctrl[brk_src].p_mask;
-                pc -= brk_ctrl[brk_src].pc_t0;
-                a1 = pc + brk_ctrl[brk_src].pc_t1;
+                p = (p | (Flag::B | Flag::u)) & brk_ctrl[s.brk_src].p_mask;
+                pc -= brk_ctrl[s.brk_src].pc_t0;
+                a1 = pc + brk_ctrl[s.brk_src].pc_t1;
                 a2 = spf; --sp;
                 a3 = spf; --sp;
                 a4 = spf; --sp;
             }
 
-            mcc = MC::opc_addr[ir];
+            s.mcc = MC::opc_addr[ir];
 
             return;
         case sig_hlt: sig_halt(); return;
-        case hlt: --mcc; return; // stuck
+        case hlt: --s.mcc; return; // stuck
         case MOPC::reset: a1 = Vec::rst + 0x0001; set(Flag::I); return;
     }
 }
