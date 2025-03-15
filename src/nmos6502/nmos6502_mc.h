@@ -14,7 +14,8 @@ namespace NMOS6502 {
             jmp_ind, bpl, bmi, bvc, bvs, bcc, bcs, beq, bne,
             hold_ints, php, pha, jsr, jmp_abs, rti, rts, inc_sp, brk,
             dispatch_cli, dispatch_sei, dispatch, dispatch_brk,
-            sig_hlt, hlt, reset
+            sig_hlt, hlt, reset,
+            _end
         };
         extern const std::string MOPC_str[];
 
@@ -63,9 +64,9 @@ namespace NMOS6502 {
             unsigned char dr;
             unsigned char rw;
             unsigned char pc_inc;
-            unsigned char mopc;
+            MOPC mopc;
 
-            MOP(u8 ar_ = 0, u8 dr_ = 0, u8 rw_ = 0, u8 pc_inc_ = 0, u8 mopc_ = hlt)
+            MOP(u8 ar_ = 0, u8 dr_ = 0, u8 rw_ = 0, u8 pc_inc_ = 0, MOPC mopc_ = hlt)
             : ar(ar_), dr(dr_), rw(rw_), pc_inc(pc_inc_), mopc(mopc_) {}
 
             operator std::string() const {
@@ -74,11 +75,8 @@ namespace NMOS6502 {
             }
         };
 
-        //extern const MOP** OPC_MC;   // map: opc -> micro-code (reset @ OPC_MC[0x100])
-        //extern const u8* OPC_MSOPC;  // map: opc -> micro-code sub-op
-
         extern const MOP* code;
-        extern const int* opc_start;
+        extern const int* opc_addr; // code offset
 
     } // namespace MC
 

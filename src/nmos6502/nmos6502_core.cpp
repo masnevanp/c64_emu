@@ -14,11 +14,13 @@ NMOS6502::Core::Core(Sig& sig_halt_) :
 }
 
 
+#include <iostream>
+
 void NMOS6502::Core::reset_warm() {
     brk_src = 0x00;
     nmi_req = irq_req = 0x00;
     nmi_bit = irq_bit = 0x00;
-    mcc = MC::opc_start[0x100];
+    mcc = MC::opc_addr[OPC::reset];
     a1 = spf; --sp; a2 = spf; --sp; a3 = spf; --sp;
     a4 = Vec::rst;
 }
@@ -31,10 +33,10 @@ void NMOS6502::Core::reset_cold() {
 }
 
 
-void NMOS6502::Core::exec(const u8 mop) {
+void NMOS6502::Core::exec(const MC::MOPC mopc) {
     using namespace NMOS6502::MC;
 
-    switch (mop) {
+    switch (mopc) {
         case abs_x: a2 = a1 + x; a1l += x; return;
         case inc_zpa: ++zpa; return;
         case abs_y: a2 = a1 + y; a1l += y; return;
@@ -134,10 +136,11 @@ void NMOS6502::Core::exec(const u8 mop) {
         case bcc: if (is_set(Flag::C)) { mcc += 3; /*T2 (no bra)*/ return; } else goto bra_take;
         case bcs: if (is_clr(Flag::C)) { mcc += 2; /*T2 (no bra)*/ return; } else goto bra_take;
         case beq: if (is_clr(Flag::Z)) { mcc += 1; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bne: if (is_set(Flag::Z)) /*T2 (no bra)*/ return;
+        case MOPC::bne:
+                  if (is_set(Flag::Z)) /*T2 (no bra)*/ return;
             // fall through
         bra_take:
-            mcc = MC::opc_start[OPC_bne] + 2; // T2 (no page cross)
+            mcc = MC::opc_addr[OPC::bne] + 2; // T2 (no page cross)
             a2 = pc;
             pc += (i8)d;
             if ((a2 ^ pc) & 0xff00) {
@@ -157,7 +160,7 @@ void NMOS6502::Core::exec(const u8 mop) {
         case rti: ++sp; a1 = spf; // fall through
         case rts: ++sp; a2 = spf; // fall through
         case inc_sp: ++sp; return;
-        case brk:
+        case MOPC::brk:
             // brk_src |= (irq_bit & ~p); // no effect (the same vector used anyway)
             if (nmi_req & 0x3) { // Potential hijacking by nmi
                 brk_src |= NMI_BIT;
@@ -192,7 +195,7 @@ void NMOS6502::Core::exec(const u8 mop) {
             }
             // fall through
         case dispatch_brk: // hw-ints not taken on the instruction following a brk (sw or hw)
-            brk_src |= (ir == OPC_brk); // bit 0
+            brk_src |= (ir == OPC::brk); // bit 0
 
             if (brk_src) {
                 ir = 0x00;
@@ -204,12 +207,12 @@ void NMOS6502::Core::exec(const u8 mop) {
                 a4 = spf; --sp;
             }
 
-            mcc = MC::opc_start[ir];
+            mcc = MC::opc_addr[ir];
 
             return;
         case sig_hlt: sig_halt(); return;
         case hlt: --mcc; return; // stuck
-        case reset: a1 = Vec::rst + 0x0001; set(Flag::I); return;
+        case MOPC::reset: a1 = Vec::rst + 0x0001; set(Flag::I); return;
     }
 }
 

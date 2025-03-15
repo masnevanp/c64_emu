@@ -2,7 +2,6 @@
 #include "nmos6502_mc.h"
 #include <vector>
 #include <map>
-#include <iostream>
 
 
 using namespace NMOS6502;
@@ -31,10 +30,13 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
     using MC::RW;
     using MC::MSOPC;
 
+    static const MOP _END{0, 0, 0, 0, MOPC::_end};
+
     namespace SB {
         static const MOP sb[] = {
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
     }
     namespace RM {
@@ -42,28 +44,33 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
             MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP imm[] = {
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::do_op    ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP abs[] = {
             MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
             MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::nmop     ),
             MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP zp_x[] = {
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
             MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::rm_zp_x  ),
             MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP zp_y[] = {
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
             MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::rm_zp_y  ),
             MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP idx_ind[] = {
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -72,6 +79,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a2,   R8::a1h,  RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP abs_x[] = {
             MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -81,6 +89,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP abs_y[] = {
             MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -90,6 +99,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP ind_idx[] = {
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -100,6 +110,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
     }
     namespace ST {
@@ -107,24 +118,28 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::st_reg   ),
             MOP(R16::zpaf, R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP abs[] = {
             MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
             MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::st_reg   ),
             MOP(R16::a1,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP zp_x[] = {
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
             MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::st_zp_x  ),
             MOP(R16::zpaf, R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP zp_y[] = {
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
             MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::st_zp_y  ),
             MOP(R16::zpaf, R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP idx_ind[] = {
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -133,6 +148,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a2,   R8::a1h,  RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::a1,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP abs_x[] = {
             MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -140,6 +156,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::a2,   R8::a,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP abs_y[] = {
             MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -147,6 +164,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::a2,   R8::a,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP ind_y[] = {
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -155,6 +173,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::a2,   R8::a,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
     }
     namespace RMW {
@@ -164,6 +183,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::zpaf, R8::d,    RW::w, PC_inc::n, MOPC::do_op    ),
             MOP(R16::zpaf, R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP abs[] = {
             MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -172,6 +192,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a1,   R8::d,    RW::w, PC_inc::n, MOPC::do_op    ),
             MOP(R16::a1,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP zp_x[] = {
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -180,6 +201,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::zpaf, R8::d,    RW::w, PC_inc::n, MOPC::do_op    ),
             MOP(R16::zpaf, R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP abs_x[] = {
             MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -189,6 +211,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::do_op    ),
             MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
     }
     namespace FC {
@@ -196,23 +219,27 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::pha      ),
             MOP(R16::a1,   R8::a,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP php[] = {
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::php      ),
             MOP(R16::a1,   R8::p,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP pla[] = {
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::spf,  R8::d,    RW::r, PC_inc::n, MOPC::inc_sp   ),
             MOP(R16::spf,  R8::a,    RW::r, PC_inc::n, MOPC::a_nz     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP plp[] = {
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::spf,  R8::d,    RW::r, PC_inc::n, MOPC::inc_sp   ),
             MOP(R16::spf,  R8::p,    RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP jsr[] = {
             MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -221,6 +248,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a4,   R8::a2l,  RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::a2,   R8::pch,  RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP bra[] = {
             // these entry MOPs evaluate the relevant branching condition,
@@ -241,6 +269,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),  // T2 (pg.crs)
             MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),  // T3
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),  // T0
+            _END
         };
         static const MOP brk[] = {
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
@@ -250,6 +279,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a2,   R8::pcl,  RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::a3,   R8::pch,  RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch_brk),
+            _END
         };
         static const MOP rti[] = {
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
@@ -258,11 +288,13 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a2,   R8::pcl,  RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::spf,  R8::pch,  RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP jmp_abs[] = {
             MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
             MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::n, MOPC::jmp_abs  ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP jmp_ind[] = {
             MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -270,6 +302,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a1,   R8::pcl,  RW::r, PC_inc::n, MOPC::jmp_ind  ),
             MOP(R16::a1,   R8::pch,  RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP rts[] = {
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
@@ -278,6 +311,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::spf,  R8::pch,  RW::r, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
     }
     namespace SB {
@@ -287,10 +321,12 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
         static const MOP sb_cli[] = {
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop         ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch_cli ),
+            _END
         };
         static const MOP sb_sei[] = {
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop         ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch_sei ),
+            _END
         };
     }
     namespace UD {
@@ -302,6 +338,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::do_op    ),
             MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP rmw_idx_ind[] = {
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -312,6 +349,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a1,   R8::d,    RW::w, PC_inc::n, MOPC::do_op    ),
             MOP(R16::a1,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP rmw_ind_idx[] = {
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -322,6 +360,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::do_op    ),
             MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP st_abs_x[] = {
             MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -329,6 +368,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
             MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP st_abs_y[] = {
             MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -336,6 +376,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
             MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP st_ind_y[] = {
             MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
@@ -344,6 +385,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
             MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
         static const MOP hlt[] = {
             MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::nmop     ),
@@ -352,6 +394,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::n, MOPC::sig_hlt  ), // for these
             MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::n, MOPC::hlt      ), // 4 cycles
             MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            _END
         };
     }
 
@@ -364,6 +407,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
         MOP(R16::a4,   R8::pcl,  RW::r, PC_inc::n, MOPC::reset        ),
         MOP(R16::a1,   R8::pch,  RW::r, PC_inc::n, MOPC::nmop         ),
         MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch_brk ),
+        _END
     };
 
     // instruction (opc) to micro-code (mc) mapping
@@ -475,35 +519,23 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
 
 
     MOP* code;
-    int* opc_start;
+    int* opc_addr;
 
     bool init_code_and_opc() {
         std::vector<MOP> opc_mc;
-        std::map<const MOP*, int> opc_mc_start;
-        opc_start = new int[0x101];
+        std::map<const MOP*, int> opc_mc_addr;
+        opc_addr = new int[0x101];
 
-        for (int o = 0x00; o <= 0x100; ++o) {
-            std::cout << "\no:" << o; 
-            const bool opc_mc_missing = opc_mc_start.count(OPC_MC[o]) == 0;
-            std::cout << " m:" << opc_mc_missing;
+        for (int o = 0x00; o <= OPC::reset; ++o) {
+            const bool opc_mc_missing = opc_mc_addr.count(OPC_MC[o]) == 0;
             if (opc_mc_missing) {
-                opc_mc_start[OPC_MC[o]] = opc_mc.size();
-                std::cout << " s:" << opc_mc.size() << " ";
-                for (const MOP* m = OPC_MC[o];;) {
-                    std::cout << ".";
+                opc_mc_addr[OPC_MC[o]] = opc_mc.size();
+                for (const MOP* m = OPC_MC[o]; (*m).mopc != _END.mopc; ++m) {
                     opc_mc.push_back(*m);
-                    const auto mopc = (*m).mopc;
-                    // last one is dispatch_cli, dispatch_sei, dispatch, or dispatch_brk
-                    if (mopc == MOPC::dispatch || mopc == MOPC::dispatch_brk
-                            || mopc == MOPC::dispatch_sei || mopc == MOPC::dispatch_cli) {
-                        break;
-                    }
-                    ++m;
                 }
             }
 
-            opc_start[o] = opc_mc_start[OPC_MC[o]];
-            std::cout << " S:" << opc_mc_start[OPC_MC[o]] << std::endl;
+            opc_addr[o] = opc_mc_addr[OPC_MC[o]];
         }
 
         code = new MOP[opc_mc.size()];
@@ -517,8 +549,5 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
 } // namespace _MC
 
 
-//const MC::MOP** MC::OPC_MC = _MC::OPC_MC;
-//const u8* MC::OPC_MSOPC = _MC::OPC_MSOPC;
-
 const MC::MOP* MC::code = _MC::code;
-const int* MC::opc_start = _MC::opc_start;
+const int* MC::opc_addr = _MC::opc_addr;

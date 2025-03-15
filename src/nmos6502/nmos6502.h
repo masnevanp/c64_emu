@@ -39,6 +39,11 @@ namespace NMOS6502 {
     };
     extern const std::string R8_str[];
 
+    enum OPC {
+        brk = 0x00, bne = 0xd0,
+        reset = 0x100
+    };
+
 } // namespace NMOS6502
 
 

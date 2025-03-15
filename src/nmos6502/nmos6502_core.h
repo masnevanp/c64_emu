@@ -19,7 +19,6 @@ public:
     Reg8& pcl; Reg8& pch; Reg8& sp; Reg8& p; Reg8& a; Reg8& x; Reg8& y;
     Reg8& d; Reg8& ir; Reg8& zpa; Reg8& a1l; Reg8& a1h;
 
-    //const MC::MOP* mcp; // micro-code pointer ('mc pc')
     int mcc; // micro-code counter
 
 
@@ -73,16 +72,14 @@ public:
 
         pc += MC::code[mcc].pc_inc;
 
-        const auto mop = MC::code[mcc].mopc;
-        if(mop != NMOS6502::MC::nmop) exec(mop);
+        const auto mopc = MC::code[mcc++].mopc;
+        if(mopc != NMOS6502::MC::nmop) exec(mopc);
     }
 
 private:
-    static constexpr u8 OPC_brk = 0x00;
-    static constexpr u8 OPC_bne = 0xd0;
     static constexpr u8 NMI_taken = 0x80;
 
-    void exec(const u8 mop);
+    void exec(const MC::MOPC mopc);
 
     // carry & borrow
     u8 C() const { return p & Flag::C; }
