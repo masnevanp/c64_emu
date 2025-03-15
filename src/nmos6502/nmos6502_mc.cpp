@@ -28,7 +28,7 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
     using MC::MOPC;
     using MC::PC_inc;
     using MC::RW;
-    using MC::MSOPC;
+    //using MC::MSOPC;
 
     static const MOP _END{0, 0, 0, 0, MOPC::_end};
 

@@ -19,7 +19,7 @@ namespace NMOS6502 {
         };
         extern const std::string MOPC_str[];
 
-        enum MSOPC : u8 { // micro-sub-op code
+        /*enum MSOPC : u8 { // micro-sub-op code
             // single byte instrs
             sb_asl, sb_clc, sb_cld, sb_clv, sb_dex, sb_dey, sb_inx, sb_iny, sb_lsr,
             sb_rol, sb_ror, sb_sec, sb_sed, sb_tax, sb_tay, sb_tsx, sb_txa, sb_txs, sb_tya,
@@ -33,7 +33,7 @@ namespace NMOS6502 {
             // undocumented
             ud_ahx, ud_alr, ud_anc, ud_arr, ud_axs, ud_dcp, ud_isc, ud_las, ud_lax, ud_lxa,
             ud_rla, ud_rra, ud_shx, ud_shy, ud_slo, ud_sre, ud_tas, ud_xaa,
-        };
+        };*/
 
         struct PC_inc { // due to a clash with R8....
             enum { n = 0, y = 1 };
