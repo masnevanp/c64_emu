@@ -19,15 +19,19 @@ public:
     Reg8& pcl; Reg8& pch; Reg8& sp; Reg8& p; Reg8& a; Reg8& x; Reg8& y;
     Reg8& d; Reg8& ir; Reg8& zpa; Reg8& a1l; Reg8& a1h;
 
-    int mcc; // micro-code counter
-
-
     Core(Sig& sig_halt_);
 
     void reset_warm();
     void reset_cold();
 
-    bool halted() const { return MC::code[mcc].mopc == MC::hlt; }
+    const MC::MOP& mop() const { return MC::code[mcc]; } // current micro-op
+    bool halted() const { return mop().mopc == MC::hlt; }
+    bool resume() {
+        if (halted()) {
+            ++mcc;
+            return true;
+        } else return false;
+    }
 
     void set(Flag f, bool set = true) { p = set ? p | f : p & ~f; }
     void set_nz(const u8& res) { set(Flag::N, res & 0x80); set(Flag::Z, res == 0x00); }
@@ -42,9 +46,9 @@ public:
                core.tick();
            }
     */
-    u16 mar() const { return r16[MC::code[mcc].ar]; }
-    u8& mdr() const { return r8[MC::code[mcc].dr]; }
-    u8  mrw() const { return MC::code[mcc].rw; }
+    u16 mar() const { return r16[mop().ar]; }
+    u8& mdr() const { return r8[mop().dr]; }
+    u8  mrw() const { return mop().rw; }
 
     void set_nmi(bool act = true) {
         if (act) {
@@ -70,7 +74,7 @@ public:
         if (irq_req & 0x02) irq_bit = IRQ_BIT;
         irq_req <<= 1;
 
-        pc += MC::code[mcc].pc_inc;
+        pc += mop().pc_inc;
 
         const auto mopc = MC::code[mcc++].mopc;
         if(mopc != NMOS6502::MC::nmop) exec(mopc);
@@ -126,6 +130,8 @@ private:
     }
 
     Sig& sig_halt;
+
+    int mcc; // micro-code counter
 
     u8 nmi_req;
     u8 irq_req;

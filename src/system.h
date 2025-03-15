@@ -28,7 +28,7 @@ class VIC_out;
 class Address_space;
 
 using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Address_space)
-using CIA = CIA::Core;
+using CIA = typename CIA::Core;
 using TheSID = reSID_Wrapper; // 'The' due to nameclash
 using VIC = VIC_II::Core;
 using Color_RAM = VIC_II::Color_RAM;
@@ -626,7 +626,7 @@ private:
             }
 
             if (proceed) {
-                ++cpu.mcc; // bump to recover from halt
+                cpu.resume();
             } else {
                 std::cout << "\n****** CPU halted! ******" << std::endl;
                 Dbg::print_status(cpu, s.ram);

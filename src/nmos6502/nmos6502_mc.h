@@ -60,6 +60,7 @@ namespace NMOS6502 {
             }
         };*/
         struct MOP { // micro-op
+            // TODO: ar & dr as direct pointers to regs?
             unsigned char ar;
             unsigned char dr;
             unsigned char rw;
