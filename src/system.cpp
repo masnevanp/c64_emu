@@ -173,7 +173,7 @@ const System::Address_space::PLA_Line System::Address_space::PLA[14] = {
           ram_r,    ram_r,    bas_r,    bas_r,    ram_r,    io_r,     kern_r,   kern_r } }},
 };
 
-const u8 System::Address_space::Mode_to_PLA_idx[32] = {
+const u8 System::Address_space::Mode_to_PLA_line[32] = {
     0,  0,  1,  2,  0, 11,  3,  4, 0,  8,  9,  5,  0, 11, 12,  6,
     7,  7,  7,  7,  7,  7,  7,  7, 0,  8,  9, 10,  0, 11, 12, 13,
 };
