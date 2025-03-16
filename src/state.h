@@ -187,11 +187,46 @@ struct CIA {
 
 
 struct System {
+    struct Adress_space {
+        int pla_line; // the active PLA line (set based on mode)
+
+        u8 io_port_dd;
+        u8 io_port_pd;
+        u8 io_port_state;
+
+        u8 exrom_game;
+    };
+
+    struct Int_hub {
+        u8 state;
+        u8 old_state;
+        bool nmi_act;
+        bool irq_act;
+    };
+
+    struct Input_matrix {
+        // key states, 8x8 bits (64 keys)
+        u64 key_states; // 'actual' state
+        u64 kb_matrix;  // key states in the matrix (includes possible 'ghost' keys)
+
+        // current output state of the cia-ports (any input bit will be set)
+        u8 pa_state;
+        u8 pb_state;
+
+        // current state of controllers
+        u8 cp2_state;
+        u8 cp1_state;
+    };
+
     u8 ram[0x10000];
     u8 color_ram[::VIC_II::Color_RAM::size] = {};
 
     u16 ba_low;
     u16 dma_low;
+
+    Adress_space addr_space;
+    Int_hub int_hub;
+    Input_matrix input_matrix; // problems with load/save state?
 
     VIC_II vic;
 
