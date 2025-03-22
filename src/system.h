@@ -585,13 +585,13 @@ private:
         [this]() {
             bool proceed = true;
 
-            const auto trap_opc = cpu.ir;
+            const auto trap_opc = cpu.s.ir;
             switch (trap_opc) {
                 /*case Trap_OPC::IEC_virtual_routine:
                     handled = IEC_virtual::on_trap(c64.cpu, c64.s.ram, iec_ctrl);
                     break;*/
                 case Trap_OPC::tape_routine: {
-                    const auto routine_id = cpu.d;
+                    const auto routine_id = cpu.s.d;
 
                     switch (routine_id) {
                         case Trap_ID::load: do_load(); break;

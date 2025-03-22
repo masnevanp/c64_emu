@@ -10,33 +10,54 @@ namespace NMOS6502 {
 
 class Core {
 public:
-
     struct State {
-        Reg16 r16[R16::_sz]; // pc, sp, p|a, x|y, d|ir, zpaf, a1, a2, a3, a4
+        struct R16 { // TODO: big-endian host
+            u8 l; u8 h;
 
-        int mcc; // micro-code counter
+            operator u16& () { return *((u16*)&l); }
+            void operator=(u16 w) { *((u16*)&l) = w; }
+            u16 operator+(u16 w) { return u16(*this) + w; }
+            u16 operator+(u8 b) { return u16(*this) + u16(b); }
+            u16 operator-(u16 w) { return u16(*this) - w; }
+            u16 operator-(u8 b) { return u16(*this) - u16(b); }
+        };
+        using R8 = u8;
+
+        R16 mcc; // micro-code counter
+
+        R16 pc;
+        R16 zpa;
+        R16 sp;
+        R16 a1;
+        R16 a2;
+        R16 a3;
+        R16 a4;
+        R8 d;
+        R8 ir;
+        R8 p;
+        R8 a;
+        R8 x;
+        R8 y;
 
         u8 nmi_req;
-        u8 irq_req;
-
         u8 nmi_bit; // bit 1 (set --> active)
+
+        u8 irq_req;
         u8 irq_bit; // bit 2 (set --> active)
+
         u8 brk_src; // bitmap (b0: sw, b1: nmi, b2: irq)
+
+        R16* const r16 = (R16*)&pc;
+        R8* const r8 = (R8*)&pc;
     };
+
     State& s;
 
-    Reg8* r8; // private ?
-
-    Reg16& pc; Reg16& spf; Reg16& zpaf; Reg16& a1; Reg16& a2; Reg16& a3; Reg16& a4;
-    Reg8& pcl; Reg8& pch; Reg8& sp; Reg8& p; Reg8& a; Reg8& x; Reg8& y;
-    Reg8& d; Reg8& ir; Reg8& zpa; Reg8& a1l; Reg8& a1h;
-
-    Core(State& s_, Sig& sig_halt_);
+    Core(State& s_, Sig& sig_halt_) : s(s_), sig_halt(sig_halt_) { reset_cold(); }
 
     void reset_warm();
     void reset_cold();
 
-    const MC::MOP& mop() const { return MC::code[s.mcc]; } // current micro-op
     bool halted() const { return mop().mopc == MC::hlt; }
     bool resume() {
         if (halted()) {
@@ -45,11 +66,13 @@ public:
         } else return false;
     }
 
-    void set(Flag f, bool set = true) { p = set ? p | f : p & ~f; }
+    void set(Flag f, bool set = true) { s.p = set ? s.p | f : s.p & ~f; }
     void set_nz(const u8& res) { set(Flag::N, res & 0x80); set(Flag::Z, res == 0x00); }
-    void clr(Flag f) { p &= ~f; }
-    bool is_set(Flag f) const { return p & f; }
+    void clr(Flag f) { s.p &= ~f; }
+    bool is_set(Flag f) const { return s.p & f; }
     bool is_clr(Flag f) const { return !is_set(f); }
+
+    const MC::MOP& mop() const { return MC::code[s.mcc]; } // current micro-op
 
     /* Address space access params (addr, data, r/w).
        The read/write is expected to happen between ticks, e.g.:
@@ -59,7 +82,7 @@ public:
            }
     */
     u16 mar() const { return s.r16[mop().ar]; }
-    u8& mdr() const { return r8[mop().dr]; }
+    u8& mdr() const { return s.r8[mop().dr]; }
     u8  mrw() const { return mop().rw; }
 
     void set_nmi(bool act = true) {
@@ -86,9 +109,10 @@ public:
         if (s.irq_req & 0x02) s.irq_bit = IRQ_BIT;
         s.irq_req <<= 1;
 
-        pc += mop().pc_inc;
+        s.pc += mop().pc_inc;
 
-        const auto mopc = MC::code[s.mcc++].mopc;
+        const auto mopc = mop().mopc;
+        ++s.mcc;
         if(mopc != NMOS6502::MC::nmop) exec(mopc);
     }
 
@@ -96,46 +120,46 @@ private:
     void exec(const MC::MOPC mopc);
 
     // carry & borrow
-    u8 C() const { return p & Flag::C; }
+    u8 C() const { return s.p & Flag::C; }
     u8 B() const { return C() ^ 0x1; }
 
     void do_asl(u8& d) { set(Flag::C, d & 0x80); set_nz(d <<= 1); }
     void do_lsr(u8& d) { clr(Flag::N); set(Flag::C, d & 0x01); set(Flag::Z, !(d >>= 1)); }
     void do_rol(u8& d) {
-        u8 old_c = p & Flag::C;
+        const u8 old_c = s.p & Flag::C;
         set(Flag::C, d & 0x80);
         d <<= 1;
         set_nz(d |= old_c);
     }
     void do_ror(u8& d) {
-        u8 old_c = p << 7;
+        const u8 old_c = s.p << 7;
         set(Flag::C, d & 0x01);
         d >>= 1;
         set_nz(d |= old_c);
     }
-    void do_bit() { p = (p & 0x3f) | (d & 0xc0); set(Flag::Z, (a & d) == 0x00); }
-    void do_cmp(const Reg8& r) { set(Flag::C, r >= d); set_nz(r - d); }
+    void do_bit() { s.p = (s.p & 0x3f) | (s.d & 0xc0); set(Flag::Z, (s.a & s.d) == 0x00); }
+    void do_cmp(const State::R8& r) { set(Flag::C, r >= s.d); set_nz(r - s.d); }
     void do_adc();
     void do_sbc();
 
-    void do_ud_anc() { set_nz(a &= d); set(Flag::C, a & 0x80); }
+    void do_ud_anc() { set_nz(s.a &= s.d); set(Flag::C, s.a & 0x80); }
     void do_ud_arr();
-    void do_ud_axs() { x &= a; set(Flag::C, x >= d); set_nz(x -= d); }
-    void do_ud_las() { set_nz(a = x = sp = (sp & d)); }
-    void do_ud_lxa() { set_nz(a = x = (a | 0xee) & d); }
-    void do_ud_rla() { do_rol(d); set_nz(a &= d); }
-    void do_ud_rra() { do_ror(d); do_adc(); }
-    void do_ud_slo() { set(Flag::C, d & 0x80); set_nz(a |= (d <<= 1)); }
-    void do_ud_sre() { set(Flag::C, d & 0x01); set_nz(a ^= (d >>= 1)); }
-    void do_ud_tas() { sp = a & x; d = sp & (a1h + 0x01); }
-    void do_ud_xaa() { set_nz(a = (a | 0xee) & x & d); }
+    void do_ud_axs() { s.x &= s.a; set(Flag::C, s.x >= s.d); set_nz(s.x -= s.d); }
+    void do_ud_las() { set_nz(s.a = s.x = s.sp.l = (s.sp.l & s.d)); }
+    void do_ud_lxa() { set_nz(s.a = s.x = (s.a | 0xee) & s.d); }
+    void do_ud_rla() { do_rol(s.d); set_nz(s.a &= s.d); }
+    void do_ud_rra() { do_ror(s.d); do_adc(); }
+    void do_ud_slo() { set(Flag::C, s.d & 0x80); set_nz(s.a |= (s.d <<= 1)); }
+    void do_ud_sre() { set(Flag::C, s.d & 0x01); set_nz(s.a ^= (s.d >>= 1)); }
+    void do_ud_tas() { s.sp.l = s.a & s.x; s.d = s.sp.l & (s.a1.h + 0x01); }
+    void do_ud_xaa() { set_nz(s.a = (s.a | 0xee) & s.x & s.d); }
 
     void st_reg_sel() {
-        switch (ir & 0x3) {
-            case 0x0: d = y; return;
-            case 0x1: d = a; return;
-            case 0x2: d = x; return;
-            case 0x3: d = a & x; return;
+        switch (s.ir & 0x3) {
+            case 0x0: s.d = s.y; return;
+            case 0x1: s.d = s.a; return;
+            case 0x2: s.d = s.x; return;
+            case 0x3: s.d = s.a & s.x; return;
         }
     }
 

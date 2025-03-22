@@ -24,23 +24,23 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
         else mem[cpu.mar()] = cpu.mdr();
         cpu.tick();
     }
-    cpu.p = 0x00;
+    cpu.s.p = 0x00;
 
     int op_cnt = 0;
     Timer t;
-    for (int prev_pc = cpu.pc, psc = 0, step = false, output = false; psc < 15; ++psc) {
+    for (u16 prev_pc = cpu.s.pc, psc = 0, step = false, output = false; psc < 15; ++psc) {
         // BEWARE
         if (cpu.mop().mopc >= MC::MOPC::dispatch_cli && cpu.mop().mopc <= MC::MOPC::dispatch_brk) {
-            if (cpu.pc == step_from_pc) step = true;
-            if (cpu.pc == output_from_pc) output = true;
+            if (cpu.s.pc == step_from_pc) step = true;
+            if (cpu.s.pc == output_from_pc) output = true;
             if (step || output) {
                 std::cout << "=========================================================";
                 Dbg::print_status(cpu, mem);
                 if (step) getchar();
             }
 
-            if (prev_pc != cpu.pc) {
-                prev_pc = cpu.pc;
+            if (prev_pc != cpu.s.pc) {
+                prev_pc = cpu.s.pc;
                 psc = 0; // 'pc stuck' counter
             }
             //getchar();
@@ -53,13 +53,13 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     }
     int te = t.elapsed();
 
-    std::cout << "stopped on: " << Dbg::print_u16(cpu.pc) << "\n";
+    std::cout << "stopped on: " << Dbg::print_u16(cpu.s.pc) << "\n";
     Dbg::print_status(cpu, mem);
     std::cout << "\nop cnt: " << std::dec << int(op_cnt) << ", ";
     std::cout << " time: " << te << ", ";
     std::cout << " op/sec: " << (int)(op_cnt / te * 1000) << "\n";
     std::cout << "=========================================================\n";
-    std::cout << " ";
+    if (cpu.s.pc == 0x3469) std::cout << "PASS\n";
     std::cout << "";
 }
 
@@ -82,9 +82,9 @@ void run_test_suite()
         for (unsigned int i = 0, m = 0xff48; irq[i] != 0; ++i)
             mem[m + i] = irq[i];
 
-        sys.cpu.sp = 0xfd;
-        sys.cpu.p = 0x04;
-        sys.cpu.pc = 0x0801;
+        sys.cpu.s.sp.l = 0xfd;
+        sys.cpu.s.p = 0x04;
+        sys.cpu.s.pc = 0x0801;
     };
 
     auto load = [&](const std::string& filename) {
@@ -117,9 +117,9 @@ void run_test_suite()
     };
 
     auto rts = [&]() {
-        ++sys.cpu.sp; sys.cpu.pcl = mem[sys.cpu.spf];
-        ++sys.cpu.sp; sys.cpu.pch = mem[sys.cpu.spf];
-        ++sys.cpu.pc;
+        ++sys.cpu.s.sp.l; sys.cpu.s.pc.l = mem[sys.cpu.s.sp];
+        ++sys.cpu.s.sp.l; sys.cpu.s.pc.h = mem[sys.cpu.s.sp];
+        sys.cpu.s.pc = sys.cpu.s.pc + u16(1);
     };
 
     load("_start");
@@ -129,10 +129,10 @@ void run_test_suite()
         //if (sys.cpu.halted()) { std::cout << "\n[HALTED]"; goto exit; }
         if (sys.tn == 0) {
             //print_status(sys.cpu, sys.mem);
-            switch (sys.cpu.pc) {
+            switch (u16(sys.cpu.s.pc)) {
                 case 0xffd2: // print chr
                     mem[0x030c] = 0;
-                    std::cout << to_ascii_chr(sys.cpu.a);
+                    std::cout << to_ascii_chr(sys.cpu.s.a);
                     rts();
                     break;
                 case 0xe16f: { // load
@@ -147,11 +147,11 @@ void run_test_suite()
                     std::cout << " -> ";
                     load(filename);
                     rts();
-                    sys.cpu.pc = 0x0816;
+                    sys.cpu.s.pc = u16(0x0816);
                     break;
                 }
                 case 0xffe4: // scan keyboard
-                    sys.cpu.a = 0x03; // run/stop
+                    sys.cpu.s.a = 0x03; // run/stop
                     rts();
                     break;
                 case 0x8000: case 0xa474: // exit
