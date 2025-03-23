@@ -92,11 +92,11 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
 
 
 void Dbg::reg_diff(const Core& cpu) { // TODO: support for multiple cores
-    static Reg16 r16_snap[Core::REG_CNT];
-    static Reg8 r8_snap[Core::REG_CNT * 2];
+    static Reg16 r16_snap[Ri16::_cnt16];
+    static Reg8 r8_snap[Ri8::_cnt8];
 
     std::cout << "\n\n";
-    for (int r = 0; r < Core::REG_CNT; ++r) {
+    for (int r = 0; r < Ri16::_cnt16; ++r) {
         if (r == Ri16::pc || r == Ri16::spf || r >= Ri16::a1) {
             if (r16_snap[r] != cpu.r16[r]) {
                 std::cout << Ri16_str[r] << ": ";

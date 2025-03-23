@@ -8,16 +8,23 @@
 namespace NMOS6502 {
 
 
-class Core {
+struct Core {
 public:
-    static constexpr int REG_CNT = 10;
-
-    Reg16 r16[REG_CNT]; // pc, sp, p|a, x|y, d|ir, zpaf, a1, a2, a3, a4
+    Reg16* r16; // pc, sp, p|a, x|y, d|ir, zpaf, a1, a2, a3, a4
     Reg8* r8;
 
-    Reg16& pc; Reg16& spf; Reg16& zpaf; Reg16& a1; Reg16& a2; Reg16& a3; Reg16& a4;
-    Reg8& pcl; Reg8& pch; Reg8& sp; Reg8& p; Reg8& a; Reg8& x; Reg8& y;
-    Reg8& d; Reg8& ir; Reg8& zpa; Reg8& a1l; Reg8& a1h;
+    Reg16 pc;
+    Reg16 spf;
+    Reg8 p; Reg8 a;
+    Reg8 x; Reg8 y;
+    Reg8 d; Reg8 ir;
+    Reg16 zpaf;
+    Reg16 a1;
+    Reg16 a2;
+    Reg16 a3;
+    Reg16 a4;
+    Reg8& pcl; Reg8& pch; Reg8& sp;
+    Reg8& zpa; Reg8& a1l; Reg8& a1h;
 
     const MC::MOP* mcp; // micro-code pointer ('mc pc')
 

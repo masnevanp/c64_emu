@@ -33,6 +33,17 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
             MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
         };
+        /* cli&sei feature: change not be visible at next T0 (dispatch)
+            (http://visual6502.org/wiki/index.php?title=6502_Timing_of_Interrupt_Handling)
+        */
+        static const MOP sb_cli[] = {
+            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop         ),
+            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch_cli ),
+        };
+        static const MOP sb_sei[] = {
+            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop         ),
+            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch_sei ),
+        };
     }
     namespace RM {
         static const MOP zp[] = {
@@ -275,19 +286,6 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             MOP(Ri16::spf,  Ri8::pch,  RW::r, PC_inc(0), MOPC::nmop     ),
             MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::nmop     ),
             MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-    }
-    namespace SB {
-        /* cli&sei feature: change not be visible at next T0 (dispatch)
-            (http://visual6502.org/wiki/index.php?title=6502_Timing_of_Interrupt_Handling)
-        */
-        static const MOP sb_cli[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop         ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch_cli ),
-        };
-        static const MOP sb_sei[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop         ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch_sei ),
         };
     }
     namespace UD {

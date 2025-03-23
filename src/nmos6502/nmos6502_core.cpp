@@ -3,11 +3,9 @@
 
 
 NMOS6502::Core::Core(Sig& sig_halt_) :
-    r8((Reg8*)r16),
-    pc(r16[Ri16::pc]), spf(r16[Ri16::spf]), zpaf(r16[Ri16::zpaf]),
-    a1(r16[Ri16::a1]), a2(r16[Ri16::a2]), a3(r16[Ri16::a3]), a4(r16[Ri16::a4]),
-    pcl(r8[Ri8::pcl]), pch(r8[Ri8::pch]), sp(r8[Ri8::sp]), p(r8[Ri8::p]), a(r8[Ri8::a]), x(r8[Ri8::x]), y(r8[Ri8::y]),
-    d(r8[Ri8::d]), ir(r8[Ri8::ir]), zpa(r8[Ri8::zpa]), a1l(r8[Ri8::a1l]), a1h(r8[Ri8::a1h]),
+    r16(&pc), r8((Reg8*)&pc),
+    pcl(r8[Ri8::pcl]), pch(r8[Ri8::pch]), sp(r8[Ri8::sp]),
+    zpa(r8[Ri8::zpa]), a1l(r8[Ri8::a1l]), a1h(r8[Ri8::a1h]),
     sig_halt(sig_halt_)
 {
     reset_cold();
