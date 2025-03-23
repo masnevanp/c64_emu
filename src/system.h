@@ -24,11 +24,15 @@
 
 namespace System {
 
+class VIC_out;
+class Address_space;
+
 using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Address_space)
-using CIA = typename CIA::Core;
+using CIA = CIA::Core;
 using TheSID = reSID_Wrapper; // 'The' due to nameclash
 using VIC = VIC_II::Core;
 using Color_RAM = VIC_II::Color_RAM;
+
 
 
 struct ROM {
@@ -41,21 +45,17 @@ struct ROM {
 
 class Address_space {
 public:
-    using State = State::System::Adress_space;
-
     Address_space(
-        State& s_,
-        u8* ram_, const ROM& rom_,
+        u8* ram_, const ROM& rom,
         CIA& cia1_, CIA& cia2_, TheSID& sid_, VIC& vic_,
         Color_RAM& col_ram_, Expansion_ctx::IO& exp_)
       :
-        s(s_),
-        ram(ram_), rom(rom_),
+        ram(ram_), bas(rom.basic), kern(rom.kernal), charr(rom.charr),
         cia1(cia1_), cia2(cia2_), sid(sid_), vic(vic_),
         col_ram(col_ram_), exp(exp_) {}
 
     void reset() {
-        s.io_port_pd = s.io_port_state = 0x00;
+        io_port_pd = io_port_state = 0x00;
         w_dd(0x00); // all inputs
     }
 
@@ -74,7 +74,7 @@ public:
 
 
     void access(const u16& addr, u8& data, const u8 rw) {
-        switch (PLA[s.pla_line].pl[rw][addr >> 12]) {
+        switch (pla->pl[rw][addr >> 12]) {
             case ram0_r:
                 data = (addr > 0x0001)
                             ? ram[addr]
@@ -84,24 +84,24 @@ public:
                 if (addr > 0x0001) ram[addr] = data;
                 else (addr == 0x0000) ? w_dd(data) : w_pd(data);
                 return;
-            case ram_r:   data = ram[addr];                 return; // 64 KB
-            case ram_w:   ram[addr] = data;                 return;
-            case bas_r:   data = rom.basic[addr & 0x1fff];  return; // 8 KB
-            case kern_r:  data = rom.kernal[addr & 0x1fff]; return;
-            case charr_r: data = rom.charr[addr & 0x0fff];  return; // 4 KB
-            case roml_r:  exp.roml_r(addr & 0x1fff, data);  return; // 8 KB
-            case roml_w:  exp.roml_w(addr & 0x1fff, data);  return;
-            case romh_r:  exp.romh_r(addr & 0x1fff, data);  return;
-            case romh_w:  exp.romh_w(addr & 0x1fff, data);  return;
-            case io_r:    r_io(addr & 0x0fff, data);        return; // 4 KB
-            case io_w:    w_io(addr & 0x0fff, data);        return;
+            case ram_r:   data = ram[addr];                return; // 64 KB
+            case ram_w:   ram[addr] = data;                return;
+            case bas_r:   data = bas[addr & 0x1fff];       return; // 8 KB
+            case kern_r:  data = kern[addr & 0x1fff];      return;
+            case charr_r: data = charr[addr & 0x0fff];     return; // 4 KB
+            case roml_r:  exp.roml_r(addr & 0x1fff, data); return; // 8 KB
+            case roml_w:  exp.roml_w(addr & 0x1fff, data); return;
+            case romh_r:  exp.romh_r(addr & 0x1fff, data); return;
+            case romh_w:  exp.romh_w(addr & 0x1fff, data); return;
+            case io_r:    r_io(addr & 0x0fff, data);       return; // 4 KB
+            case io_w:    w_io(addr & 0x0fff, data);       return;
             case none_r:  // TODO: anything..? (return 'floating' state..)
-            case none_w:                                    return;
+            case none_w:                                   return;
         }
     }
 
     void set_exrom_game(bool exrom, bool game) {
-        s.exrom_game = (exrom << 4) | (game << 3);
+        exrom_game = (exrom << 4) | (game << 3);
         set_pla();
 
         vic.set_ultimax(exrom && !game);
@@ -114,18 +114,22 @@ private:
         cassette_motor_control = 0x20,
     };
 
-    State& s;
+    u8 io_port_dd;
+    u8 io_port_pd;
+    u8 io_port_state;
 
-    u8 r_dd() const { return s.io_port_dd; }
+    u8 exrom_game;
+
+    u8 r_dd() const { return io_port_dd; }
     u8 r_pd() const {
         static constexpr u8 pull_up = IO_bits::loram_hiram_charen_bits | IO_bits::cassette_switch_sense;
-        const u8 pulled_up = ~s.io_port_dd & pull_up;
-        const u8 cmc = ~cassette_motor_control | s.io_port_dd; // dd input -> 0
-        return (s.io_port_state | pulled_up) & cmc;
+        const u8 pulled_up = ~io_port_dd & pull_up;
+        const u8 cmc = ~cassette_motor_control | io_port_dd; // dd input -> 0
+        return (io_port_state | pulled_up) & cmc;
     }
 
-    void w_dd(const u8& dd) { s.io_port_dd = dd; update_state(); }
-    void w_pd(const u8& pd) { s.io_port_pd = pd; update_state(); }
+    void w_dd(const u8& dd) { io_port_dd = dd; update_state(); }
+    void w_pd(const u8& pd) { io_port_pd = pd; update_state(); }
 
     void r_io(const u16& addr, u8& data) {
         switch (addr >> 8) {
@@ -152,26 +156,31 @@ private:
     }
 
     void update_state() { // output bits set from 'pd', input bits unchanged
-        s.io_port_state = (s.io_port_pd & s.io_port_dd) | (s.io_port_state & ~s.io_port_dd);
+        io_port_state = (io_port_pd & io_port_dd) | (io_port_state & ~io_port_dd);
         set_pla();
     }
 
     void set_pla() {
-        const u8 lhc = (s.io_port_state | ~s.io_port_dd) & loram_hiram_charen_bits; // inputs -> pulled up
-        const u8 mode = s.exrom_game | lhc;
-        s.pla_line = Mode_to_PLA_line[mode];
+        const u8 lhc = (io_port_state | ~io_port_dd) & loram_hiram_charen_bits; // inputs -> pulled up
+        const u8 mode = exrom_game | lhc;
+        pla = &PLA[Mode_to_PLA_idx[mode]];
     }
 
     // There is a PLA_Line for each mode, and for each mode there are separate r/w configs
     struct PLA_Line {
-        const Mapping pl[2][16]; // [w/r][bank]
+        const u8 pl[2][16]; // [w/r][bank]
     };
 
     static const PLA_Line PLA[14];       // 14 unique configs
-    static const u8 Mode_to_PLA_line[32]; // map: mode --> mode_idx (in PLA[])
+    static const u8 Mode_to_PLA_idx[32]; // map: mode --> mode_idx (in PLA[])
+
+    const PLA_Line* pla; // the active PLA line (set based on mode)
 
     u8* ram;
-    const ROM& rom;
+
+    const u8* bas;
+    const u8* kern;
+    const u8* charr;
 
     CIA& cia1;
     CIA& cia2;
@@ -184,35 +193,35 @@ private:
 
 
 class Int_hub {
-private:
-    using State = State::System::Int_hub;
-
-    State& s;
 public:
-    Int_hub(State& s_) : s(s_), int_sig(s_.state) {}
+    void reset() { state = old_state = 0x00; nmi_act = irq_act = false; }
 
-    void reset() { s.state = s.old_state = 0x00; s.nmi_act = s.irq_act = false; }
-
-    IO::Int_sig int_sig;
+    IO::Int_sig int_sig{state};
 
     void tick(CPU& cpu) {
-        if (s.state != s.old_state) {
-            s.old_state = s.state;
+        if (state != old_state) {
+            old_state = state;
 
-            bool act = (s.state & IO::Int_sig::Src::nmi);
-            if (s.nmi_act != act) {
-                s.nmi_act = act;
-                cpu.set_nmi(s.nmi_act);
+            bool act = (state & IO::Int_sig::Src::nmi);
+            if (nmi_act != act) {
+                nmi_act = act;
+                cpu.set_nmi(nmi_act);
                 int_sig.clr(IO::Int_sig::Src::rstr); // auto clr (pulse)
             }
 
-            act = (s.state & IO::Int_sig::Src::irq);
-            if (s.irq_act != act) {
-                s.irq_act = act;
-                cpu.set_irq(s.irq_act);
+            act = (state & IO::Int_sig::Src::irq);
+            if (irq_act != act) {
+                irq_act = act;
+                cpu.set_irq(irq_act);
             }
         }
     }
+
+private:
+    u8 state;
+    u8 old_state;
+    bool nmi_act;
+    bool irq_act;
 };
 
 
@@ -254,23 +263,21 @@ struct Performance {
 
 class Input_matrix {
 public:
-    using State = State::System::Input_matrix;
-
-    Input_matrix(State& s_, IO::Port::PD_in& pa_in_, IO::Port::PD_in& pb_in_, VIC& vic_)
-        : s(s_), pa_in(pa_in_), pb_in(pb_in_), vic(vic_) {}
+    Input_matrix(IO::Port::PD_in& pa_in_, IO::Port::PD_in& pb_in_, VIC& vic_)
+        : pa_in(pa_in_), pb_in(pb_in_), vic(vic_) {}
 
     void reset() {
-        s.key_states = s.kb_matrix = 0;
-        s.pa_state = s.pb_state = s.cp2_state = s.cp1_state = 0b11111111;
+        key_states = kb_matrix = 0;
+        pa_state = pb_state = cp2_state = cp1_state = 0b11111111;
     }
 
-    void cia1_pa_out(u8 state) { s.pa_state = state; output(); }
-    void cia1_pb_out(u8 state) { s.pb_state = state; output(); }
+    void cia1_pa_out(u8 state) { pa_state = state; output(); }
+    void cia1_pb_out(u8 state) { pb_state = state; output(); }
 
     Sig_key keyboard {
         [this](u8 code, u8 down) {
             const auto key = u64{0b1} << (63 - code);
-            s.key_states = down ? s.key_states | key : s.key_states & ~key;
+            key_states = down ? key_states | key : key_states & ~key;
             update_matrix();
             output();
         }
@@ -280,7 +287,7 @@ public:
         [this](u8 code, u8 down) {
             const u8 bit_pos = 0b1 << code;
             const u8 bit_val = down ? 0 : bit_pos;
-            s.cp1_state = (s.cp1_state & ~bit_pos) | bit_val;
+            cp1_state = (cp1_state & ~bit_pos) | bit_val;
             output();
         }
     };
@@ -289,7 +296,7 @@ public:
         [this](u8 code, u8 down) {
             const u8 bit_pos = 0b1 << code;
             const u8 bit_val = down ? 0 : bit_pos;
-            s.cp2_state = (s.cp2_state & ~bit_pos) | bit_val;
+            cp2_state = (cp2_state & ~bit_pos) | bit_val;
             output();
         }
     };
@@ -299,30 +306,30 @@ private:
         auto get_row = [](int n, u64& from) -> u64 { return (from >> (8 * n)) & 0xff; };
         auto set_row = [](int n, u64& to, u64 val) { to |= (val << (8 * n)); };
 
-        s.kb_matrix = s.key_states;
+        kb_matrix = key_states;
 
-        if (s.kb_matrix) { // any key down?
+        if (kb_matrix) { // any key down?
             // emulate GND propagation in the matrix (can produce 'ghost' keys)
             for (int ra = 0; ra < 7; ++ra) for (int rb = ra + 1; rb < 8; ++rb) {
-                const u64 a = get_row(ra, s.kb_matrix);
-                const u64 b = get_row(rb, s.kb_matrix);
+                const u64 a = get_row(ra, kb_matrix);
+                const u64 b = get_row(rb, kb_matrix);
                 if (a & b) {
                     const u64 r = a | b;
-                    set_row(ra, s.kb_matrix, r);
-                    set_row(rb, s.kb_matrix, r);
+                    set_row(ra, kb_matrix, r);
+                    set_row(rb, kb_matrix, r);
                 }
             }
         }
     }
 
     void output() {
-        u8 pa = s.pa_state & s.cp2_state;
-        u8 pb = s.pb_state & s.cp1_state;
+        u8 pa = pa_state & cp2_state;
+        u8 pb = pb_state & cp1_state;
 
-        if (s.kb_matrix) { // any key down?
+        if (kb_matrix) { // any key down?
             u64 key = 0b1;
             for (int n = 0; n < 64; ++n, key <<= 1) {
-                const bool key_down = s.kb_matrix & key;
+                const bool key_down = kb_matrix & key;
                 if (key_down) {
                     // figure out connected lines & states
                     const auto row_bit = (0b1 << (n / 8));
@@ -345,11 +352,21 @@ private:
         vic.set_lp(VIC::LP_src::cia, pb & VIC_II::CIA1_PB_LP_BIT);
     }
 
-    State& s;
+    // key states, 8x8 bits (64 keys)
+    u64 key_states; // 'actual' state
+    u64 kb_matrix;  // key states in the matrix (includes possible 'ghost' keys)
+
+    // current output state of the cia-ports (any input bit will be set)
+    u8 pa_state;
+    u8 pb_state;
+
+    // current state of controllers
+    u8 cp2_state;
+    u8 cp1_state;
 
     IO::Port::PD_in& pa_in;
     IO::Port::PD_in& pb_in;
-    VIC& vic; // TODO: replace with a signal?
+    VIC& vic;
 };
 
 
@@ -485,7 +502,7 @@ private:
 
     State::System s;
 
-    CPU cpu{s.cpu, cpu_trap};
+    CPU cpu{cpu_trap};
 
     CIA cia1{s.cia1, cia1_pa_out, cia1_pb_out, int_hub.int_sig, IO::Int_sig::Src::cia1, s.vic.cycle};
     CIA cia2{s.cia2, cia2_pa_out, cia2_pb_out, int_hub.int_sig, IO::Int_sig::Src::cia2, s.vic.cycle};
@@ -496,13 +513,13 @@ private:
 
     VIC vic{s.vic, s.ram, col_ram, rom.charr, exp_io.romh_r, s.ba_low, int_hub.int_sig};
 
-    Address_space addr_space{s.addr_space, s.ram, rom, cia1, cia2, sid, vic, col_ram, exp_io};
+    Address_space addr_space{s.ram, rom, cia1, cia2, sid, vic, col_ram, exp_io};
 
-    Int_hub int_hub{s.int_hub};
+    Int_hub int_hub;
 
     IO::Bus bus{cpu};
 
-    Input_matrix input_matrix{s.input_matrix, cia1.port_a.ext_in, cia1.port_b.ext_in, vic};
+    Input_matrix input_matrix{cia1.port_a.ext_in, cia1.port_b.ext_in, vic};
 
     Expansion_ctx::IO exp_io{
         s.ba_low,
@@ -585,13 +602,13 @@ private:
         [this]() {
             bool proceed = true;
 
-            const auto trap_opc = cpu.s.ir;
+            const auto trap_opc = cpu.ir;
             switch (trap_opc) {
                 /*case Trap_OPC::IEC_virtual_routine:
                     handled = IEC_virtual::on_trap(c64.cpu, c64.s.ram, iec_ctrl);
                     break;*/
                 case Trap_OPC::tape_routine: {
-                    const auto routine_id = cpu.s.d;
+                    const auto routine_id = cpu.d;
 
                     switch (routine_id) {
                         case Trap_ID::load: do_load(); break;
@@ -609,7 +626,7 @@ private:
             }
 
             if (proceed) {
-                cpu.resume();
+                ++cpu.mcp; // bump to recover from halt
             } else {
                 std::cout << "\n****** CPU halted! ******" << std::endl;
                 Dbg::print_status(cpu, s.ram);
@@ -656,7 +673,7 @@ private:
 
     bool shutdown;
 
-    Stopwatch watch;
+    _Stopwatch watch;
     Timer frame_timer;
 
     void init_sync(); // call if system has been 'paused'

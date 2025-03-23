@@ -54,33 +54,33 @@ void Dbg::print_mem(u8* mem, u16 page) {
 
 
 void Dbg::print_status(const Core& cpu, u8* mem) {
-    std::cout << "\npc: " << print_u16(cpu.s.pc);
-    std::cout << " [ " << print_u8(mem[cpu.s.pc]);
-    std::cout << " " << print_u8(mem[(cpu.s.pc+u16(1)) & 0xffff]) << " " << print_u8(mem[(cpu.s.pc+u16(2)) & 0xffff]);
+    std::cout << "\npc: " << print_u16(cpu.pc);
+    std::cout << " [ " << print_u8(mem[cpu.pc]);
+    std::cout << " " << print_u8(mem[(cpu.pc+1) & 0xffff]) << " " << print_u8(mem[(cpu.pc+2) & 0xffff]);
     std::cout << " ]";
-    std::cout << "\nsp: " << print_u16(cpu.s.sp);
+    std::cout << "\nsp: " << print_u16(cpu.spf);
     std::cout << " [";
-    for (int sp = cpu.s.sp, i = 1; i < 9 && (sp + i) <= 0x1ff; ++i) {
+    for (int sp = cpu.spf, i = 1; i < 9 && (sp + i) <= 0x1ff; ++i) {
         std::cout << " " << print_u8(mem[sp + i]);
     }
     std::cout << " ]";
-    std::cout << "\n a: " << print_u8(cpu.s.a);
-    std::cout << "   x: " << print_u8(cpu.s.x);
-    std::cout << "   y: " << print_u8(cpu.s.y);
-    std::cout << "   p: " << print_u8(cpu.s.p);
-    std::cout << " [" << flag_str(cpu.s.p) << "]";
+    std::cout << "\n a: " << print_u8(cpu.a);
+    std::cout << "   x: " << print_u8(cpu.x);
+    std::cout << "   y: " << print_u8(cpu.y);
+    std::cout << "   p: " << print_u8(cpu.p);
+    std::cout << " [" << flag_str(cpu.p) << "]";
     //// zpaf, a1, a2, a3, a4
-    std::cout << "\n\nzp: " << print_u16(cpu.s.zpa);
-    std::cout << " a1: " << print_u16(cpu.s.a1);
-    std::cout << " a2: " << print_u16(cpu.s.a2);
-    std::cout << " a3: " << print_u16(cpu.s.a3);
-    std::cout << " a4: " << print_u16(cpu.s.a4);
-    std::cout << " d: " << print_u8(cpu.s.d);
-    std::cout << " ir: " << print_u8(cpu.s.ir);
+    std::cout << "\n\nzp: " << print_u16(cpu.zpaf);
+    std::cout << " a1: " << print_u16(cpu.a1);
+    std::cout << " a2: " << print_u16(cpu.a2);
+    std::cout << " a3: " << print_u16(cpu.a3);
+    std::cout << " a4: " << print_u16(cpu.a4);
+    std::cout << " d: " << print_u8(cpu.d);
+    std::cout << " ir: " << print_u8(cpu.ir);
     std::cout << "\n";
-    std::cout << "\n==> mar: " << print_u16(cpu.mar()) << " (" << Ri16_str[cpu.mop().ar] << ")";
+    std::cout << "\n==> mar: " << print_u16(cpu.mar()) << " (" << R16_str[cpu.mcp->ar] << ")";
     std::cout << "   mdr: " << (cpu.mrw() == MC::RW::w ? print_u8(cpu.mdr()) : "??");
-    std::cout << " (" << Ri8_str[cpu.mop().dr] << ")";
+    std::cout << " (" << R8_str[cpu.mcp->dr] << ")";
     std::cout << "   r/w: " << MC::RW_str[cpu.mrw()];
     std::cout << "\n";
     /*
@@ -91,18 +91,17 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
 }
 
 
-//void Dbg::reg_diff(const Core& cpu) { // TODO: support for multiple cores
-    /* TODO
-    static Reg16 r16_snap[R16::_sz];
-    static Reg8 r8_snap[R16::_sz * 2];
+void Dbg::reg_diff(const Core& cpu) { // TODO: support for multiple cores
+    static Reg16 r16_snap[Core::REG_CNT];
+    static Reg8 r8_snap[Core::REG_CNT * 2];
 
     std::cout << "\n\n";
-    for (int r = 0; r < R16::_sz; ++r) {
+    for (int r = 0; r < Core::REG_CNT; ++r) {
         if (r == R16::pc || r == R16::spf || r >= R16::a1) {
-            if (r16_snap[r] != cpu.s.r16[r]) {
+            if (r16_snap[r] != cpu.r16[r]) {
                 std::cout << R16_str[r] << ": ";
-                std::cout << print_u16(r16_snap[r]) << " --> " << print_u16(cpu.s.r16[r]) << ", ";
-                r16_snap[r] = cpu.s.r16[r];
+                std::cout << print_u16(r16_snap[r]) << " --> " << print_u16(cpu.r16[r]) << ", ";
+                r16_snap[r] = cpu.r16[r];
             }
         } else if (r <= R16::zpaf) {
             int r8 = r * 2;
@@ -114,26 +113,25 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
         }
     }
     std::cout << "\n";
-    */
-//}
+}
 
 
 void Dbg::step(System& sys, u16 until_pc)
 {
-    // reg_diff(sys.cpu); TODO
+    reg_diff(sys.cpu);
 
     print_status(sys.cpu, sys.mem);
     for (;;) {
         if (sys.tn == 0) {
             std::cout << "==========================================================";
-            if (sys.cpu.s.pc == until_pc) break;
+            if (sys.cpu.pc == until_pc) break;
         } else std::cout << "----------------------------------------------------------";
 
         getchar();
-        std::cout << std::dec << "C" << (int)sys.cn << " T" << (int)sys.tn << ": " << std::string(sys.cpu.mop());
+        std::cout << std::dec << "C" << (int)sys.cn << " T" << (int)sys.tn << ": " << std::string(*sys.cpu.mcp);
 
         sys.exec_cycle();
-        // reg_diff(sys.cpu); TODO
+        reg_diff(sys.cpu);
         print_status(sys.cpu, sys.mem);
 
         if (sys.cpu.halted()) { std::cout << "\n[HALTED]"; break; }

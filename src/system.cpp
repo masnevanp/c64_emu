@@ -173,7 +173,7 @@ const System::Address_space::PLA_Line System::Address_space::PLA[14] = {
           ram_r,    ram_r,    bas_r,    bas_r,    ram_r,    io_r,     kern_r,   kern_r } }},
 };
 
-const u8 System::Address_space::Mode_to_PLA_line[32] = {
+const u8 System::Address_space::Mode_to_PLA_idx[32] = {
     0,  0,  1,  2,  0, 11,  3,  4, 0,  8,  9,  5,  0, 11, 12,  6,
     7,  7,  7,  7,  7,  7,  7,  7, 0,  8,  9, 10,  0, 11, 12, 13,
 };
@@ -384,19 +384,19 @@ void System::C64::do_load() {
         auto sz = bin.size();
 
         // load addr (used if 2nd.addr == 0)
-        s.ram[0xc3] = cpu.s.x;
-        s.ram[0xc4] = cpu.s.y;
+        s.ram[0xc3] = cpu.x;
+        s.ram[0xc4] = cpu.y;
 
         u16 addr = (scnd_addr == 0)
-            ? cpu.s.y * 0x100 + cpu.s.x
+            ? cpu.y * 0x100 + cpu.x
             : bin[1] * 0x100 + bin[0];
 
         // 'load'
         for (u32 b = 2; b < sz; ++b) s.ram[addr++] = bin[b];
 
         // end pointer
-        s.ram[0xae] = cpu.s.x = addr;
-        s.ram[0xaf] = cpu.s.y = addr >> 8;
+        s.ram[0xae] = cpu.x = addr;
+        s.ram[0xaf] = cpu.y = addr >> 8;
     };
 
     auto resolve_disk_img_op = [&]() {
@@ -417,7 +417,7 @@ void System::C64::do_load() {
     auto bin = loader(get_filename(s.ram), resolve_disk_img_op());
 
     if (!bin || (*bin).size() == 1 || (*bin).size() == 2) {
-        cpu.s.pc = u16(0xf704); // jmp to 'file not found'
+        cpu.pc = 0xf704; // jmp to 'file not found'
     } else {
         // NOTE: File size 0 indicates that the loader operation was a success,
         // although no binary was returned (so you get the 'READY.', with no errors).
@@ -446,7 +446,7 @@ void System::C64::do_save() {
     std::string filename = get_filename(s.ram);
     if (filename.length() == 0) {
         // TODO: error_code enum(s)
-        cpu.s.a = 0x08; // missing filename
+        cpu.a = 0x08; // missing filename
         cpu.set(NMOS6502::Flag::C); // error
         return;
     }

@@ -947,10 +947,7 @@ public:
     void tick();
 
     //bool idle;
-
-    NMOS6502::Core::State cpu_state;
-
-    CPU cpu{cpu_state, cpu_trap};
+    CPU cpu{cpu_trap};
     IEC iec;
     Disk_ctrl dc;
     u8 ram[0x0800];

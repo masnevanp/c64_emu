@@ -1,15 +1,9 @@
 
 #include "nmos6502_mc.h"
-#include <vector>
-#include <map>
 
 
 using namespace NMOS6502;
 
-
-const std::string MC::RW_str[] = { "w", "r" };
-
-const std::string MC::PC_inc_str[] = { "0", "1" };
 
 const std::string MC::MOPC_str[] = { // TODO
     "", "", "", "", "", "", "", "",
@@ -22,297 +16,265 @@ const std::string MC::MOPC_str[] = { // TODO
     "", "", "", "", "", "", "", "",
 };
 
+const std::string MC::PC_inc_str[] = { ", ", ", inc(pc), " };
+
+const std::string MC::RW_str[] = { "w", "r" };
+
 
 namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
     using MC::MOP;
     using MC::MOPC;
     using MC::PC_inc;
     using MC::RW;
-    using NMOS6502::Ri16;
-    using NMOS6502::Ri8;
-
-    static const MOP _END{Ri16::ri16_none, Ri8::ri8_none, RW::none, 0, MOPC::_end};
+    using MC::MSOPC;
 
     namespace SB {
         static const MOP sb[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
     }
     namespace RM {
         static const MOP zp[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP imm[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::do_op    ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP abs[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP zp_x[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::r, PC_inc(0), MOPC::rm_zp_x  ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::rm_zp_x  ),
+            MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP zp_y[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::r, PC_inc(0), MOPC::rm_zp_y  ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::rm_zp_y  ),
+            MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP idx_ind[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::r, PC_inc(0), MOPC::rm_idx_ind),
-            MOP(Ri16::zpa,  Ri8::a1l,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::a1h,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::rm_idx_ind),
+            MOP(R16::zpaf, R8::a1l,  RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::a1h,  RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP abs_x[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::rm_x     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::rm_x     ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP abs_y[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::rm_y     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::rm_y     ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP ind_idx[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::a1l,  RW::r, PC_inc(0), MOPC::inc_zpa  ),
-            MOP(Ri16::zpa,  Ri8::a1h,  RW::r, PC_inc(0), MOPC::rm_y     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::a1l,  RW::r, PC_inc::n, MOPC::inc_zpa  ),
+            MOP(R16::zpaf, R8::a1h,  RW::r, PC_inc::n, MOPC::rm_y     ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
     }
     namespace ST {
         static const MOP zp[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::st_reg   ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::st_reg   ),
+            MOP(R16::zpaf, R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP abs[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::st_reg   ),
-            MOP(Ri16::a1,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::st_reg   ),
+            MOP(R16::a1,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP zp_x[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::r, PC_inc(0), MOPC::st_zp_x  ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::st_zp_x  ),
+            MOP(R16::zpaf, R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP zp_y[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::r, PC_inc(0), MOPC::st_zp_y  ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::st_zp_y  ),
+            MOP(R16::zpaf, R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP idx_ind[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::r, PC_inc(0), MOPC::st_idx_ind),
-            MOP(Ri16::zpa,  Ri8::a1l,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::a1h,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::st_idx_ind),
+            MOP(R16::zpaf, R8::a1l,  RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::a1h,  RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a1,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP abs_x[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::abs_x    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::a,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::abs_x    ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::a,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP abs_y[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::abs_y    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::a,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::abs_y    ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::a,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP ind_y[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::a1l,  RW::r, PC_inc(0), MOPC::inc_zpa  ),
-            MOP(Ri16::zpa,  Ri8::a1h,  RW::r, PC_inc(0), MOPC::abs_y    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::a,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::a1l,  RW::r, PC_inc::n, MOPC::inc_zpa  ),
+            MOP(R16::zpaf, R8::a1h,  RW::r, PC_inc::n, MOPC::abs_y    ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::a,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
     }
     namespace RMW {
         static const MOP zp[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::w, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::d,    RW::w, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::zpaf, R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP abs[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::w, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a1,   R8::d,    RW::w, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::a1,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP zp_x[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::r, PC_inc(0), MOPC::rm_zp_x  ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::w, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::rm_zp_x  ),
+            MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::d,    RW::w, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::zpaf, R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP abs_x[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::abs_x    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::abs_x    ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
     }
     namespace FC {
         static const MOP pha[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::pha      ),
-            MOP(Ri16::a1,   Ri8::a,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::pha      ),
+            MOP(R16::a1,   R8::a,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP php[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::php      ),
-            MOP(Ri16::a1,   Ri8::p,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::php      ),
+            MOP(R16::a1,   R8::p,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP pla[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::sp,   Ri8::d,    RW::r, PC_inc(0), MOPC::inc_sp   ),
-            MOP(Ri16::sp,   Ri8::a,    RW::r, PC_inc(0), MOPC::a_nz     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::spf,  R8::d,    RW::r, PC_inc::n, MOPC::inc_sp   ),
+            MOP(R16::spf,  R8::a,    RW::r, PC_inc::n, MOPC::a_nz     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP plp[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::sp,   Ri8::d,    RW::r, PC_inc(0), MOPC::inc_sp   ),
-            MOP(Ri16::sp,   Ri8::p,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::spf,  R8::d,    RW::r, PC_inc::n, MOPC::inc_sp   ),
+            MOP(R16::spf,  R8::p,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP jsr[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::sp,   Ri8::d,    RW::r, PC_inc(0), MOPC::jsr      ),
-            MOP(Ri16::a3,   Ri8::a2h,  RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a4,   Ri8::a2l,  RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::pch,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::spf,  R8::d,    RW::r, PC_inc::n, MOPC::jsr      ),
+            MOP(R16::a3,   R8::a2h,  RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a4,   R8::a2l,  RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::pch,  RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP bra[] = {
             // these entry MOPs evaluate the relevant branching condition,
             // and then jump to the main code below (even if branch not taken)
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::bpl      ),  // T1
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::bmi      ),  // T1
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::bvc      ),  // T1
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::bvs      ),  // T1
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::bcc      ),  // T1
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::bcs      ),  // T1
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::beq      ),  // T1
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::bne      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bpl      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bmi      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bvc      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bvs      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bcc      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bcs      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::beq      ),  // T1
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::bne      ),  // T1
             // NOTE: branch taken, no page crossing -> request has to come earlier
             //       http://visual6502.org/wiki/index.php?title=6502_State_Machine
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),  // T2 (no branch)
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::hold_ints),  // T2 (no pg.crs)
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),  // T3
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),  // T2 (pg.crs)
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),  // T3
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),  // T0
-            _END
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),  // T2 (no branch)
+            MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::hold_ints),  // T2 (no pg.crs)
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),  // T3
+            MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),  // T2 (pg.crs)
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),  // T3
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),  // T0
         };
         static const MOP brk[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::a1h,  RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a3,   Ri8::a1l,  RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a4,   Ri8::p,    RW::w, PC_inc(0), MOPC::brk      ),
-            MOP(Ri16::a2,   Ri8::pcl,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a3,   Ri8::pch,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch_brk),
-            _END
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::a1h,  RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a3,   R8::a1l,  RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a4,   R8::p,    RW::w, PC_inc::n, MOPC::brk      ),
+            MOP(R16::a2,   R8::pcl,  RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a3,   R8::pch,  RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch_brk),
         };
         static const MOP rti[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::sp,   Ri8::d,    RW::r, PC_inc(0), MOPC::rti      ),
-            MOP(Ri16::a1,   Ri8::p,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::pcl,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::sp,   Ri8::pch,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::spf,  R8::d,    RW::r, PC_inc::n, MOPC::rti      ),
+            MOP(R16::a1,   R8::p,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::pcl,  RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::spf,  R8::pch,  RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP jmp_abs[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(0), MOPC::jmp_abs  ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::n, MOPC::jmp_abs  ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP jmp_ind[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::pcl,  RW::r, PC_inc(0), MOPC::jmp_ind  ),
-            MOP(Ri16::a1,   Ri8::pch,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::a1,   R8::pcl,  RW::r, PC_inc::n, MOPC::jmp_ind  ),
+            MOP(R16::a1,   R8::pch,  RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP rts[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::sp,   Ri8::d,    RW::r, PC_inc(0), MOPC::rts      ),
-            MOP(Ri16::a2,   Ri8::pcl,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::sp,   Ri8::pch,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::spf,  R8::d,    RW::r, PC_inc::n, MOPC::rts      ),
+            MOP(R16::a2,   R8::pcl,  RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::spf,  R8::pch,  RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
     }
     namespace SB {
@@ -320,95 +282,85 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
             (http://visual6502.org/wiki/index.php?title=6502_Timing_of_Interrupt_Handling)
         */
         static const MOP sb_cli[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop         ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch_cli ),
-            _END
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop         ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch_cli ),
         };
         static const MOP sb_sei[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop         ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch_sei ),
-            _END
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::n, MOPC::nmop         ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch_sei ),
         };
     }
     namespace UD {
         static const MOP rmw_abs_y[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::abs_y    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::abs_y    ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP rmw_idx_ind[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::d,    RW::r, PC_inc(0), MOPC::rm_idx_ind),
-            MOP(Ri16::zpa,  Ri8::a1l,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::a1h,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::w, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::d,    RW::r, PC_inc::n, MOPC::rm_idx_ind),
+            MOP(R16::zpaf, R8::a1l,  RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::a1h,  RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a1,   R8::d,    RW::w, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::a1,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP rmw_ind_idx[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::a1l,  RW::r, PC_inc(0), MOPC::inc_zpa  ),
-            MOP(Ri16::zpa,  Ri8::a1h,  RW::r, PC_inc(0), MOPC::abs_y    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::a1l,  RW::r, PC_inc::n, MOPC::inc_zpa  ),
+            MOP(R16::zpaf, R8::a1h,  RW::r, PC_inc::n, MOPC::abs_y    ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP st_abs_x[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::abs_x    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::abs_x    ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP st_abs_y[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::abs_y    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::y, MOPC::abs_y    ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP st_ind_y[] = {
-            MOP(Ri16::pc,   Ri8::zpal, RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpa,  Ri8::a1l,  RW::r, PC_inc(0), MOPC::inc_zpa  ),
-            MOP(Ri16::zpa,  Ri8::a1h,  RW::r, PC_inc(0), MOPC::abs_y    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::zpa,  RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::zpaf, R8::a1l,  RW::r, PC_inc::n, MOPC::inc_zpa  ),
+            MOP(R16::zpaf, R8::a1h,  RW::r, PC_inc::n, MOPC::abs_y    ),
+            MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::do_op    ),
+            MOP(R16::a2,   R8::d,    RW::w, PC_inc::n, MOPC::nmop     ),
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
         static const MOP hlt[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(0), MOPC::nmop     ), // TODO:
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(0), MOPC::nmop     ), // correct addr
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(0), MOPC::sig_hlt  ), // for these
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(0), MOPC::hlt      ), // 4 cycles
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            _END
+            MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::nmop     ),
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::n, MOPC::nmop     ), // TODO:
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::n, MOPC::nmop     ), // correct addr
+            MOP(R16::pc,   R8::a1l,  RW::r, PC_inc::n, MOPC::sig_hlt  ), // for these
+            MOP(R16::pc,   R8::a1h,  RW::r, PC_inc::n, MOPC::hlt      ), // 4 cycles
+            MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch ),
         };
     }
 
     static const MOP reset[] = {
-        MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::nmop         ),
-        MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::nmop         ),
-        MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop         ),
-        MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop         ),
-        MOP(Ri16::a3,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop         ),
-        MOP(Ri16::a4,   Ri8::pcl,  RW::r, PC_inc(0), MOPC::reset        ),
-        MOP(Ri16::a1,   Ri8::pch,  RW::r, PC_inc(0), MOPC::nmop         ),
-        MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch_brk ),
-        _END
+        MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::nmop         ),
+        MOP(R16::pc,   R8::d,    RW::r, PC_inc::y, MOPC::nmop         ),
+        MOP(R16::a1,   R8::d,    RW::r, PC_inc::n, MOPC::nmop         ),
+        MOP(R16::a2,   R8::d,    RW::r, PC_inc::n, MOPC::nmop         ),
+        MOP(R16::a3,   R8::d,    RW::r, PC_inc::n, MOPC::nmop         ),
+        MOP(R16::a4,   R8::pcl,  RW::r, PC_inc::n, MOPC::reset        ),
+        MOP(R16::a1,   R8::pch,  RW::r, PC_inc::n, MOPC::nmop         ),
+        MOP(R16::pc,   R8::ir,   RW::r, PC_inc::y, MOPC::dispatch_brk ),
     };
 
     // instruction (opc) to micro-code (mc) mapping
@@ -518,36 +470,8 @@ namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
         MSOPC::sb_sed, MSOPC::rm_sbc, MSOPC::nop, MSOPC::ud_isc, MSOPC::nop, MSOPC::rm_sbc, MSOPC::rmw_inc, MSOPC::ud_isc,
     };*/
 
-
-    MOP* code;
-    int opc_addr[OPC::_last + 1];
-
-    bool init_code_and_opc() {
-        std::vector<MOP> opc_mc;
-        std::map<const MOP*, int> opc_mc_addr;
-
-        for (int o = 0x00; o <= OPC::reset; ++o) {
-            const bool opc_mc_missing = opc_mc_addr.count(OPC_MC[o]) == 0;
-            if (opc_mc_missing) {
-                opc_mc_addr[OPC_MC[o]] = opc_mc.size();
-                for (const MOP* m = OPC_MC[o]; (*m).mopc != _END.mopc; ++m) {
-                    opc_mc.push_back(*m);
-                }
-            }
-
-            opc_addr[o] = opc_mc_addr[OPC_MC[o]];
-        }
-
-        code = new MOP[opc_mc.size()];
-        std::copy(opc_mc.begin(), opc_mc.end(), code);
-
-        return true;
-    }
-
-    auto _ = init_code_and_opc();
-
 } // namespace _MC
 
 
-const MC::MOP* MC::code = _MC::code;
-const int* MC::opc_addr = _MC::opc_addr;
+const MC::MOP** MC::OPC_MC = _MC::OPC_MC;
+//const u8* MC::OPC_MSOPC = _MC::OPC_MSOPC;

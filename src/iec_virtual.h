@@ -301,36 +301,36 @@ bool on_trap(System::CPU& cpu, u8* ram, Controller& iec_ctrl) {
     // TODO: verify that the pc is what is should be (to dodge faulty traps)?
 
     IO_ST status = IO_ST::ok;
-    u8 iec_routine = cpu.s.d;
+    u8 iec_routine = cpu.d;
     switch (iec_routine) {
         case IEC_routine::untlk:
-            cpu.s.a = IEC_command::untalk;
-            iec_ctrl.talk(cpu.s.a);
+            cpu.a = IEC_command::untalk;
+            iec_ctrl.talk(cpu.a);
             break;
         case IEC_routine::talk:
-            cpu.s.a |= IEC_command::talk;
-            iec_ctrl.talk(cpu.s.a);
+            cpu.a |= IEC_command::talk;
+            iec_ctrl.talk(cpu.a);
             break;
         case IEC_routine::unlsn:
-            cpu.s.a = IEC_command::unlisten;
-            iec_ctrl.listen(cpu.s.a);
+            cpu.a = IEC_command::unlisten;
+            iec_ctrl.listen(cpu.a);
             break;
         case IEC_routine::listen:
-            cpu.s.a |= IEC_command::listen;
-            iec_ctrl.listen(cpu.s.a);
+            cpu.a |= IEC_command::listen;
+            iec_ctrl.listen(cpu.a);
             break;
         case IEC_routine::tksa:
-            status = iec_ctrl.talk_s(cpu.s.a);
+            status = iec_ctrl.talk_s(cpu.a);
             cpu.clr(NMOS6502::Flag::N);
             break;
         case IEC_routine::second:
-            status = iec_ctrl.listen_s(cpu.s.a);
+            status = iec_ctrl.listen_s(cpu.a);
             break;
         case IEC_routine::acptr:
-            status = iec_ctrl.read(cpu.s.a);
+            status = iec_ctrl.read(cpu.a);
             break;
         case IEC_routine::ciout:
-            status = iec_ctrl.write(cpu.s.a);
+            status = iec_ctrl.write(cpu.a);
             break;
         default:
             std::cout << "\nUnknown ICE routine: " << (int)iec_routine;
@@ -340,7 +340,7 @@ bool on_trap(System::CPU& cpu, u8* ram, Controller& iec_ctrl) {
     cpu.clr(NMOS6502::Flag::C);
     ram[0x90] |= status; // TODO: should it be cleared in some cases??
 
-    cpu.s.pc = 0xedee;  // jump to a 'rts'
+    cpu.pc = 0xedee;  // jump to a 'rts'
 
     return true;
 }
