@@ -24,10 +24,10 @@ public:
     Reg16 a3;
     Reg16 a4;
 
-    Reg8& pcl{*((Reg8*)&pc)}; Reg8& pch{*(((Reg8*)&pc) + 1)};
-    Reg8& sp{*((Reg8*)&spf)};
-    Reg8& zpa{*((Reg8*)&zpaf)};
-    Reg8& a1l{*((Reg8*)&a1)}; Reg8& a1h{*(((Reg8*)&a1) + 1)};
+    Reg8& pcl{r8(Ri8::pcl)}; Reg8& pch{r8(Ri8::pch)};
+    Reg8& sp{r8(Ri8::sp)};
+    Reg8& zpa{r8(Ri8::zpa)};
+    Reg8& a1l{r8(Ri8::a1l)}; Reg8& a1h{r8(Ri8::a1h)};
 
     const MC::MOP* mcp; // micro-code pointer ('mc pc')
 
