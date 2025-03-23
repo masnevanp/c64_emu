@@ -2,11 +2,7 @@
 #include "nmos6502_core.h"
 
 
-NMOS6502::Core::Core(Sig& sig_halt_) :
-    r16(&pc), r8((Reg8*)&pc),
-    pcl(r8[Ri8::pcl]), pch(r8[Ri8::pch]), sp(r8[Ri8::sp]),
-    zpa(r8[Ri8::zpa]), a1l(r8[Ri8::a1l]), a1h(r8[Ri8::a1h]),
-    sig_halt(sig_halt_)
+NMOS6502::Core::Core(Sig& sig_halt_) : sig_halt(sig_halt_)
 {
     reset_cold();
 }
@@ -24,7 +20,7 @@ void NMOS6502::Core::reset_warm() {
 
 void NMOS6502::Core::reset_cold() {
     zpaf = 0x0000;
-    r8[Ri8::sph] = 0x01;
+    r8(Ri8::sph) = 0x01;
     reset_warm();
 }
 

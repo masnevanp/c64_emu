@@ -98,17 +98,17 @@ void Dbg::reg_diff(const Core& cpu) { // TODO: support for multiple cores
     std::cout << "\n\n";
     for (int r = 0; r < Ri16::_cnt16; ++r) {
         if (r == Ri16::pc || r == Ri16::spf || r >= Ri16::a1) {
-            if (r16_snap[r] != cpu.r16[r]) {
+            if (r16_snap[r] != cpu.r16((Ri16)r)) {
                 std::cout << Ri16_str[r] << ": ";
-                std::cout << print_u16(r16_snap[r]) << " --> " << print_u16(cpu.r16[r]) << ", ";
-                r16_snap[r] = cpu.r16[r];
+                std::cout << print_u16(r16_snap[r]) << " --> " << print_u16(cpu.r16((Ri16)r)) << ", ";
+                r16_snap[r] = cpu.r16((Ri16)r);
             }
         } else if (r <= Ri16::zpaf) {
             int r8 = r * 2;
-            if (r8_snap[r8] != cpu.r8[r8]) {
+            if (r8_snap[r8] != cpu.r8((Ri8)r8)) {
                 std::cout << Ri8_str[r8] << ": ";
-                std::cout << print_u8(r8_snap[r8]) << " --> " << print_u8(cpu.r8[r8]) << ", ";
-                r8_snap[r8] = cpu.r8[r8];
+                std::cout << print_u8(r8_snap[r8]) << " --> " << print_u8(cpu.r8((Ri8)r8)) << ", ";
+                r8_snap[r8] = cpu.r8((Ri8)r8);
             }
         }
     }
