@@ -28,6 +28,12 @@ public:
     void reset_cold();
 
     bool halted() const { return mcp->mopc == MC::hlt; }
+    bool resume() {
+        if (halted()) {
+            ++mcp;
+            return true;
+        } else return false;
+    }
 
     void set(Flag f, bool set = true) { p = set ? p | f : p & ~f; }
     void set_nz(const u8& res) { set(Flag::N, res & 0x80); set(Flag::Z, res == 0x00); }
@@ -72,15 +78,11 @@ public:
 
         pc += mcp->pc_inc;
 
-        const auto mop = (mcp++)->mopc;
-        if(mop != NMOS6502::MC::nmop) exec(mop);
+        const auto mopc = (mcp++)->mopc;
+        if(mopc != NMOS6502::MC::nmop) exec(mopc);
     }
 
 private:
-    static constexpr u8 OPC_brk = 0x00;
-    static constexpr u8 OPC_bne = 0xd0;
-    static constexpr u8 NMI_taken = 0x80;
-
     void exec(const u8 mop);
 
     // carry & borrow
@@ -138,24 +140,6 @@ private:
 
     static constexpr u8 NMI_BIT = 0b00000010;
     static constexpr u8 IRQ_BIT = 0b00000100;
-
-    struct BrkCtrl {
-        u16 pc_t0;  // pc upd @t0
-        u16 pc_t1;  // pc upd @t1
-        u16 vec;    // int.vec. addr.
-        u8  p_mask; // for reseting b (if not a sw brk)
-    };
-    static constexpr BrkCtrl brk_ctrl[8] = {
-        { 0, 0, 0,        0,           }, // unused
-        { 0, 1, Vec::irq, Flag::all,   }, // sw brk
-        { 1, 0, Vec::nmi, (u8)~Flag::B }, // nmi
-        { 1, 0, Vec::nmi, (u8)~Flag::B }, // nmi* & sw brk
-        { 1, 0, Vec::irq, (u8)~Flag::B }, // irq
-        { 1, 0, Vec::irq, (u8)~Flag::B }, // irq* & sw brk
-        { 1, 0, Vec::nmi, (u8)~Flag::B }, // irq & nmi*
-        { 1, 0, Vec::nmi, (u8)~Flag::B }, // irq & nmi* & sw brk
-    };
-
 };
 
 

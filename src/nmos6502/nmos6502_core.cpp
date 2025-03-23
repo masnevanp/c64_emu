@@ -4,10 +4,10 @@
 
 NMOS6502::Core::Core(Sig& sig_halt_) :
     r8((Reg8*)r16),
-    pc(r16[R16::pc]), spf(r16[R16::spf]), zpaf(r16[R16::zpaf]),
-    a1(r16[R16::a1]), a2(r16[R16::a2]), a3(r16[R16::a3]), a4(r16[R16::a4]),
-    pcl(r8[R8::pcl]), pch(r8[R8::pch]), sp(r8[R8::sp]), p(r8[R8::p]), a(r8[R8::a]), x(r8[R8::x]), y(r8[R8::y]),
-    d(r8[R8::d]), ir(r8[R8::ir]), zpa(r8[R8::zpa]), a1l(r8[R8::a1l]), a1h(r8[R8::a1h]),
+    pc(r16[Ri16::pc]), spf(r16[Ri16::spf]), zpaf(r16[Ri16::zpaf]),
+    a1(r16[Ri16::a1]), a2(r16[Ri16::a2]), a3(r16[Ri16::a3]), a4(r16[Ri16::a4]),
+    pcl(r8[Ri8::pcl]), pch(r8[Ri8::pch]), sp(r8[Ri8::sp]), p(r8[Ri8::p]), a(r8[Ri8::a]), x(r8[Ri8::x]), y(r8[Ri8::y]),
+    d(r8[Ri8::d]), ir(r8[Ri8::ir]), zpa(r8[Ri8::zpa]), a1l(r8[Ri8::a1l]), a1h(r8[Ri8::a1h]),
     sig_halt(sig_halt_)
 {
     reset_cold();
@@ -18,7 +18,7 @@ void NMOS6502::Core::reset_warm() {
     brk_src = 0x00;
     nmi_req = irq_req = 0x00;
     nmi_bit = irq_bit = 0x00;
-    mcp = MC::OPC_MC[0x100];
+    mcp = MC::OPC_MC[OPC::reset];
     a1 = spf; --sp; a2 = spf; --sp; a3 = spf; --sp;
     a4 = Vec::rst;
 }
@@ -26,15 +26,34 @@ void NMOS6502::Core::reset_warm() {
 
 void NMOS6502::Core::reset_cold() {
     zpaf = 0x0000;
-    r8[R8::sph] = 0x01;
+    r8[Ri8::sph] = 0x01;
     reset_warm();
 }
 
 
-void NMOS6502::Core::exec(const u8 mop) {
+void NMOS6502::Core::exec(const u8 mopc) {
     using namespace NMOS6502::MC;
 
-    switch (mop) {
+    struct BrkCtrl {
+        const u16 pc_t0;  // pc upd @t0
+        const u16 pc_t1;  // pc upd @t1
+        const u16 vec;    // int.vec. addr.
+        const u8  p_mask; // for reseting b (if not a sw brk)
+    };
+    static constexpr BrkCtrl brk_ctrl[8] = {
+        { 0, 0, 0,        0,           }, // unused
+        { 0, 1, Vec::irq, Flag::all,   }, // sw brk
+        { 1, 0, Vec::nmi, (u8)~Flag::B }, // nmi
+        { 1, 0, Vec::nmi, (u8)~Flag::B }, // nmi* & sw brk
+        { 1, 0, Vec::irq, (u8)~Flag::B }, // irq
+        { 1, 0, Vec::irq, (u8)~Flag::B }, // irq* & sw brk
+        { 1, 0, Vec::nmi, (u8)~Flag::B }, // irq & nmi*
+        { 1, 0, Vec::nmi, (u8)~Flag::B }, // irq & nmi* & sw brk
+    };
+
+    static constexpr u8 NMI_taken = 0x80;
+
+    switch (mopc) {
         case abs_x: a2 = a1 + x; a1l += x; return;
         case inc_zpa: ++zpa; return;
         case abs_y: a2 = a1 + y; a1l += y; return;
@@ -134,10 +153,10 @@ void NMOS6502::Core::exec(const u8 mop) {
         case bcc: if (is_set(Flag::C)) { mcp += 3; /*T2 (no bra)*/ return; } else goto bra_take;
         case bcs: if (is_clr(Flag::C)) { mcp += 2; /*T2 (no bra)*/ return; } else goto bra_take;
         case beq: if (is_clr(Flag::Z)) { mcp += 1; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bne: if (is_set(Flag::Z)) /*T2 (no bra)*/ return;
+        case MOPC::bne: if (is_set(Flag::Z)) /*T2 (no bra)*/ return;
             // fall through
         bra_take:
-            mcp = MC::OPC_MC[OPC_bne] + 2; // T2 (no page cross)
+            mcp = MC::OPC_MC[OPC::bne] + 2; // T2 (no page cross)
             a2 = pc;
             pc += (i8)d;
             if ((a2 ^ pc) & 0xff00) {
@@ -157,7 +176,7 @@ void NMOS6502::Core::exec(const u8 mop) {
         case rti: ++sp; a1 = spf; // fall through
         case rts: ++sp; a2 = spf; // fall through
         case inc_sp: ++sp; return;
-        case brk:
+        case MOPC::brk:
             // brk_src |= (irq_bit & ~p); // no effect (the same vector used anyway)
             if (nmi_req & 0x3) { // Potential hijacking by nmi
                 brk_src |= NMI_BIT;
@@ -192,7 +211,7 @@ void NMOS6502::Core::exec(const u8 mop) {
             }
             // fall through
         case dispatch_brk: // hw-ints not taken on the instruction following a brk (sw or hw)
-            brk_src |= (ir == OPC_brk); // bit 0
+            brk_src |= (ir == OPC::brk); // bit 0
 
             if (brk_src) {
                 ir = 0x00;
@@ -209,7 +228,7 @@ void NMOS6502::Core::exec(const u8 mop) {
             return;
         case sig_hlt: sig_halt(); return;
         case hlt: --mcp; return; // stuck
-        case reset: a1 = Vec::rst + 0x0001; set(Flag::I); return;
+        case MOPC::reset: a1 = Vec::rst + 0x0001; set(Flag::I); return;
     }
 }
 

@@ -6,7 +6,11 @@
 
 namespace State {
 
-// TODO: optimize data layouts (hot data, proper alignment, etc...)
+// TODO: - optimize data layouts (hot data, proper alignment, etc...)
+//       - for better data locality, move all the data here...?
+//         (even things that strictly speaking don't need to be here)?
+//         (currently only data needed for 'save/load -state' included)
+//       - collect all cycle-level flags to a single variable (u32?)?
 
 struct VIC_II {
     static constexpr int REG_COUNT = 64;

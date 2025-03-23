@@ -78,9 +78,9 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     std::cout << " d: " << print_u8(cpu.d);
     std::cout << " ir: " << print_u8(cpu.ir);
     std::cout << "\n";
-    std::cout << "\n==> mar: " << print_u16(cpu.mar()) << " (" << R16_str[cpu.mcp->ar] << ")";
+    std::cout << "\n==> mar: " << print_u16(cpu.mar()) << " (" << Ri16_str[cpu.mcp->ar] << ")";
     std::cout << "   mdr: " << (cpu.mrw() == MC::RW::w ? print_u8(cpu.mdr()) : "??");
-    std::cout << " (" << R8_str[cpu.mcp->dr] << ")";
+    std::cout << " (" << Ri8_str[cpu.mcp->dr] << ")";
     std::cout << "   r/w: " << MC::RW_str[cpu.mrw()];
     std::cout << "\n";
     /*
@@ -97,16 +97,16 @@ void Dbg::reg_diff(const Core& cpu) { // TODO: support for multiple cores
 
     std::cout << "\n\n";
     for (int r = 0; r < Core::REG_CNT; ++r) {
-        if (r == R16::pc || r == R16::spf || r >= R16::a1) {
+        if (r == Ri16::pc || r == Ri16::spf || r >= Ri16::a1) {
             if (r16_snap[r] != cpu.r16[r]) {
-                std::cout << R16_str[r] << ": ";
+                std::cout << Ri16_str[r] << ": ";
                 std::cout << print_u16(r16_snap[r]) << " --> " << print_u16(cpu.r16[r]) << ", ";
                 r16_snap[r] = cpu.r16[r];
             }
-        } else if (r <= R16::zpaf) {
+        } else if (r <= Ri16::zpaf) {
             int r8 = r * 2;
             if (r8_snap[r8] != cpu.r8[r8]) {
-                std::cout << R8_str[r8] << ": ";
+                std::cout << Ri8_str[r8] << ": ";
                 std::cout << print_u8(r8_snap[r8]) << " --> " << print_u8(cpu.r8[r8]) << ", ";
                 r8_snap[r8] = cpu.r8[r8];
             }
