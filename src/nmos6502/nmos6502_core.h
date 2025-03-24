@@ -64,27 +64,27 @@ public:
 
     void set_nmi(bool act = true) {
         if (act) {
-            if (nmi_req == 0x00) nmi_req = 0x01;
+            if (nmi_timer == 0x00) nmi_timer = 0x01;
         } else {
-            if (nmi_req == 0x02) nmi_bit = NMI_BIT;
-            nmi_req = 0x00;
+            if (nmi_timer == 0x02) nmi_bit = NMI_BIT;
+            nmi_timer = 0x00;
         }
     }
 
     void set_irq(bool act = true) {
-        if (act) { irq_req |= 0x01; }
-        else irq_req = irq_bit = 0x00;
+        if (act) { irq_timer |= 0b1; }
+        else irq_timer = irq_bit = 0x00;
     }
 
     void tick() {
-        if (nmi_req == 0x01) nmi_req = 0x02;
-        else if (nmi_req == 0x02) {
+        if (nmi_timer == 0x01) nmi_timer = 0x02;
+        else if (nmi_timer == 0x02) {
             nmi_bit = NMI_BIT;
-            nmi_req = 0x03;
+            nmi_timer = 0x03;
         }
 
-        if (irq_req & 0x02) irq_bit = IRQ_BIT;
-        irq_req <<= 1;
+        if (irq_timer & 0b10) irq_bit = IRQ_BIT;
+        irq_timer <<= 1;
 
         pc += mcp->pc_inc;
 
@@ -141,8 +141,8 @@ private:
 
     Sig& sig_halt;
 
-    u8 nmi_req;
-    u8 irq_req;
+    u8 nmi_timer;
+    u8 irq_timer;
 
     u8 nmi_bit; // bit 1 (set --> active)
     u8 irq_bit; // bit 2 (set --> active)

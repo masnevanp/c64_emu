@@ -10,7 +10,7 @@ NMOS6502::Core::Core(Sig& sig_halt_) : sig_halt(sig_halt_)
 
 void NMOS6502::Core::reset_warm() {
     brk_src = 0x00;
-    nmi_req = irq_req = 0x00;
+    nmi_timer = irq_timer = 0x00;
     nmi_bit = irq_bit = 0x00;
     mcp = MC::OPC_MC[OPC::reset];
     a1 = spf; --sp; a2 = spf; --sp; a3 = spf; --sp;
@@ -45,7 +45,7 @@ void NMOS6502::Core::exec(const u8 mopc) {
         { 1, 0, Vec::nmi, (u8)~Flag::B }, // irq & nmi* & sw brk
     };
 
-    static constexpr u8 NMI_taken = 0x80;
+    static constexpr u8 nmi_timer_expired = 0b10000000;
 
     switch (mopc) {
         case abs_x: a2 = a1 + x; a1l += x; return;
@@ -160,8 +160,8 @@ void NMOS6502::Core::exec(const u8 mopc) {
             }
             return;
         case hold_ints:
-            if (nmi_req == 0x02) nmi_req = 0x01;
-            if (irq_req && (irq_req < 0x04)) irq_req = 0x01;
+            if (nmi_timer == 0x02) nmi_timer = 0x01;
+            if (irq_timer && (irq_timer < 0b100)) irq_timer = 0b1;
             return;
         case php: p |= (Flag::B | Flag::u); // fall through
         case pha: a1 = spf; --sp; return;
@@ -172,9 +172,9 @@ void NMOS6502::Core::exec(const u8 mopc) {
         case inc_sp: ++sp; return;
         case MOPC::brk:
             // brk_src |= (irq_bit & ~p); // no effect (the same vector used anyway)
-            if (nmi_req & 0x3) { // Potential hijacking by nmi
+            if (nmi_timer & 0b11) { // Potential hijacking by nmi
                 brk_src |= NMI_BIT;
-                nmi_req = NMI_taken;
+                nmi_timer = nmi_timer_expired;
             }
             a2 = brk_ctrl[brk_src].vec;
             a3 = a2 + 0x0001;
@@ -201,7 +201,7 @@ void NMOS6502::Core::exec(const u8 mopc) {
             if (nmi_bit) {
                 brk_src |= nmi_bit;      // bit 1
                 nmi_bit = 0x00;
-                if (nmi_req) nmi_req = NMI_taken;
+                if (nmi_timer) nmi_timer = nmi_timer_expired;
             }
             // fall through
         case dispatch_brk: // hw-ints not taken on the instruction following a brk (sw or hw)
