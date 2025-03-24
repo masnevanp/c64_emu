@@ -10,24 +10,24 @@ namespace NMOS6502 {
 
 struct Core {
 public:
-    const Reg16& r16(Ri16 ri) const { return (&pc)[ri]; }
-    Reg8& r8(Ri8 ri) const { return ((Reg8*)(&pc))[ri]; }
+    const Reg16& r16(Ri16 ri) const { return (&zpaf)[ri]; }
+    Reg8& r8(Ri8 ri) const { return ((Reg8*)(&zpaf))[ri]; }
 
+    Reg16 zpaf;
     Reg16 pc;
+    Reg8 d; Reg8 ir;
+    Reg16 a1;
+    Reg16 a2;
     Reg16 spf;
     Reg8 p; Reg8 a;
     Reg8 x; Reg8 y;
-    Reg8 d; Reg8 ir;
-    Reg16 zpaf;
-    Reg16 a1;
-    Reg16 a2;
     Reg16 a3;
     Reg16 a4;
 
-    Reg8& pcl{r8(Ri8::pcl)}; Reg8& pch{r8(Ri8::pch)};
-    Reg8& sp{r8(Ri8::sp)};
     Reg8& zpa{r8(Ri8::zpa)};
+    Reg8& pcl{r8(Ri8::pcl)}; Reg8& pch{r8(Ri8::pch)};
     Reg8& a1l{r8(Ri8::a1l)}; Reg8& a1h{r8(Ri8::a1h)};
+    Reg8& sp{r8(Ri8::sp)};
 
     const MC::MOP* mcp; // micro-code pointer ('mc pc')
 

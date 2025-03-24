@@ -3,10 +3,10 @@
 
 
 const std::string NMOS6502::Ri16_str[] = {
-    "pc", "spf", "a_p", "y_x", "ir_d", "zpaf", "a1", "a2", "a3", "a4" // TODO: big-endian versions
+    "zpaf", "pc", "d_ir", "a1", "a2", "spf", "p_a", "y_x", "a3", "a4" // TODO: big-endian versions
 };
 
 const std::string NMOS6502::Ri8_str[] = {
-    "pcl", "pch", "sp", "sph", "p", "a", "x", "y",
-    "d", "ir", "zpa", "zpah", "a1l", "a1h", "a2l", "a2h"
+    "zpa", "pcl", "pch", "d", "ir", "a1l", "a1h", "a2l", "a2h",
+    "sp", "sph", "p", "a", "x", "y",
 };
