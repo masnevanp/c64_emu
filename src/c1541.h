@@ -1003,7 +1003,7 @@ private:
 
     u8 irq_state;
     void check_irq() {
-        u8 irq_state_now = (iec.irq.r_ifr() | dc.irq.r_ifr()) & VIA::IRQ::Src::any;
+        const u8 irq_state_now = (iec.irq.r_ifr() | dc.irq.r_ifr()) & VIA::IRQ::Src::any;
         if (irq_state != irq_state_now) {
             irq_state = irq_state_now;
             cpu.set_irq(irq_state);

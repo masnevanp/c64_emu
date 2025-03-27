@@ -181,7 +181,7 @@ private:
             if (s.icr & s.mask) {
                 s.icr |= ICR_R::ir;
                 int_sig.set(int_id);
-            } else {
+            } else if (int_sig.is_set(int_id)) {
                 int_sig.clr(int_id);
             }
 

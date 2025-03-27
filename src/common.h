@@ -239,6 +239,8 @@ public:
     void set(Src s) { state |= s; }
     void clr(Src s) { state &= ~s; }
 
+    bool is_set(Src s) const { return state & s; }
+
 private:
     u8& state;
 };

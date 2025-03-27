@@ -10,6 +10,8 @@ namespace NMOS6502 {
 
 struct Core {
 public:
+    Core(Sig& sig_halt_);
+
     const Reg16& r16(Ri16 ri) const { return (&zpaf)[ri]; }
     Reg8& r8(Ri8 ri) const { return ((Reg8*)(&zpaf))[ri]; }
 
@@ -30,9 +32,6 @@ public:
     Reg8& sp{r8(Ri8::sp)};
 
     const MC::MOP* mcp; // micro-code pointer ('mc pc')
-
-
-    Core(Sig& sig_halt_);
 
     void reset_warm();
     void reset_cold();
