@@ -9,9 +9,9 @@ NMOS6502::Core::Core(Sig& sig_halt_) : sig_halt(sig_halt_)
 
 
 void NMOS6502::Core::reset_warm() {
-    brk_src = 0x00;
+    brk_srcs = 0x00;
     nmi_timer = irq_timer = 0x00;
-    nmi_bit = irq_bit = 0x00;
+    nmi_act = irq_act = false;
     mcp = MC::OPC_MC[OPC::reset];
     a1 = spf; --sp; a2 = spf; --sp; a3 = spf; --sp;
     a4 = Vec::rst;
@@ -25,15 +25,14 @@ void NMOS6502::Core::reset_cold() {
 }
 
 
-void NMOS6502::Core::exec(const u8 mopc) {
-    using namespace NMOS6502::MC;
-
+namespace NMOS6502 {
     struct BrkCtrl {
         const u16 pc_t0;  // pc upd @t0
         const u16 pc_t1;  // pc upd @t1
         const u16 vec;    // int.vec. addr.
         const u8  p_mask; // for reseting b (if not a sw brk)
     };
+
     static constexpr BrkCtrl brk_ctrl[8] = {
         { 0, 0, 0,        0,           }, // unused
         { 0, 1, Vec::irq, Flag::all,   }, // sw brk
@@ -44,8 +43,18 @@ void NMOS6502::Core::exec(const u8 mopc) {
         { 1, 0, Vec::nmi, (u8)~Flag::B }, // irq & nmi*
         { 1, 0, Vec::nmi, (u8)~Flag::B }, // irq & nmi* & sw brk
     };
+}
 
-    static constexpr u8 nmi_timer_expired = 0b10000000;
+void NMOS6502::Core::exec(const u8 mopc) {
+    using namespace NMOS6502::MC;
+
+    enum Brk_src { sw = 0b001, nmi = 0b010, irq = 0b100, };
+
+    static constexpr u8 nmi_timer_handled = 0b10000000;
+
+    const auto check_irq = [&]() {
+        if (irq_act && is_clr(Flag::I)) brk_srcs |= Brk_src::irq;
+    };
 
     switch (mopc) {
         case abs_x: a2 = a1 + x; a1l += x; return;
@@ -161,7 +170,8 @@ void NMOS6502::Core::exec(const u8 mopc) {
             return;
         case hold_ints:
             if (nmi_timer == 0x02) nmi_timer = 0x01;
-            if (irq_timer && (irq_timer < 0b100)) irq_timer = 0b1;
+            //if (irq_timer && (irq_timer < 0b100)) irq_timer = 0b1;
+            if (irq_timer == 0b10) irq_timer = 0b01;
             return;
         case php: p |= (Flag::B | Flag::u); // fall through
         case pha: a1 = spf; --sp; return;
@@ -171,22 +181,22 @@ void NMOS6502::Core::exec(const u8 mopc) {
         case rts: ++sp; a2 = spf; // fall through
         case inc_sp: ++sp; return;
         case MOPC::brk:
-            // brk_src |= (irq_bit & ~p); // no effect (the same vector used anyway)
+            // brk_srcs |= (irq_bit & ~p); // no effect (the same vector used anyway)
             if (nmi_timer & 0b11) { // Potential hijacking by nmi
-                brk_src |= NMI_BIT;
-                nmi_timer = nmi_timer_expired;
+                brk_srcs |= Brk_src::nmi;
+                nmi_timer = nmi_timer_handled;
             }
-            a2 = brk_ctrl[brk_src].vec;
+            a2 = brk_ctrl[brk_srcs].vec;
             a3 = a2 + 0x0001;
-            brk_src = 0x00;
+            brk_srcs = 0x00;
             set(Flag::I);
             return;
         case dispatch_cli: // post cli dispatch
-            brk_src |= (irq_bit & ~p);       // bit 2
+            check_irq();
             clr(Flag::I);
             goto dispatch_post_cli_sei;
         case dispatch_sei: // post sei dispatch
-            brk_src |= (irq_bit & ~p);       // bit 2
+            check_irq();
             set(Flag::I);
             goto dispatch_post_cli_sei;
         case dispatch: // 'normal' T0 case (all interrupts taken normally)
@@ -196,22 +206,22 @@ void NMOS6502::Core::exec(const u8 mopc) {
                - T0&T1 PC, and pushed b-flag according to the former (lower prio)
                - vector address according to the latter (higher prio)
             */
-            brk_src |= (irq_bit & ~p);   // bit 2
+            check_irq();
         dispatch_post_cli_sei: // irq has been taken based on 'old' i-flag value (still can hijack a sw brk!)
-            if (nmi_bit) {
-                brk_src |= nmi_bit;      // bit 1
-                nmi_bit = 0x00;
-                if (nmi_timer) nmi_timer = nmi_timer_expired;
+            if (nmi_act) {
+                brk_srcs |= Brk_src::nmi;
+                nmi_act = false;
+                if (nmi_timer) nmi_timer = nmi_timer_handled;
             }
             // fall through
         case dispatch_brk: // hw-ints not taken on the instruction following a brk (sw or hw)
-            brk_src |= (ir == OPC::brk); // bit 0
+            if (ir == OPC::brk) brk_srcs |= Brk_src::sw;
 
-            if (brk_src) {
-                ir = 0x00;
-                p = (p | (Flag::B | Flag::u)) & brk_ctrl[brk_src].p_mask;
-                pc -= brk_ctrl[brk_src].pc_t0;
-                a1 = pc + brk_ctrl[brk_src].pc_t1;
+            if (brk_srcs) {
+                ir = OPC::brk;
+                p = (p | (Flag::B | Flag::u)) & brk_ctrl[brk_srcs].p_mask;
+                pc -= brk_ctrl[brk_srcs].pc_t0;
+                a1 = pc + brk_ctrl[brk_srcs].pc_t1;
                 a2 = spf; --sp;
                 a3 = spf; --sp;
                 a4 = spf; --sp;

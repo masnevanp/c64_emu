@@ -65,24 +65,24 @@ public:
         if (act) {
             if (nmi_timer == 0x00) nmi_timer = 0x01;
         } else {
-            if (nmi_timer == 0x02) nmi_bit = NMI_BIT;
+            if (nmi_timer == 0x02) nmi_act = true;
             nmi_timer = 0x00;
         }
     }
 
     void set_irq(bool act = true) {
         if (act) { irq_timer |= 0b1; }
-        else irq_timer = irq_bit = 0x00;
+        else irq_timer = irq_act = 0x00;
     }
 
     void tick() {
         if (nmi_timer == 0x01) nmi_timer = 0x02;
         else if (nmi_timer == 0x02) {
-            nmi_bit = NMI_BIT;
+            nmi_act = true;
             nmi_timer = 0x03;
         }
 
-        if (irq_timer & 0b10) irq_bit = IRQ_BIT;
+        if (irq_timer & 0b10) irq_act = true;
         irq_timer <<= 1;
 
         pc += mcp->pc_inc;
@@ -140,15 +140,12 @@ private:
 
     Sig& sig_halt;
 
+    u8 nmi_act;
     u8 nmi_timer;
+    u8 irq_act;
     u8 irq_timer;
 
-    u8 nmi_bit; // bit 1 (set --> active)
-    u8 irq_bit; // bit 2 (set --> active)
-    u8 brk_src; // bitmap (b0: sw, b1: nmi, b2: irq)
-
-    static constexpr u8 NMI_BIT = 0b00000010;
-    static constexpr u8 IRQ_BIT = 0b00000100;
+    u8 brk_srcs;
 };
 
 
