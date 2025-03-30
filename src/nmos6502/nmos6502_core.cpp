@@ -12,7 +12,7 @@ void NMOS6502::Core::reset_warm() {
     brk_srcs = 0x00;
     nmi_timer = irq_timer = 0x00;
     nmi_act = irq_act = false;
-    mcp = MC::OPC_MC[OPC::reset];
+    mcp = MC::opc_mc_start(OPC::reset);
     a1 = spf; --sp; a2 = spf; --sp; a3 = spf; --sp;
     a4 = Vec::rst;
 }
@@ -149,25 +149,25 @@ void NMOS6502::Core::exec(const u8 mopc) {
         case st_idx_ind: zpa += x; a2 = (u8)(zpa + 0x01); // fall through
         case st_reg: st_reg_sel(); return;
         case jmp_ind: ++a1l; return;
-        case bpl: if (is_set(Flag::N)) { mcp += 7; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bmi: if (is_clr(Flag::N)) { mcp += 6; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bvc: if (is_set(Flag::V)) { mcp += 5; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bvs: if (is_clr(Flag::V)) { mcp += 4; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bcc: if (is_set(Flag::C)) { mcp += 3; /*T2 (no bra)*/ return; } else goto bra_take;
-        case bcs: if (is_clr(Flag::C)) { mcp += 2; /*T2 (no bra)*/ return; } else goto bra_take;
-        case beq: if (is_clr(Flag::Z)) { mcp += 1; /*T2 (no bra)*/ return; } else goto bra_take;
-        case MOPC::bne: if (is_set(Flag::Z)) /*T2 (no bra)*/ return;
-            // fall through
-        bra_take:
-            mcp = MC::OPC_MC[OPC::bne] + 2; // T2 (no page cross)
-            a2 = pc;
-            pc += (i8)d;
-            if ((a2 ^ pc) & 0xff00) {
-                mcp += 2; // T2 (page cross)
-                a1 = a2;
-                a1l += d;
+        case bra: {
+            // mapping: condition code -> flag bit position
+            static constexpr u8 cc_flag_pos[8] = { 7, 7, 6, 6, 0, 0, 1, 1 };
+
+            const int cc = ir >> 5;
+            const bool no_bra = ((p >> cc_flag_pos[cc]) ^ cc) & 0b1;
+
+            if (!no_bra) {
+                mcp += 1; // T2 (no page cross)
+                a2 = pc;
+                pc += (i8)d;
+                if ((a2 ^ pc) & 0xff00) {
+                    mcp += 2; // T2 (page cross)
+                    a1 = a2;
+                    a1l += d;
+                }
             }
             return;
+        }
         case hold_ints:
             if (nmi_timer == 0x02) nmi_timer = 0x01;
             //if (irq_timer && (irq_timer < 0b100)) irq_timer = 0b1;
@@ -227,7 +227,7 @@ void NMOS6502::Core::exec(const u8 mopc) {
                 a4 = spf; --sp;
             }
 
-            mcp = MC::OPC_MC[ir];
+            mcp = opc_mc_start(ir);
 
             return;
         case sig_hlt: sig_halt(); return;

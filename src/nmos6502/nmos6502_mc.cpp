@@ -5,15 +5,12 @@
 using namespace NMOS6502;
 
 
-const std::string MC::MOPC_str[] = { // TODO
-    "", "", "", "", "", "", "", "",
-    "", "", "", "", "", "", "", "",
-    "", "", "", "", "", "", "", "",
-    "", "", "", "", "", "", "", "",
-    "", "", "", "", "", "", "", "",
-    "", "", "", "", "", "", "", "",
-    "", "", "", "", "", "", "", "",
-    "", "", "", "", "", "", "", "",
+const std::string MC::MOPC_str[] = {
+    "nmop", "abs_x", "inc_zpa", "abs_y", "rm_zp_x", "rm_zp_y", "rm_x", "rm_y",
+    "rm_idx_ind", "a_nz", "do_op", "st_zp_x", "st_zp_y", "st_idx_ind", "st_reg",
+    "jmp_ind", "bra", "hold_ints", "php", "pha", "jsr", "jmp_abs", "rti", "rts", "inc_sp", "brk",
+    "dispatch_cli", "dispatch_sei", "dispatch", "dispatch_brk",
+    "sig_hlt", "hlt", "reset",
 };
 
 const std::string MC::PC_inc_str[] = { "0", "1" };
@@ -21,455 +18,250 @@ const std::string MC::PC_inc_str[] = { "0", "1" };
 const std::string MC::RW_str[] = { "w", "r" };
 
 
-namespace _MC { // micro-code: 1..n micro-ops/instr (1 micro-op/1 cycle)
-    using MC::MOP;
-    using MC::MOPC;
-    using MC::PC_inc;
-    using MC::RW;
-    using MC::PC_inc;
+using MC::MOP;
+using MC::MOPC;
+using MC::PC_inc;
+using MC::RW;
+using MC::PC_inc;
 
-    namespace SB {
-        static const MOP sb[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        /* cli&sei feature: change not be visible at next T0 (dispatch)
-            (http://visual6502.org/wiki/index.php?title=6502_Timing_of_Interrupt_Handling)
-        */
-        static const MOP sb_cli[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop         ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch_cli ),
-        };
-        static const MOP sb_sei[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop         ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch_sei ),
-        };
-    }
-    namespace RM {
-        static const MOP zp[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP imm[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP abs[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP zp_x[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::r, PC_inc(0), MOPC::rm_zp_x  ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP zp_y[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::r, PC_inc(0), MOPC::rm_zp_y  ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP idx_ind[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::r, PC_inc(0), MOPC::rm_idx_ind),
-            MOP(Ri16::zpaf, Ri8::a1l,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::a1h,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP abs_x[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::rm_x     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP abs_y[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::rm_y     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP ind_idx[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::a1l,  RW::r, PC_inc(0), MOPC::inc_zpa  ),
-            MOP(Ri16::zpaf, Ri8::a1h,  RW::r, PC_inc(0), MOPC::rm_y     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-    }
-    namespace ST {
-        static const MOP zp[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::st_reg   ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP abs[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::st_reg   ),
-            MOP(Ri16::a1,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP zp_x[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::r, PC_inc(0), MOPC::st_zp_x  ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP zp_y[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::r, PC_inc(0), MOPC::st_zp_y  ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP idx_ind[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::r, PC_inc(0), MOPC::st_idx_ind),
-            MOP(Ri16::zpaf, Ri8::a1l,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::a1h,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP abs_x[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::abs_x    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::a,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP abs_y[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::abs_y    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::a,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP ind_y[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::a1l,  RW::r, PC_inc(0), MOPC::inc_zpa  ),
-            MOP(Ri16::zpaf, Ri8::a1h,  RW::r, PC_inc(0), MOPC::abs_y    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::a,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-    }
-    namespace RMW {
-        static const MOP zp[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::w, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP abs[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::w, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP zp_x[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::r, PC_inc(0), MOPC::rm_zp_x  ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::w, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP abs_x[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::abs_x    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-    }
-    namespace FC {
-        static const MOP pha[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::pha      ),
-            MOP(Ri16::a1,   Ri8::a,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP php[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::php      ),
-            MOP(Ri16::a1,   Ri8::p,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP pla[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::spf,  Ri8::d,    RW::r, PC_inc(0), MOPC::inc_sp   ),
-            MOP(Ri16::spf,  Ri8::a,    RW::r, PC_inc(0), MOPC::a_nz     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP plp[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::spf,  Ri8::d,    RW::r, PC_inc(0), MOPC::inc_sp   ),
-            MOP(Ri16::spf,  Ri8::p,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP jsr[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::spf,  Ri8::d,    RW::r, PC_inc(0), MOPC::jsr      ),
-            MOP(Ri16::a3,   Ri8::a2h,  RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a4,   Ri8::a2l,  RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::pch,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP bra[] = {
-            // these entry MOPs evaluate the relevant branching condition,
-            // and then jump to the main code below (even if branch not taken)
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::bpl      ),  // T1
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::bmi      ),  // T1
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::bvc      ),  // T1
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::bvs      ),  // T1
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::bcc      ),  // T1
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::bcs      ),  // T1
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::beq      ),  // T1
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::bne      ),  // T1
-            // NOTE: branch taken, no page crossing -> request has to come earlier
-            //       http://visual6502.org/wiki/index.php?title=6502_State_Machine
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),  // T2 (no branch)
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::hold_ints),  // T2 (no pg.crs)
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),  // T3
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),  // T2 (pg.crs)
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),  // T3
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),  // T0
-        };
-        static const MOP brk[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::a1h,  RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a3,   Ri8::a1l,  RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a4,   Ri8::p,    RW::w, PC_inc(0), MOPC::brk      ),
-            MOP(Ri16::a2,   Ri8::pcl,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a3,   Ri8::pch,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch_brk),
-        };
-        static const MOP rti[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::spf,  Ri8::d,    RW::r, PC_inc(0), MOPC::rti      ),
-            MOP(Ri16::a1,   Ri8::p,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::pcl,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::spf,  Ri8::pch,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP jmp_abs[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(0), MOPC::jmp_abs  ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP jmp_ind[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::pcl,  RW::r, PC_inc(0), MOPC::jmp_ind  ),
-            MOP(Ri16::a1,   Ri8::pch,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP rts[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::spf,  Ri8::d,    RW::r, PC_inc(0), MOPC::rts      ),
-            MOP(Ri16::a2,   Ri8::pcl,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::spf,  Ri8::pch,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-    }
-    namespace UD {
-        static const MOP rmw_abs_y[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::abs_y    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP rmw_idx_ind[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::d,    RW::r, PC_inc(0), MOPC::rm_idx_ind),
-            MOP(Ri16::zpaf, Ri8::a1l,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::a1h,  RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a1,   Ri8::d,    RW::w, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP rmw_ind_idx[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::a1l,  RW::r, PC_inc(0), MOPC::inc_zpa  ),
-            MOP(Ri16::zpaf, Ri8::a1h,  RW::r, PC_inc(0), MOPC::abs_y    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP st_abs_x[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::abs_x    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP st_abs_y[] = {
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(1), MOPC::abs_y    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP st_ind_y[] = {
-            MOP(Ri16::pc,   Ri8::zpa,  RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::zpaf, Ri8::a1l,  RW::r, PC_inc(0), MOPC::inc_zpa  ),
-            MOP(Ri16::zpaf, Ri8::a1h,  RW::r, PC_inc(0), MOPC::abs_y    ),
-            MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::do_op    ),
-            MOP(Ri16::a2,   Ri8::d,    RW::w, PC_inc(0), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-        static const MOP hlt[] = {
-            MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::nmop     ),
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(0), MOPC::nmop     ), // TODO:
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(0), MOPC::nmop     ), // correct addr
-            MOP(Ri16::pc,   Ri8::a1l,  RW::r, PC_inc(0), MOPC::sig_hlt  ), // for these
-            MOP(Ri16::pc,   Ri8::a1h,  RW::r, PC_inc(0), MOPC::hlt      ), // 4 cycles
-            MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch ),
-        };
-    }
+const MOP MC::code[] = {
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 0
+    MOP(Ri16::a2,   Ri8::a1h, RW::w, PC_inc(0), MOPC::nmop), // 1
+    MOP(Ri16::a3,   Ri8::a1l, RW::w, PC_inc(0), MOPC::nmop), // 2
+    MOP(Ri16::a4,   Ri8::p,   RW::w, PC_inc(0), MOPC::brk), // 3
+    MOP(Ri16::a2,   Ri8::pcl, RW::r, PC_inc(0), MOPC::nmop), // 4
+    MOP(Ri16::a3,   Ri8::pch, RW::r, PC_inc(0), MOPC::nmop), // 5
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch_brk), // 6
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::nmop), // 7
+    MOP(Ri16::zpaf, Ri8::d,   RW::r, PC_inc(0), MOPC::rm_idx_ind), // 8
+    MOP(Ri16::zpaf, Ri8::a1l, RW::r, PC_inc(0), MOPC::nmop), // 9
+    MOP(Ri16::a2,   Ri8::a1h, RW::r, PC_inc(0), MOPC::nmop), // 10
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 11
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 12
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(1), MOPC::nmop), // 13
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(0), MOPC::nmop), // 14
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(0), MOPC::nmop), // 15
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(0), MOPC::sig_hlt), // 16
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(0), MOPC::hlt), // 17
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 18
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::nmop), // 19
+    MOP(Ri16::zpaf, Ri8::d,   RW::r, PC_inc(0), MOPC::rm_idx_ind), // 20
+    MOP(Ri16::zpaf, Ri8::a1l, RW::r, PC_inc(0), MOPC::nmop), // 21
+    MOP(Ri16::a2,   Ri8::a1h, RW::r, PC_inc(0), MOPC::nmop), // 22
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 23
+    MOP(Ri16::a1,   Ri8::d,   RW::w, PC_inc(0), MOPC::do_op), // 24
+    MOP(Ri16::a1,   Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 25
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 26
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::nmop), // 27
+    MOP(Ri16::zpaf, Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 28
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 29
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::nmop), // 30
+    MOP(Ri16::zpaf, Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 31
+    MOP(Ri16::zpaf, Ri8::d,   RW::w, PC_inc(0), MOPC::do_op), // 32
+    MOP(Ri16::zpaf, Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 33
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 34
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(0), MOPC::php), // 35
+    MOP(Ri16::a1,   Ri8::p,   RW::w, PC_inc(0), MOPC::nmop), // 36
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 37
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(1), MOPC::do_op), // 38
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 39
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 40
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 41
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(1), MOPC::nmop), // 42
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(1), MOPC::nmop), // 43
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 44
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 45
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(1), MOPC::nmop), // 46
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(1), MOPC::nmop), // 47
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 48
+    MOP(Ri16::a1,   Ri8::d,   RW::w, PC_inc(0), MOPC::do_op), // 49
+    MOP(Ri16::a1,   Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 50
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 51
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(1), MOPC::bra), // 52
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 53
+    MOP(Ri16::a2,   Ri8::d,   RW::r, PC_inc(0), MOPC::hold_ints), // 54
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 55
+    MOP(Ri16::a2,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 56
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 57
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 58
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::nmop), // 59
+    MOP(Ri16::zpaf, Ri8::a1l, RW::r, PC_inc(0), MOPC::inc_zpa), // 60
+    MOP(Ri16::zpaf, Ri8::a1h, RW::r, PC_inc(0), MOPC::rm_y), // 61
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 62
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 63
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 64
+    MOP(Ri16::a2,   Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 65
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 66
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::nmop), // 67
+    MOP(Ri16::zpaf, Ri8::a1l, RW::r, PC_inc(0), MOPC::inc_zpa), // 68
+    MOP(Ri16::zpaf, Ri8::a1h, RW::r, PC_inc(0), MOPC::abs_y), // 69
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 70
+    MOP(Ri16::a2,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 71
+    MOP(Ri16::a2,   Ri8::d,   RW::w, PC_inc(0), MOPC::do_op), // 72
+    MOP(Ri16::a2,   Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 73
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 74
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::nmop), // 75
+    MOP(Ri16::zpaf, Ri8::d,   RW::r, PC_inc(0), MOPC::rm_zp_x), // 76
+    MOP(Ri16::zpaf, Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 77
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 78
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::nmop), // 79
+    MOP(Ri16::zpaf, Ri8::d,   RW::r, PC_inc(0), MOPC::rm_zp_x), // 80
+    MOP(Ri16::zpaf, Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 81
+    MOP(Ri16::zpaf, Ri8::d,   RW::w, PC_inc(0), MOPC::do_op), // 82
+    MOP(Ri16::zpaf, Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 83
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 84
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(1), MOPC::nmop), // 85
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(1), MOPC::rm_y), // 86
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 87
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 88
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 89
+    MOP(Ri16::a2,   Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 90
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 91
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(1), MOPC::nmop), // 92
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(1), MOPC::abs_y), // 93
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 94
+    MOP(Ri16::a2,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 95
+    MOP(Ri16::a2,   Ri8::d,   RW::w, PC_inc(0), MOPC::do_op), // 96
+    MOP(Ri16::a2,   Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 97
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 98
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(1), MOPC::nmop), // 99
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(1), MOPC::rm_x), // 100
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 101
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 102
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 103
+    MOP(Ri16::a2,   Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 104
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 105
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(1), MOPC::nmop), // 106
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(1), MOPC::abs_x), // 107
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 108
+    MOP(Ri16::a2,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 109
+    MOP(Ri16::a2,   Ri8::d,   RW::w, PC_inc(0), MOPC::do_op), // 110
+    MOP(Ri16::a2,   Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 111
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 112
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(1), MOPC::nmop), // 113
+    MOP(Ri16::spf,  Ri8::d,   RW::r, PC_inc(0), MOPC::jsr), // 114
+    MOP(Ri16::a3,   Ri8::a2h, RW::w, PC_inc(0), MOPC::nmop), // 115
+    MOP(Ri16::a4,   Ri8::a2l, RW::w, PC_inc(0), MOPC::nmop), // 116
+    MOP(Ri16::a2,   Ri8::pch, RW::r, PC_inc(0), MOPC::nmop), // 117
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 118
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 119
+    MOP(Ri16::spf,  Ri8::d,   RW::r, PC_inc(0), MOPC::inc_sp), // 120
+    MOP(Ri16::spf,  Ri8::p,   RW::r, PC_inc(0), MOPC::nmop), // 121
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 122
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 123
+    MOP(Ri16::spf,  Ri8::d,   RW::r, PC_inc(0), MOPC::rti), // 124
+    MOP(Ri16::a1,   Ri8::p,   RW::r, PC_inc(0), MOPC::nmop), // 125
+    MOP(Ri16::a2,   Ri8::pcl, RW::r, PC_inc(0), MOPC::nmop), // 126
+    MOP(Ri16::spf,  Ri8::pch, RW::r, PC_inc(0), MOPC::nmop), // 127
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 128
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(0), MOPC::pha), // 129
+    MOP(Ri16::a1,   Ri8::a,   RW::w, PC_inc(0), MOPC::nmop), // 130
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 131
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(1), MOPC::nmop), // 132
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(0), MOPC::jmp_abs), // 133
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 134
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 135
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch_cli), // 136
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 137
+    MOP(Ri16::spf,  Ri8::d,   RW::r, PC_inc(0), MOPC::rts), // 138
+    MOP(Ri16::a2,   Ri8::pcl, RW::r, PC_inc(0), MOPC::nmop), // 139
+    MOP(Ri16::spf,  Ri8::pch, RW::r, PC_inc(0), MOPC::nmop), // 140
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(1), MOPC::nmop), // 141
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 142
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 143
+    MOP(Ri16::spf,  Ri8::d,   RW::r, PC_inc(0), MOPC::inc_sp), // 144
+    MOP(Ri16::spf,  Ri8::a,   RW::r, PC_inc(0), MOPC::a_nz), // 145
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 146
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(1), MOPC::nmop), // 147
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(1), MOPC::nmop), // 148
+    MOP(Ri16::a1,   Ri8::pcl, RW::r, PC_inc(0), MOPC::jmp_ind), // 149
+    MOP(Ri16::a1,   Ri8::pch, RW::r, PC_inc(0), MOPC::nmop), // 150
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 151
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 152
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch_sei), // 153
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::nmop), // 154
+    MOP(Ri16::zpaf, Ri8::d,   RW::r, PC_inc(0), MOPC::st_idx_ind), // 155
+    MOP(Ri16::zpaf, Ri8::a1l, RW::r, PC_inc(0), MOPC::nmop), // 156
+    MOP(Ri16::a2,   Ri8::a1h, RW::r, PC_inc(0), MOPC::nmop), // 157
+    MOP(Ri16::a1,   Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 158
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 159
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::st_reg), // 160
+    MOP(Ri16::zpaf, Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 161
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 162
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(1), MOPC::nmop), // 163
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(1), MOPC::st_reg), // 164
+    MOP(Ri16::a1,   Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 165
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 166
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::nmop), // 167
+    MOP(Ri16::zpaf, Ri8::a1l, RW::r, PC_inc(0), MOPC::inc_zpa), // 168
+    MOP(Ri16::zpaf, Ri8::a1h, RW::r, PC_inc(0), MOPC::abs_y), // 169
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 170
+    MOP(Ri16::a2,   Ri8::a,   RW::w, PC_inc(0), MOPC::nmop), // 171
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 172
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::nmop), // 173
+    MOP(Ri16::zpaf, Ri8::a1l, RW::r, PC_inc(0), MOPC::inc_zpa), // 174
+    MOP(Ri16::zpaf, Ri8::a1h, RW::r, PC_inc(0), MOPC::abs_y), // 175
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 176
+    MOP(Ri16::a2,   Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 177
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 178
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::nmop), // 179
+    MOP(Ri16::zpaf, Ri8::d,   RW::r, PC_inc(0), MOPC::st_zp_x), // 180
+    MOP(Ri16::zpaf, Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 181
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 182
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::nmop), // 183
+    MOP(Ri16::zpaf, Ri8::d,   RW::r, PC_inc(0), MOPC::st_zp_y), // 184
+    MOP(Ri16::zpaf, Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 185
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 186
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(1), MOPC::nmop), // 187
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(1), MOPC::abs_y), // 188
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 189
+    MOP(Ri16::a2,   Ri8::a,   RW::w, PC_inc(0), MOPC::nmop), // 190
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 191
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(1), MOPC::nmop), // 192
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(1), MOPC::abs_y), // 193
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 194
+    MOP(Ri16::a2,   Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 195
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 196
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(1), MOPC::nmop), // 197
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(1), MOPC::abs_x), // 198
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 199
+    MOP(Ri16::a2,   Ri8::d,   RW::w, PC_inc(0), MOPC::nmop), // 200
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 201
+    MOP(Ri16::pc,   Ri8::a1l, RW::r, PC_inc(1), MOPC::nmop), // 202
+    MOP(Ri16::pc,   Ri8::a1h, RW::r, PC_inc(1), MOPC::abs_x), // 203
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 204
+    MOP(Ri16::a2,   Ri8::a,   RW::w, PC_inc(0), MOPC::nmop), // 205
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 206
+    MOP(Ri16::pc,   Ri8::zpa, RW::r, PC_inc(1), MOPC::nmop), // 207
+    MOP(Ri16::zpaf, Ri8::d,   RW::r, PC_inc(0), MOPC::rm_zp_y), // 208
+    MOP(Ri16::zpaf, Ri8::d,   RW::r, PC_inc(0), MOPC::do_op), // 209
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch), // 210
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(1), MOPC::nmop), // 211
+    MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(1), MOPC::nmop), // 212
+    MOP(Ri16::a1,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 213
+    MOP(Ri16::a2,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 214
+    MOP(Ri16::a3,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop), // 215
+    MOP(Ri16::a4,   Ri8::pcl, RW::r, PC_inc(0), MOPC::reset), // 216
+    MOP(Ri16::a1,   Ri8::pch, RW::r, PC_inc(0), MOPC::nmop), // 217
+    MOP(Ri16::pc,   Ri8::ir,  RW::r, PC_inc(1), MOPC::dispatch_brk), // 218
+};
 
-    static const MOP reset[] = {
-        MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::nmop         ),
-        MOP(Ri16::pc,   Ri8::d,    RW::r, PC_inc(1), MOPC::nmop         ),
-        MOP(Ri16::a1,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop         ),
-        MOP(Ri16::a2,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop         ),
-        MOP(Ri16::a3,   Ri8::d,    RW::r, PC_inc(0), MOPC::nmop         ),
-        MOP(Ri16::a4,   Ri8::pcl,  RW::r, PC_inc(0), MOPC::reset        ),
-        MOP(Ri16::a1,   Ri8::pch,  RW::r, PC_inc(0), MOPC::nmop         ),
-        MOP(Ri16::pc,   Ri8::ir,   RW::r, PC_inc(1), MOPC::dispatch_brk ),
-    };
-
-    // instruction (opc) to micro-code (mc) mapping
-    static const MOP* OPC_MC[] = {
-        // 0x00
-        FC::brk, RM::idx_ind, UD::hlt, UD::rmw_idx_ind, RM::zp, RM::zp, RMW::zp, RMW::zp,
-        FC::php, RM::imm, SB::sb, RM::imm, RM::abs, RM::abs, RMW::abs, RMW::abs,
-        // 0x10
-        FC::bra + 0, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
-        SB::sb, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
-        // 0x20
-        FC::jsr, RM::idx_ind, UD::hlt, UD::rmw_idx_ind, RM::zp, RM::zp, RMW::zp, RMW::zp,
-        FC::plp, RM::imm, SB::sb, RM::imm, RM::abs, RM::abs, RMW::abs, RMW::abs,
-        // 0x30
-        FC::bra + 1, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
-        SB::sb, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
-        // 0x40
-        FC::rti, RM::idx_ind, UD::hlt, UD::rmw_idx_ind, RM::zp, RM::zp, RMW::zp, RMW::zp,
-        FC::pha, RM::imm, SB::sb, RM::imm, FC::jmp_abs, RM::abs, RMW::abs, RMW::abs,
-        // 0x50
-        FC::bra + 2, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
-        SB::sb_cli, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
-        // 0x60
-        FC::rts, RM::idx_ind, UD::hlt, UD::rmw_idx_ind, RM::zp, RM::zp, RMW::zp, RMW::zp,
-        FC::pla, RM::imm, SB::sb, RM::imm, FC::jmp_ind, RM::abs, RMW::abs, RMW::abs,
-        // 0x70
-        FC::bra + 3, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
-        SB::sb_sei, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
-        // 0x80
-        RM::imm, ST::idx_ind, RM::imm, ST::idx_ind, ST::zp, ST::zp, ST::zp, ST::zp,
-        SB::sb, RM::imm, SB::sb, RM::imm, ST::abs, ST::abs, ST::abs, ST::abs,
-        // 0x90
-        FC::bra + 4, ST::ind_y, UD::hlt, UD::st_ind_y, ST::zp_x, ST::zp_x, ST::zp_y, ST::zp_y,
-        SB::sb, ST::abs_y, SB::sb, UD::st_abs_y, UD::st_abs_x, ST::abs_x, UD::st_abs_y, UD::st_abs_y,
-        // 0xa0
-        RM::imm, RM::idx_ind, RM::imm, RM::idx_ind, RM::zp, RM::zp, RM::zp, RM::zp,
-        SB::sb, RM::imm, SB::sb, RM::imm, RM::abs, RM::abs, RM::abs, RM::abs,
-        // 0xb0
-        FC::bra + 5, RM::ind_idx, UD::hlt, RM::ind_idx, RM::zp_x, RM::zp_x, RM::zp_y, RM::zp_y,
-        SB::sb, RM::abs_y, SB::sb, RM::abs_y, RM::abs_x, RM::abs_x, RM::abs_y, RM::abs_y,
-        // 0xc0
-        RM::imm, RM::idx_ind, RM::imm, UD::rmw_idx_ind, RM::zp, RM::zp, RMW::zp, RMW::zp,
-        SB::sb, RM::imm, SB::sb, RM::imm, RM::abs, RM::abs, RMW::abs, RMW::abs,
-        // 0xd0
-        FC::bra + 7, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
-        SB::sb, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
-        // 0xe0
-        RM::imm, RM::idx_ind, RM::imm, UD::rmw_idx_ind, RM::zp, RM::zp, RMW::zp, RMW::zp,
-        SB::sb, RM::imm, SB::sb, RM::imm, RM::abs, RM::abs, RMW::abs, RMW::abs,
-        // 0xf0
-        FC::bra + 6, RM::ind_idx, UD::hlt, UD::rmw_ind_idx, RM::zp_x, RM::zp_x, RMW::zp_x, RMW::zp_x,
-        SB::sb, RM::abs_y, SB::sb, UD::rmw_abs_y, RM::abs_x, RM::abs_x, RMW::abs_x, RMW::abs_x,
-
-        // 0x100
-        reset
-    };
-
-    // map: instruction (opc) -> micro-code sub-op
-    /*static const u8 OPC_MSOPC[] = {
-        // 00
-        MSOPC::nop, MSOPC::rm_ora, MSOPC::nop, MSOPC::ud_slo, MSOPC::nop, MSOPC::rm_ora, MSOPC::rmw_asl, MSOPC::ud_slo,
-        MSOPC::nop, MSOPC::rm_ora, MSOPC::sb_asl, MSOPC::ud_anc, MSOPC::nop, MSOPC::rm_ora, MSOPC::rmw_asl, MSOPC::ud_slo,
-        // 10
-        MSOPC::nop, MSOPC::rm_ora, MSOPC::nop, MSOPC::ud_slo, MSOPC::nop, MSOPC::rm_ora, MSOPC::rmw_asl, MSOPC::ud_slo,
-        MSOPC::sb_clc, MSOPC::rm_ora, MSOPC::nop, MSOPC::ud_slo, MSOPC::nop, MSOPC::rm_ora, MSOPC::rmw_asl, MSOPC::ud_slo,
-        // 20
-        MSOPC::nop, MSOPC::rm_and, MSOPC::nop, MSOPC::ud_rla, MSOPC::rm_bit, MSOPC::rm_and, MSOPC::rmw_rol, MSOPC::ud_rla,
-        MSOPC::nop, MSOPC::nop, MSOPC::sb_rol, MSOPC::ud_anc, MSOPC::rm_bit, MSOPC::rm_and, MSOPC::rmw_rol, MSOPC::ud_rla,
-        // 30
-        MSOPC::nop, MSOPC::rm_and, MSOPC::nop, MSOPC::ud_rla, MSOPC::nop, MSOPC::rm_and, MSOPC::rmw_rol, MSOPC::ud_rla,
-        MSOPC::sb_sec, MSOPC::rm_and, MSOPC::nop, MSOPC::ud_rla, MSOPC::nop, MSOPC::rm_and, MSOPC::rmw_rol, MSOPC::ud_rla,
-        // 40
-        MSOPC::nop, MSOPC::rm_eor, MSOPC::nop, MSOPC::ud_sre, MSOPC::nop, MSOPC::rm_eor, MSOPC::rmw_lsr, MSOPC::ud_sre,
-        MSOPC::nop, MSOPC::rm_eor, MSOPC::sb_lsr, MSOPC::ud_alr, MSOPC::nop, MSOPC::rm_eor, MSOPC::rmw_lsr, MSOPC::ud_sre,
-        // 50
-        MSOPC::nop, MSOPC::rm_eor, MSOPC::nop, MSOPC::ud_sre, MSOPC::nop, MSOPC::rm_eor, MSOPC::rmw_lsr, MSOPC::ud_sre,
-        MSOPC::nop, MSOPC::rm_eor, MSOPC::nop, MSOPC::ud_sre, MSOPC::nop, MSOPC::rm_eor, MSOPC::rmw_lsr, MSOPC::ud_sre,
-        // 60
-        MSOPC::nop, MSOPC::rm_adc, MSOPC::nop, MSOPC::ud_rra, MSOPC::nop, MSOPC::rm_adc, MSOPC::rmw_ror, MSOPC::ud_rra,
-        MSOPC::nop, MSOPC::rm_adc, MSOPC::sb_ror, MSOPC::ud_arr, MSOPC::nop, MSOPC::rm_adc, MSOPC::rmw_ror, MSOPC::ud_rra,
-        // 70
-        MSOPC::nop, MSOPC::rm_adc, MSOPC::nop, MSOPC::ud_rra, MSOPC::nop, MSOPC::rm_adc, MSOPC::rmw_ror, MSOPC::ud_rra,
-        MSOPC::nop, MSOPC::rm_adc, MSOPC::nop, MSOPC::ud_rra, MSOPC::nop, MSOPC::rm_adc, MSOPC::rmw_ror, MSOPC::ud_rra,
-        // 80
-        MSOPC::nop, MSOPC::nop, MSOPC::nop, MSOPC::nop, MSOPC::nop, MSOPC::nop, MSOPC::nop, MSOPC::nop,
-        MSOPC::sb_dey, MSOPC::nop, MSOPC::sb_txa, MSOPC::ud_xaa, MSOPC::nop, MSOPC::nop, MSOPC::nop, MSOPC::nop,
-        // 90
-        MSOPC::nop, MSOPC::nop, MSOPC::nop, MSOPC::ud_ahx, MSOPC::nop, MSOPC::nop, MSOPC::nop, MSOPC::nop,
-        MSOPC::sb_tya, MSOPC::nop, MSOPC::sb_txs, MSOPC::ud_tas, MSOPC::ud_shy, MSOPC::nop, MSOPC::ud_shx, MSOPC::ud_ahx,
-        // a0
-        MSOPC::rm_ldy, MSOPC::rm_lda, MSOPC::rm_ldx, MSOPC::ud_lax, MSOPC::rm_ldy, MSOPC::nop, MSOPC::rm_ldx, MSOPC::ud_lax,
-        MSOPC::sb_tay, MSOPC::rm_lda, MSOPC::sb_tax, MSOPC::ud_lxa, MSOPC::rm_ldy, MSOPC::nop, MSOPC::rm_ldx, MSOPC::ud_lax,
-        // b0
-        MSOPC::nop, MSOPC::rm_lda, MSOPC::nop, MSOPC::ud_lax, MSOPC::rm_ldy, MSOPC::rm_lda, MSOPC::rm_ldx, MSOPC::ud_lax,
-        MSOPC::sb_clv, MSOPC::rm_lda, MSOPC::sb_tsx, MSOPC::ud_las, MSOPC::rm_ldy, MSOPC::nop, MSOPC::rm_ldx, MSOPC::ud_lax,
-        // c0
-        MSOPC::rm_cpy, MSOPC::rm_cmp, MSOPC::nop, MSOPC::ud_dcp, MSOPC::rm_cpy, MSOPC::rm_cmp, MSOPC::rmw_dec, MSOPC::ud_dcp,
-        MSOPC::sb_iny, MSOPC::rm_cmp, MSOPC::sb_dex, MSOPC::ud_axs, MSOPC::rm_cpy, MSOPC::rm_cmp, MSOPC::rmw_dec, MSOPC::ud_dcp,
-        // d0
-        MSOPC::nop, MSOPC::rm_cmp, MSOPC::nop, MSOPC::ud_dcp, MSOPC::nop, MSOPC::rm_cmp, MSOPC::rmw_dec, MSOPC::ud_dcp,
-        MSOPC::sb_cld, MSOPC::rm_cmp, MSOPC::nop, MSOPC::ud_dcp, MSOPC::nop, MSOPC::rm_cmp, MSOPC::rmw_dec, MSOPC::ud_dcp,
-        // e0
-        MSOPC::rm_cpx, MSOPC::rm_sbc, MSOPC::nop, MSOPC::ud_isc, MSOPC::rm_cpx, MSOPC::rm_sbc, MSOPC::rmw_inc, MSOPC::ud_isc,
-        MSOPC::sb_inx, MSOPC::rm_sbc, MSOPC::nop, MSOPC::rm_sbc, MSOPC::rm_cpx, MSOPC::rm_sbc, MSOPC::rmw_inc, MSOPC::ud_isc,
-        // f0
-        MSOPC::nop, MSOPC::rm_sbc, MSOPC::nop, MSOPC::ud_isc, MSOPC::nop, MSOPC::rm_sbc, MSOPC::rmw_inc, MSOPC::ud_isc,
-        MSOPC::sb_sed, MSOPC::rm_sbc, MSOPC::nop, MSOPC::ud_isc, MSOPC::nop, MSOPC::rm_sbc, MSOPC::rmw_inc, MSOPC::ud_isc,
-    };*/
-
-} // namespace _MC
-
-
-const MC::MOP** MC::OPC_MC = _MC::OPC_MC;
-//const u8* MC::OPC_MSOPC = _MC::OPC_MSOPC;
+const u8 MC::opc_addr[] = {
+    0, 7, 13, 19, 27, 27, 30, 30, 35, 38, 40, 38, 42, 42, 46, 46,
+    52, 59, 13, 67, 75, 75, 79, 79, 40, 85, 40, 92, 99, 99, 106, 106,
+    113, 7, 13, 19, 27, 27, 30, 30, 119, 38, 40, 38, 42, 42, 46, 46,
+    52, 59, 13, 67, 75, 75, 79, 79, 40, 85, 40, 92, 99, 99, 106, 106,
+    123, 7, 13, 19, 27, 27, 30, 30, 129, 38, 40, 38, 132, 42, 46, 46,
+    52, 59, 13, 67, 75, 75, 79, 79, 135, 85, 40, 92, 99, 99, 106, 106,
+    137, 7, 13, 19, 27, 27, 30, 30, 143, 38, 40, 38, 147, 42, 46, 46,
+    52, 59, 13, 67, 75, 75, 79, 79, 152, 85, 40, 92, 99, 99, 106, 106,
+    38, 154, 38, 154, 160, 160, 160, 160, 40, 38, 40, 38, 163, 163, 163, 163,
+    52, 167, 13, 173, 179, 179, 183, 183, 40, 187, 40, 192, 197, 202, 192, 192,
+    38, 7, 38, 7, 27, 27, 27, 27, 40, 38, 40, 38, 42, 42, 42, 42,
+    52, 59, 13, 59, 75, 75, 207, 207, 40, 85, 40, 85, 99, 99, 85, 85,
+    38, 7, 38, 19, 27, 27, 30, 30, 40, 38, 40, 38, 42, 42, 46, 46,
+    52, 59, 13, 67, 75, 75, 79, 79, 40, 85, 40, 92, 99, 99, 106, 106,
+    38, 7, 38, 19, 27, 27, 30, 30, 40, 38, 40, 38, 42, 42, 46, 46,
+    52, 59, 13, 67, 75, 75, 79, 79, 40, 85, 40, 92, 99, 99, 106, 106,
+    211,
+};
