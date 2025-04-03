@@ -229,6 +229,8 @@ struct System {
 
     VIC_II vic;
 
+    NMOS6502::Core::State cpu;
+
     CIA cia1;
     CIA cia2;
 

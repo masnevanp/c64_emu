@@ -2,25 +2,25 @@
 #include "nmos6502_core.h"
 
 
-NMOS6502::Core::Core(Sig& sig_halt_) : sig_halt(sig_halt_)
+NMOS6502::Core::Core(State& s_, Sig& sig_halt_) : s(s_), sig_halt(sig_halt_)
 {
     reset_cold();
 }
 
 
 void NMOS6502::Core::reset_warm() {
-    brk_srcs = 0x00;
-    nmi_timer = irq_timer = 0x00;
-    nmi_act = irq_act = false;
+    s.brk_srcs = 0x00;
+    s.nmi_timer = s.irq_timer = 0x00;
+    s.nmi_act = s.irq_act = false;
     mcp = MC::opc_mc_start(OPC::reset);
-    a1 = spf; --sp; a2 = spf; --sp; a3 = spf; --sp;
-    a4 = Vec::rst;
+    s.a1 = s.spf; --s.sp; s.a2 = s.spf; --s.sp; s.a3 = s.spf; --s.sp;
+    s.a4 = Vec::rst;
 }
 
 
 void NMOS6502::Core::reset_cold() {
-    zpaf = 0x0000;
-    r8(Ri8::sph) = 0x01;
+    s.zpaf = 0x0000;
+    s.r8(Ri8::sph) = 0x01;
     reset_warm();
 }
 
@@ -53,142 +53,142 @@ void NMOS6502::Core::exec(const u8 mopc) {
     static constexpr u8 nmi_timer_handled = 0b10000000;
 
     const auto check_irq = [&]() {
-        if (irq_act && is_clr(Flag::I)) brk_srcs |= Brk_src::irq;
+        if (s.irq_act && is_clr(Flag::I)) s.brk_srcs |= Brk_src::irq;
     };
 
     switch (mopc) {
-        case abs_x: a2 = a1 + x; a1l += x; return;
-        case inc_zpa: ++zpa; return;
-        case abs_y: a2 = a1 + y; a1l += y; return;
-        case rm_zp_x: zpa += x; return;
-        case rm_zp_y: zpa += y; return;
+        case abs_x: s.a2 = s.a1 + s.x; s.a1l += s.x; return;
+        case inc_zpa: ++s.zpa; return;
+        case abs_y: s.a2 = s.a1 + s.y; s.a1l += s.y; return;
+        case rm_zp_x: s.zpa += s.x; return;
+        case rm_zp_y: s.zpa += s.y; return;
         case rm_x:
-            a1l += x;
-            if (a1l < x) { a2 = a1 + 0x0100; mcp += 2; }
+            s.a1l += s.x;
+            if (s.a1l < s.x) { s.a2 = s.a1 + 0x0100; mcp += 2; }
             return;
         case rm_y:
-            a1l += y;
-            if (a1l < y) { a2 = a1 + 0x0100; mcp += 2; }
+            s.a1l += s.y;
+            if (s.a1l < s.y) { s.a2 = s.a1 + 0x0100; mcp += 2; }
             return;
-        case rm_idx_ind: zpa += x; a2 = (u8)(zpa + 0x01); return;
-        case a_nz: set_nz(a); return;
-        case do_op: switch (ir) {
+        case rm_idx_ind: s.zpa += s.x; s.a2 = (u8)(s.zpa + 0x01); return;
+        case a_nz: set_nz(s.a); return;
+        case do_op: switch (s.ir) {
             // case 0x00: case 0x02: case 0x04: case 0x08: case 0x0c: case 0x10: case 0x12: case 0x14: case 0x1a: case 0x1c: case 0x20: case 0x22: case 0x28: case 0x29: case 0x30: case 0x32: case 0x34: case 0x3a: case 0x3c: case 0x40: case 0x42: case 0x44: case 0x48: case 0x4c: case 0x50: case 0x52: case 0x54: case 0x58: case 0x5a: case 0x5c: case 0x60: case 0x62: case 0x64: case 0x68: case 0x6c: case 0x70: case 0x72: case 0x74: case 0x78: case 0x7a: case 0x7c: case 0x80: case 0x81: case 0x82: case 0x83: case 0x84: case 0x85: case 0x86: case 0x87: case 0x89: case 0x8c: case 0x8d: case 0x8e: case 0x8f: case 0x90: case 0x91: case 0x92: case 0x94: case 0x95: case 0x96: case 0x97: case 0x99: case 0x9d: case 0xa5: case 0xad: case 0xb0: case 0xb2: case 0xbd: case 0xc2: case 0xd0: case 0xd2: case 0xd4: case 0xda: case 0xdc: case 0xe2: case 0xea: case 0xf0: case 0xf2: case 0xf4: case 0xfa: case 0xfc:  return; /* nop */
             case 0x01: case 0x05: case 0x09: case 0x0d: case 0x11: case 0x15:
-            case 0x19: case 0x1d: set_nz(a|=d); return; /* rm_ora */
+            case 0x19: case 0x1d: set_nz(s.a|=s.d); return; /* rm_ora */
             case 0x03: case 0x07: case 0x0f: case 0x13: case 0x17: case 0x1b:
             case 0x1f: do_ud_slo(); return; /* ud_slo */
-            case 0x06: case 0x0e: case 0x16: case 0x1e: do_asl(d); return; /* rmw_asl */
-            case 0x0a: do_asl(a); return; /* sb_asl */
+            case 0x06: case 0x0e: case 0x16: case 0x1e: do_asl(s.d); return; /* rmw_asl */
+            case 0x0a: do_asl(s.a); return; /* sb_asl */
             case 0x0b: case 0x2b: do_ud_anc(); return; /* ud_anc */
             case 0x18: clr(Flag::C); return; /* sb_clc */
             case 0x21: case 0x25: case 0x29: case 0x2d: case 0x31: case 0x35:
-            case 0x39: case 0x3d: set_nz(a&=d); return; /* rm_and */
+            case 0x39: case 0x3d: set_nz(s.a&=s.d); return; /* rm_and */
             case 0x23: case 0x27: case 0x2f: case 0x33: case 0x37: case 0x3b:
             case 0x3f: do_ud_rla(); return; /* ud_rla */
             case 0x24: case 0x2c: do_bit(); return; /* rm_bit */
-            case 0x26: case 0x2e: case 0x36: case 0x3e: do_rol(d); return; /* rmw_rol */
-            case 0x2a: do_rol(a); return; /* sb_rol */
+            case 0x26: case 0x2e: case 0x36: case 0x3e: do_rol(s.d); return; /* rmw_rol */
+            case 0x2a: do_rol(s.a); return; /* sb_rol */
             case 0x38: set(Flag::C); return; /* sb_sec */
             case 0x41: case 0x45: case 0x49: case 0x4d: case 0x51: case 0x55:
-            case 0x59: case 0x5d: set_nz(a^=d); return; /* rm_eor */
+            case 0x59: case 0x5d: set_nz(s.a^=s.d); return; /* rm_eor */
             case 0x43: case 0x47: case 0x4f: case 0x53: case 0x57: case 0x5b:
             case 0x5f: do_ud_sre(); return; /* ud_sre */
-            case 0x46: case 0x4e: case 0x56: case 0x5e: do_lsr(d); return; /* rmw_lsr */
-            case 0x4a: do_lsr(a); return; /* sb_lsr */
-            case 0x4b: a&=d;do_lsr(a); return; /* ud_alr */
+            case 0x46: case 0x4e: case 0x56: case 0x5e: do_lsr(s.d); return; /* rmw_lsr */
+            case 0x4a: do_lsr(s.a); return; /* sb_lsr */
+            case 0x4b: s.a&=s.d;do_lsr(s.a); return; /* ud_alr */
             case 0x61: case 0x65: case 0x69: case 0x6d: case 0x71: case 0x75:
             case 0x79: case 0x7d: do_adc(); return; /* rm_adc */
             case 0x63: case 0x67: case 0x6f: case 0x73: case 0x77: case 0x7b:
             case 0x7f: do_ud_rra(); return; /* ud_rra */
-            case 0x66: case 0x6e: case 0x76: case 0x7e: do_ror(d); return; /* rmw_ror */
-            case 0x6a: do_ror(a); return; /* sb_ror */
+            case 0x66: case 0x6e: case 0x76: case 0x7e: do_ror(s.d); return; /* rmw_ror */
+            case 0x6a: do_ror(s.a); return; /* sb_ror */
             case 0x6b: do_ud_arr(); return; /* ud_arr */
-            case 0x88: set_nz(--y); return; /* sb_dey */
-            case 0x8a: set_nz(a=x); return; /* sb_txa */
+            case 0x88: set_nz(--s.y); return; /* sb_dey */
+            case 0x8a: set_nz(s.a=s.x); return; /* sb_txa */
             case 0x8b: do_ud_xaa(); return; /* ud_xaa */
-            case 0x93: case 0x9f: d=a&x&(a1h+1); return; /* ud_ahx */
-            case 0x98: set_nz(a=y); return; /* sb_tya */
-            case 0x9a: sp=x; return; /* sb_txs */
+            case 0x93: case 0x9f: s.d=s.a&s.x&(s.a1h+1); return; /* ud_ahx */
+            case 0x98: set_nz(s.a=s.y); return; /* sb_tya */
+            case 0x9a: s.sp=s.x; return; /* sb_txs */
             case 0x9b: do_ud_tas(); return; /* ud_tas */
-            case 0x9c: d=y&(a1h+1); return; /* ud_shy */
-            case 0x9e: d=x&(a1h+1); return; /* ud_shx */
-            case 0xa0: case 0xa4: case 0xac: case 0xb4: case 0xbc: set_nz(y=d); return; /* rm_ldy */
+            case 0x9c: s.d=s.y&(s.a1h+1); return; /* ud_shy */
+            case 0x9e: s.d=s.x&(s.a1h+1); return; /* ud_shx */
+            case 0xa0: case 0xa4: case 0xac: case 0xb4: case 0xbc: set_nz(s.y=s.d); return; /* rm_ldy */
             case 0xa1: case 0xa5: case 0xa9: case 0xad: case 0xb1: case 0xb5:
-            case 0xb9: case 0xbd: set_nz(a=d); return; /* rm_lda */
-            case 0xa2: case 0xa6: case 0xae: case 0xb6: case 0xbe: set_nz(x=d); return; /* rm_ldx */
+            case 0xb9: case 0xbd: set_nz(s.a=s.d); return; /* rm_lda */
+            case 0xa2: case 0xa6: case 0xae: case 0xb6: case 0xbe: set_nz(s.x=s.d); return; /* rm_ldx */
             case 0xa3: case 0xa7: case 0xaf: case 0xb3: case 0xb7: case 0xbf:
-                set_nz(a=x=d); return; /* ud_lax */
-            case 0xa8: set_nz(y=a); return; /* sb_tay */
-            case 0xaa: set_nz(x=a); return; /* sb_tax */
+                set_nz(s.a=s.x=s.d); return; /* ud_lax */
+            case 0xa8: set_nz(s.y=s.a); return; /* sb_tay */
+            case 0xaa: set_nz(s.x=s.a); return; /* sb_tax */
             case 0xab: do_ud_lxa(); return; /* ud_lxa */
             case 0xb8: clr(Flag::V); return; /* sb_clv */
-            case 0xba: set_nz(x=sp); return; /* sb_tsx */
+            case 0xba: set_nz(s.x=s.sp); return; /* sb_tsx */
             case 0xbb: do_ud_las(); return; /* ud_las */
-            case 0xc0: case 0xc4: case 0xcc: do_cmp(y); return; /* rm_cpy */
+            case 0xc0: case 0xc4: case 0xcc: do_cmp(s.y); return; /* rm_cpy */
             case 0xc1: case 0xc5: case 0xc9: case 0xcd: case 0xd1: case 0xd5:
-            case 0xd9: case 0xdd: do_cmp(a); return; /* rm_cmp */
+            case 0xd9: case 0xdd: do_cmp(s.a); return; /* rm_cmp */
             case 0xc3: case 0xc7: case 0xcf: case 0xd3: case 0xd7: case 0xdb:
-            case 0xdf: d--;do_cmp(a); return; /* ud_dcp */
-            case 0xc6: case 0xce: case 0xd6: case 0xde: set_nz(--d); return; /* rmw_dec */
-            case 0xc8: set_nz(++y); return; /* sb_iny */
-            case 0xca: set_nz(--x); return; /* sb_dex */
+            case 0xdf: s.d--;do_cmp(s.a); return; /* ud_dcp */
+            case 0xc6: case 0xce: case 0xd6: case 0xde: set_nz(--s.d); return; /* rmw_dec */
+            case 0xc8: set_nz(++s.y); return; /* sb_iny */
+            case 0xca: set_nz(--s.x); return; /* sb_dex */
             case 0xcb: do_ud_axs(); return; /* ud_axs */
             case 0xd8: clr(Flag::D); return; /* sb_cld */
-            case 0xe0: case 0xe4: case 0xec: do_cmp(x); return; /* rm_cpx */
+            case 0xe0: case 0xe4: case 0xec: do_cmp(s.x); return; /* rm_cpx */
             case 0xe1: case 0xe5: case 0xe9: case 0xeb: case 0xed: case 0xf1:
             case 0xf5: case 0xf9: case 0xfd: do_sbc(); return; /* rm_sbc */
             case 0xe3: case 0xe7: case 0xef: case 0xf3: case 0xf7: case 0xfb:
-            case 0xff: d++;do_sbc(); return; /* ud_isc */
-            case 0xe6: case 0xee: case 0xf6: case 0xfe: set_nz(++d); return; /* rmw_inc */
-            case 0xe8: set_nz(++x); return; /* sb_inx */
+            case 0xff: s.d++;do_sbc(); return; /* ud_isc */
+            case 0xe6: case 0xee: case 0xf6: case 0xfe: set_nz(++s.d); return; /* rmw_inc */
+            case 0xe8: set_nz(++s.x); return; /* sb_inx */
             case 0xf8: set(Flag::D); return; /* sb_sed */
         } return;
-        case st_zp_x: zpa += x; st_reg_sel(); return;
-        case st_zp_y: zpa += y; st_reg_sel(); return;
-        case st_idx_ind: zpa += x; a2 = (u8)(zpa + 0x01); // fall through
+        case st_zp_x: s.zpa += s.x; st_reg_sel(); return;
+        case st_zp_y: s.zpa += s.y; st_reg_sel(); return;
+        case st_idx_ind: s.zpa += s.x; s.a2 = (u8)(s.zpa + 0x01); // fall through
         case st_reg: st_reg_sel(); return;
-        case jmp_ind: ++a1l; return;
+        case jmp_ind: ++s.a1l; return;
         case bra: {
             // mapping: condition code -> flag bit position
             static constexpr u8 cc_flag_pos[8] = { 7, 7, 6, 6, 0, 0, 1, 1 };
 
-            const int cc = ir >> 5;
-            const bool no_bra = ((p >> cc_flag_pos[cc]) ^ cc) & 0b1;
+            const int cc = s.ir >> 5;
+            const bool no_bra = ((s.p >> cc_flag_pos[cc]) ^ cc) & 0b1;
 
             if (!no_bra) {
                 mcp += 1; // T2 (no page cross)
-                a2 = pc;
-                pc += (i8)d;
-                if ((a2 ^ pc) & 0xff00) {
+                s.a2 = s.pc;
+                s.pc += (i8)s.d;
+                if ((s.a2 ^ s.pc) & 0xff00) {
                     mcp += 2; // T2 (page cross)
-                    a1 = a2;
-                    a1l += d;
+                    s.a1 = s.a2;
+                    s.a1l += s.d;
                 }
             }
             return;
         }
         case hold_ints:
-            if (nmi_timer == 0x02) nmi_timer = 0x01;
+            if (s.nmi_timer == 0x02) s.nmi_timer = 0x01;
             //if (irq_timer && (irq_timer < 0b100)) irq_timer = 0b1;
-            if (irq_timer == 0b10) irq_timer = 0b01;
+            if (s.irq_timer == 0b10) s.irq_timer = 0b01;
             return;
-        case php: p |= (Flag::B | Flag::u); // fall through
-        case pha: a1 = spf; --sp; return;
-        case jsr: a3 = spf; --sp; a4 = spf; --sp; a2 = pc; // fall through
-        case jmp_abs: pc = a1; return;
-        case rti: ++sp; a1 = spf; // fall through
-        case rts: ++sp; a2 = spf; // fall through
-        case inc_sp: ++sp; return;
+        case php: s.p |= (Flag::B | Flag::u); // fall through
+        case pha: s.a1 = s.spf; --s.sp; return;
+        case jsr: s.a3 = s.spf; --s.sp; s.a4 = s.spf; --s.sp; s.a2 = s.pc; // fall through
+        case jmp_abs: s.pc = s.a1; return;
+        case rti: ++s.sp; s.a1 = s.spf; // fall through
+        case rts: ++s.sp; s.a2 = s.spf; // fall through
+        case inc_sp: ++s.sp; return;
         case MOPC::brk:
             // brk_srcs |= (irq_bit & ~p); // no effect (the same vector used anyway)
-            if (nmi_timer & 0b11) { // Potential hijacking by nmi
-                brk_srcs |= Brk_src::nmi;
-                nmi_timer = nmi_timer_handled;
+            if (s.nmi_timer & 0b11) { // Potential hijacking by nmi
+                s.brk_srcs |= Brk_src::nmi;
+                s.nmi_timer = nmi_timer_handled;
             }
-            a2 = brk_ctrl[brk_srcs].vec;
-            a3 = a2 + 0x0001;
-            brk_srcs = 0x00;
+            s.a2 = brk_ctrl[s.brk_srcs].vec;
+            s.a3 = s.a2 + 0x0001;
+            s.brk_srcs = 0x00;
             set(Flag::I);
             return;
         case dispatch_cli: // post cli dispatch
@@ -208,31 +208,31 @@ void NMOS6502::Core::exec(const u8 mopc) {
             */
             check_irq();
         dispatch_post_cli_sei: // irq has been taken based on 'old' i-flag value (still can hijack a sw brk!)
-            if (nmi_act) {
-                brk_srcs |= Brk_src::nmi;
-                nmi_act = false;
-                if (nmi_timer) nmi_timer = nmi_timer_handled;
+            if (s.nmi_act) {
+                s.brk_srcs |= Brk_src::nmi;
+                s.nmi_act = false;
+                if (s.nmi_timer) s.nmi_timer = nmi_timer_handled;
             }
             // fall through
         case dispatch_brk: // hw-ints not taken on the instruction following a brk (sw or hw)
-            if (ir == OPC::brk) brk_srcs |= Brk_src::sw;
+            if (s.ir == OPC::brk) s.brk_srcs |= Brk_src::sw;
 
-            if (brk_srcs) {
-                ir = OPC::brk;
-                p = (p | (Flag::B | Flag::u)) & brk_ctrl[brk_srcs].p_mask;
-                pc -= brk_ctrl[brk_srcs].pc_t0;
-                a1 = pc + brk_ctrl[brk_srcs].pc_t1;
-                a2 = spf; --sp;
-                a3 = spf; --sp;
-                a4 = spf; --sp;
+            if (s.brk_srcs) {
+                s.ir = OPC::brk;
+                s.p = (s.p | (Flag::B | Flag::u)) & brk_ctrl[s.brk_srcs].p_mask;
+                s.pc -= brk_ctrl[s.brk_srcs].pc_t0;
+                s.a1 = s.pc + brk_ctrl[s.brk_srcs].pc_t1;
+                s.a2 = s.spf; --s.sp;
+                s.a3 = s.spf; --s.sp;
+                s.a4 = s.spf; --s.sp;
             }
 
-            mcp = opc_mc_start(ir);
+            mcp = opc_mc_start(s.ir);
 
             return;
         case sig_hlt: sig_halt(); return;
         case hlt: --mcp; return; // stuck
-        case MOPC::reset: a1 = Vec::rst + 0x0001; set(Flag::I); return;
+        case MOPC::reset: s.a1 = Vec::rst + 0x0001; set(Flag::I); return;
     }
 }
 
@@ -251,21 +251,21 @@ void NMOS6502::Core::do_adc() {
             if (res > 0x9) { co = 0x1; return (res + 0x6) & 0xf; }
             else { co = 0x0; return res; }
         };
-        set(Flag::Z, ((a + d + C()) & 0xff) == 0x00); // Z set based on binary result
+        set(Flag::Z, ((s.a + s.d + C()) & 0xff) == 0x00); // Z set based on binary result
         u8 n1; u8 c1; u8 n2; u8 c2;
-        n1 = adc_dec_nib((a & 0xf) + (d & 0xf) + C(), c1);
-        n2 = (a >> 4) + (d >> 4) + c1;
+        n1 = adc_dec_nib((s.a & 0xf) + (s.d & 0xf) + C(), c1);
+        n2 = (s.a >> 4) + (s.d >> 4) + c1;
         u8 r = (n2 << 4) | n1; // high nib not adjusted yet (N&V set based on this)
         set(Flag::N, r & 0x80);
-        set(Flag::V, ((a ^ r) & (d ^ r) & 0x80));
+        set(Flag::V, ((s.a ^ r) & (s.d ^ r) & 0x80));
         n2 = adc_dec_nib(n2, c2);
         set(Flag::C, c2); // decimal carry
-        a = (n2 << 4) | n1;
+        s.a = (n2 << 4) | n1;
     } else {
-        u16 r = a + d + C();
+        u16 r = s.a + s.d + C();
         set(Flag::C, r & 0x100);
-        set(Flag::V, ((a ^ r) & (d ^ r) & 0x80));
-        set_nz(a = r);
+        set(Flag::V, ((s.a ^ r) & (s.d ^ r) & 0x80));
+        set_nz(s.a = r);
     }
 }
 
@@ -276,21 +276,21 @@ void NMOS6502::Core::do_sbc() {
             if (res > 0xf) { co = 0x1; return (res - 0x6) & 0xf; }
             else { co = 0x0; return res; }
         };
-        set(Flag::Z, ((a - d - B()) & 0xff) == 0x00);
+        set(Flag::Z, ((s.a - s.d - B()) & 0xff) == 0x00);
         u8 n1; u8 c1; u8 n2; u8 c2;
-        n1 = sbc_dec_nib((a & 0xf) - (d & 0xf) - B(), c1);
-        n2 = (a >> 4) - (d >> 4) - c1;
+        n1 = sbc_dec_nib((s.a & 0xf) - (s.d & 0xf) - B(), c1);
+        n2 = (s.a >> 4) - (s.d >> 4) - c1;
         u8 r = (n2 << 4) | n1;
         set(Flag::N, r & 0x80);
-        set(Flag::V, ((a ^ d) & (a ^ r)) & 0x80);
+        set(Flag::V, ((s.a ^ s.d) & (s.a ^ r)) & 0x80);
         n2 = sbc_dec_nib(n2, c2);
         set(Flag::C, !c2);
-        a = (n2 << 4) | n1;
+        s.a = (n2 << 4) | n1;
     } else {
-        u16 r = a - d - B();
+        u16 r = s.a - s.d - B();
         set(Flag::C, r < 0x100);
-        set(Flag::V, ((a ^ d) & (a ^ r)) & 0x80);
-        set_nz(a = r);
+        set(Flag::V, ((s.a ^ s.d) & (s.a ^ r)) & 0x80);
+        set_nz(s.a = r);
     }
 }
 
@@ -300,26 +300,26 @@ void NMOS6502::Core::do_ud_arr() {
         (http://www.6502.org/users/andre/petindex/local/64doc.txt)
     */
     if (is_set(Flag::D)) {
-        d &= a;
+        s.d &= s.a;
 
-        u8 ah = d >> 4;
-        u8 al = d & 0xf;
+        u8 ah = s.d >> 4;
+        u8 al = s.d & 0xf;
 
         set(Flag::N, is_set(Flag::C));
-        a = (d >> 1) | (p << 7);
-        set(Flag::Z, a == 0x00);
-        set(Flag::V, (d ^ a) & 0x40);
+        s.a = (s.d >> 1) | (s.p << 7);
+        set(Flag::Z, s.a == 0x00);
+        set(Flag::V, (s.d ^ s.a) & 0x40);
 
-        if (al + (al & 0x1) > 0x5) a = (a & 0xf0) | ((a + 0x6) & 0xf);
-        if ((ah + (ah & 0x1)) > 0x5) { set(Flag::C); a += 0x60; }
+        if (al + (al & 0x1) > 0x5) s.a = (s.a & 0xf0) | ((s.a + 0x6) & 0xf);
+        if ((ah + (ah & 0x1)) > 0x5) { set(Flag::C); s.a += 0x60; }
         else clr(Flag::C);
     } else {
-        a &= d;
-        a >>= 1;
-        a |= (p << 7);
-        set_nz(a);
-        set(Flag::C, a & 0x40);
-        set(Flag::V, (a ^ (a << 1)) & 0x40);
+        s.a &= s.d;
+        s.a >>= 1;
+        s.a |= (s.p << 7);
+        set_nz(s.a);
+        set(Flag::C, s.a & 0x40);
+        set(Flag::V, (s.a ^ (s.a << 1)) & 0x40);
     }
 }
 

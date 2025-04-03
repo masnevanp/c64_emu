@@ -485,7 +485,7 @@ private:
 
     State::System s;
 
-    CPU cpu{cpu_trap};
+    CPU cpu{s.cpu, cpu_trap};
 
     CIA cia1{s.cia1, cia1_pa_out, cia1_pb_out, int_hub.int_sig, IO::Int_sig::Src::cia1, s.vic.cycle};
     CIA cia2{s.cia2, cia2_pa_out, cia2_pb_out, int_hub.int_sig, IO::Int_sig::Src::cia2, s.vic.cycle};
@@ -585,13 +585,13 @@ private:
         [this]() {
             bool proceed = true;
 
-            const auto trap_opc = cpu.ir;
+            const auto trap_opc = cpu.s.ir;
             switch (trap_opc) {
                 /*case Trap_OPC::IEC_virtual_routine:
                     handled = IEC_virtual::on_trap(c64.cpu, c64.s.ram, iec_ctrl);
                     break;*/
                 case Trap_OPC::tape_routine: {
-                    const auto routine_id = cpu.d;
+                    const auto routine_id = cpu.s.d;
 
                     switch (routine_id) {
                         case Trap_ID::load: do_load(); break;

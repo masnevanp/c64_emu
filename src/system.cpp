@@ -384,19 +384,19 @@ void System::C64::do_load() {
         auto sz = bin.size();
 
         // load addr (used if 2nd.addr == 0)
-        s.ram[0xc3] = cpu.x;
-        s.ram[0xc4] = cpu.y;
+        s.ram[0xc3] = cpu.s.x;
+        s.ram[0xc4] = cpu.s.y;
 
         u16 addr = (scnd_addr == 0)
-            ? cpu.y * 0x100 + cpu.x
+            ? cpu.s.y * 0x100 + cpu.s.x
             : bin[1] * 0x100 + bin[0];
 
         // 'load'
         for (u32 b = 2; b < sz; ++b) s.ram[addr++] = bin[b];
 
         // end pointer
-        s.ram[0xae] = cpu.x = addr;
-        s.ram[0xaf] = cpu.y = addr >> 8;
+        s.ram[0xae] = cpu.s.x = addr;
+        s.ram[0xaf] = cpu.s.y = addr >> 8;
     };
 
     auto resolve_disk_img_op = [&]() {
@@ -417,7 +417,7 @@ void System::C64::do_load() {
     auto bin = loader(get_filename(s.ram), resolve_disk_img_op());
 
     if (!bin || (*bin).size() == 1 || (*bin).size() == 2) {
-        cpu.pc = 0xf704; // jmp to 'file not found'
+        cpu.s.pc = 0xf704; // jmp to 'file not found'
     } else {
         // NOTE: File size 0 indicates that the loader operation was a success,
         // although no binary was returned (so you get the 'READY.', with no errors).
@@ -446,7 +446,7 @@ void System::C64::do_save() {
     std::string filename = get_filename(s.ram);
     if (filename.length() == 0) {
         // TODO: error_code enum(s)
-        cpu.a = 0x08; // missing filename
+        cpu.s.a = 0x08; // missing filename
         cpu.set(NMOS6502::Flag::C); // error
         return;
     }
