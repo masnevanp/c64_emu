@@ -58,9 +58,9 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     std::cout << " [ " << print_u8(mem[cpu.s.pc]);
     std::cout << " " << print_u8(mem[(cpu.s.pc+1) & 0xffff]) << " " << print_u8(mem[(cpu.s.pc+2) & 0xffff]);
     std::cout << " ]";
-    std::cout << "\nsp: " << print_u16(cpu.s.spf);
+    std::cout << "\nsp: " << print_u16(cpu.s.sp16);
     std::cout << " [";
-    for (int sp = cpu.s.spf, i = 1; i < 9 && (sp + i) <= 0x1ff; ++i) {
+    for (int sp = cpu.s.sp16, i = 1; i < 9 && (sp + i) <= 0x1ff; ++i) {
         std::cout << " " << print_u8(mem[sp + i]);
     }
     std::cout << " ]";
@@ -70,7 +70,7 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     std::cout << "   p: " << print_u8(cpu.s.p);
     std::cout << " [" << flag_str(cpu.s.p) << "]";
     //// zpaf, a1, a2, a3, a4
-    std::cout << "\n\nzp: " << print_u16(cpu.s.zpaf);
+    std::cout << "\n\nzp: " << print_u16(cpu.s.zp16);
     std::cout << " a1: " << print_u16(cpu.s.a1);
     std::cout << " a2: " << print_u16(cpu.s.a2);
     std::cout << " a3: " << print_u16(cpu.s.a3);
@@ -98,13 +98,13 @@ void Dbg::reg_diff(const Core& cpu) {
 
     std::cout << "\n\n";
     for (int r = 0; r < Ri16::_cnt16; ++r) {
-        if (r == Ri16::pc || r == Ri16::spf || r >= Ri16::a1) {
+        if (r == Ri16::pc || r == Ri16::sp16 || r >= Ri16::a1) {
             if (r16_snap[r] != cpu.s.r16((Ri16)r)) {
                 std::cout << Ri16_str[r] << ": ";
                 std::cout << print_u16(r16_snap[r]) << " --> " << print_u16(cpu.s.r16((Ri16)r)) << ", ";
                 r16_snap[r] = cpu.s.r16((Ri16)r);
             }
-        } else if (r <= Ri16::zpaf) {
+        } else if (r <= Ri16::zp16) {
             int r8 = r * 2;
             if (r8_snap[r8] != cpu.s.r8((Ri8)r8)) {
                 std::cout << Ri8_str[r8] << ": ";

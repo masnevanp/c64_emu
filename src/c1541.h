@@ -936,7 +936,7 @@ public:
     }
 
     void reset() {
-        cpu.reset_cold();
+        cpu.reset();
         iec.reset();
         dc.reset();
         disk_carousel.reset();

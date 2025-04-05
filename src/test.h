@@ -18,6 +18,7 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     Core::State cpu_state;
     Sig sig_halt = [](){ std::cout << "\nCPU halted!" << std::endl; };
     Core cpu{cpu_state, sig_halt};
+    cpu.reset();
 
     for (int i = 0; i < 7; ++i) { // do reset...
         if (cpu.mrw() == MC::RW::r) cpu.mdr() = mem[cpu.mar()];
@@ -59,8 +60,8 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     std::cout << " time: " << te << ", ";
     std::cout << " op/sec: " << (int)(op_cnt / te * 1000) << "\n";
     std::cout << "=========================================================\n";
-    std::cout << " ";
-    std::cout << "";
+    std::cout << ((cpu.s.pc == 0x3469) ? "### PASS ###" : "### FAIL ###");
+    std::cout << "\n";
 }
 
 
@@ -117,8 +118,8 @@ void run_test_suite()
     };
 
     auto rts = [&]() {
-        ++sys.cpu.s.sp; sys.cpu.s.pcl = mem[sys.cpu.s.spf];
-        ++sys.cpu.s.sp; sys.cpu.s.pch = mem[sys.cpu.s.spf];
+        ++sys.cpu.s.sp; sys.cpu.s.pcl = mem[sys.cpu.s.sp16];
+        ++sys.cpu.s.sp; sys.cpu.s.pch = mem[sys.cpu.s.sp16];
         ++sys.cpu.s.pc;
     };
 

@@ -11,12 +11,12 @@ namespace NMOS6502 {
 struct Core {
 public:
     struct State {
-        Reg16 zpaf;
+        Reg16 zp16;
         Reg16 pc;
         Reg8 d; Reg8 ir;
         Reg16 a1;
         Reg16 a2;
-        Reg16 spf;
+        Reg16 sp16;
         Reg8 p; Reg8 a;
         Reg8 x; Reg8 y;
         Reg16 a3;
@@ -28,10 +28,10 @@ public:
         u8 irq_timer;
         u8 brk_srcs;
 
-        const Reg16& r16(Ri16 ri) const { return (&zpaf)[ri]; }
-        Reg8& r8(Ri8 ri) const { return ((Reg8*)(&zpaf))[ri]; }
+        const Reg16& r16(Ri16 ri) const { return (&zp16)[ri]; }
+        Reg8& r8(Ri8 ri) const { return ((Reg8*)(&zp16))[ri]; }
 
-        Reg8& zpa{r8(Ri8::zpa)};
+        Reg8& zp{r8(Ri8::zp)};
         Reg8& pcl{r8(Ri8::pcl)}; Reg8& pch{r8(Ri8::pch)};
         Reg8& a1l{r8(Ri8::a1l)}; Reg8& a1h{r8(Ri8::a1h)};
         Reg8& sp{r8(Ri8::sp)};
@@ -42,8 +42,7 @@ public:
 
     const MC::MOP* mcp; // micro-code pointer ('mc pc')
 
-    void reset_warm();
-    void reset_cold();
+    void reset();
 
     bool halted() const { return mcp->mopc == MC::hlt; }
     bool resume() {

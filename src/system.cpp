@@ -345,7 +345,7 @@ void System::C64::output_frame() {
 void System::C64::reset_warm() {
     cia1.reset_warm(); // need to reset for correct irq handling
     cia2.reset_warm();
-    cpu.reset_warm();
+    cpu.reset();
     int_hub.reset();
 }
 
@@ -358,7 +358,7 @@ void System::C64::reset_cold() {
     vic.reset();
     input_matrix.reset();
     addr_space.reset();
-    cpu.reset_cold();
+    cpu.reset();
     int_hub.reset();
     c1541.reset();
     exp_ctx.reset();

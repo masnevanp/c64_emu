@@ -27,7 +27,7 @@ namespace NMOS6502 {
 
     // 16bit reg indices
     enum Ri16 : u8 {
-        zpaf = 0, pc = 1, d_ir = 2, a1 = 3, a2 = 4, spf = 5, p_a = 6, x_y = 7,
+        zp16 = 0, pc = 1, d_ir = 2, a1 = 3, a2 = 4, sp16 = 5, p_a = 6, x_y = 7,
         a3 = 8, a4 = 9,
         _cnt16 = a4 + 1
     };
@@ -35,7 +35,7 @@ namespace NMOS6502 {
 
     // 8bit reg indices
     enum Ri8 : u8 { // TODO: big-endian host
-        zpa = 0, pcl = 2, pch = 3, d = 4, ir = 5, a1l = 6, a1h = 7, a2l = 8, a2h = 9,
+        zp = 0, zph = 1, pcl = 2, pch = 3, d = 4, ir = 5, a1l = 6, a1h = 7, a2l = 8, a2h = 9,
         sp = 10, sph = 11, p = 12, a = 13, x = 14, y = 15,
         _cnt8 = y + 1
     };
