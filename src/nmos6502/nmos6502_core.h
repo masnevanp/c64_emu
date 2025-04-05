@@ -85,14 +85,16 @@ public:
     }
 
     void tick() {
-        if (s.nmi_timer == 0x01) s.nmi_timer = 0x02;
-        else if (s.nmi_timer == 0x02) {
-            s.nmi_act = true;
-            s.nmi_timer = 0x03;
-        }
+        if (s.irq_timer || s.nmi_timer) {
+            if (s.nmi_timer == 0x01) s.nmi_timer = 0x02;
+            else if (s.nmi_timer == 0x02) {
+                s.nmi_act = true;
+                s.nmi_timer = 0x03;
+            }
 
-        if (s.irq_timer & 0b10) s.irq_act = true;
-        s.irq_timer <<= 1;
+            if (s.irq_timer & 0b10) s.irq_act = true;
+            s.irq_timer <<= 1;
+        }
 
         s.pc += mcp->pc_inc;
 
