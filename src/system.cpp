@@ -424,7 +424,7 @@ void System::C64::do_load() {
         if ((*bin).size() > 2) inject(*bin);
 
         // 'return' status to kernal routine
-        cpu.clr(NMOS6502::Flag::C); // no error
+        cpu.s.clr(NMOS6502::Flag::C); // no error
         s.ram[0x90] = 0x00; // io status ok
     }
 }
@@ -447,7 +447,7 @@ void System::C64::do_save() {
     if (filename.length() == 0) {
         // TODO: error_code enum(s)
         cpu.s.a = 0x08; // missing filename
-        cpu.set(NMOS6502::Flag::C); // error
+        cpu.s.set(NMOS6502::Flag::C); // error
         return;
     }
 
@@ -461,7 +461,7 @@ void System::C64::do_save() {
     do_save(filepath, start_addr, &s.ram[start_addr], sz);
 
     // status
-    cpu.clr(NMOS6502::Flag::C); // no error
+    cpu.s.clr(NMOS6502::Flag::C); // no error
     s.ram[0x90] = 0x00; // io status ok
 }
 

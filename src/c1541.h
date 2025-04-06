@@ -753,7 +753,7 @@ private:
     bool not_sync_set()       const { return via_pb_in & PB::sync; }
     void signal_byte_ready() {
         ca1_edge(0b0);
-        cpu.set(NMOS6502::Flag::V); // NOTE: SO-detection delay (in the CPU) not happening..
+        cpu.s.set(NMOS6502::Flag::V); // NOTE: SO-detection delay (in the CPU) not happening..
     }
 
     void step_head(const u8 via_pb_out_now) {

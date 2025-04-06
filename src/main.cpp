@@ -54,6 +54,6 @@ void test()
     mem[0xfffe] = 0x20; mem[0xffff] = 0x00;
 
     Dbg::System sys{mem};
-    sys.cpu.set_irq();
+    sys.cpu.set_irq(true);
     step(sys);
 }

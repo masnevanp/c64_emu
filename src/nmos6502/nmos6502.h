@@ -17,7 +17,7 @@ namespace NMOS6502 {
 
     using Sig  = std::function<void (void)>;
 
-    enum Vec : u16 { nmi = 0xfffa, rst = 0xfffc, irq = 0xfffe, };
+    struct Vec { enum { nmi = 0xfffa, rst = 0xfffc, irq = 0xfffe, }; };
 
     enum Flag : u8 { // nvubdizc, u = unused (bit 5)
         N = 0b10000000, V = 0b01000000, u = 0b00100000, B = 0b00010000,
