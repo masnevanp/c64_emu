@@ -1,9 +1,6 @@
 
 #include "files.h"
 #include <regex>
-#include <iostream>
-#include <algorithm>
-#include <iterator>
 #include <filesystem>
 #include "utils.h"
 

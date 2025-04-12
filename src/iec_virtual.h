@@ -111,7 +111,7 @@ private:
 
 class Host_drive : public Device  {
 public:
-    Host_drive(Files::loader& load_file_) : load_file(load_file_) {}
+    Host_drive(Files::Loader& load_file_) : load_file(load_file_) {}
 
     virtual IO_ST talk(u8 sa) {
         cur_ch = &ch[sa & ch_mask];
@@ -149,11 +149,12 @@ private:
             // now waiting to receive the filename before opening...
         }
 
-        void check_opening(Files::loader& load_file) {
+        void check_opening(Files::Loader& load_file) {
             if (status == Status::opening && name.size() > 0) {
                 if (mode == Mode::r) {
                     std::string name_str(name.begin(), name.end());
-                    if (auto bin = load_file(name_str)) data = std::move(*bin);
+                    auto [_, bin] = load_file(name_str);
+                    if (bin) data = std::move(*bin);
                     else return close();
                 } else {
                     data.clear(); // TODO: write/append, open/create actual file here?
@@ -197,7 +198,7 @@ private:
     Ch ch[16];
     Ch* cur_ch = &ch[0];
 
-    Files::loader& load_file;
+    Files::Loader& load_file;
 };
 
 
@@ -301,46 +302,46 @@ bool on_trap(System::CPU& cpu, u8* ram, Controller& iec_ctrl) {
     // TODO: verify that the pc is what is should be (to dodge faulty traps)?
 
     IO_ST status = IO_ST::ok;
-    u8 iec_routine = cpu.d;
+    u8 iec_routine = cpu.s.d;
     switch (iec_routine) {
         case IEC_routine::untlk:
-            cpu.a = IEC_command::untalk;
-            iec_ctrl.talk(cpu.a);
+            cpu.s.a = IEC_command::untalk;
+            iec_ctrl.talk(cpu.s.a);
             break;
         case IEC_routine::talk:
-            cpu.a |= IEC_command::talk;
-            iec_ctrl.talk(cpu.a);
+            cpu.s.a |= IEC_command::talk;
+            iec_ctrl.talk(cpu.s.a);
             break;
         case IEC_routine::unlsn:
-            cpu.a = IEC_command::unlisten;
-            iec_ctrl.listen(cpu.a);
+            cpu.s.a = IEC_command::unlisten;
+            iec_ctrl.listen(cpu.s.a);
             break;
         case IEC_routine::listen:
-            cpu.a |= IEC_command::listen;
-            iec_ctrl.listen(cpu.a);
+            cpu.s.a |= IEC_command::listen;
+            iec_ctrl.listen(cpu.s.a);
             break;
         case IEC_routine::tksa:
-            status = iec_ctrl.talk_s(cpu.a);
-            cpu.clr(NMOS6502::Flag::N);
+            status = iec_ctrl.talk_s(cpu.s.a);
+            cpu.s.clr(NMOS6502::Flag::N);
             break;
         case IEC_routine::second:
-            status = iec_ctrl.listen_s(cpu.a);
+            status = iec_ctrl.listen_s(cpu.s.a);
             break;
         case IEC_routine::acptr:
-            status = iec_ctrl.read(cpu.a);
+            status = iec_ctrl.read(cpu.s.a);
             break;
         case IEC_routine::ciout:
-            status = iec_ctrl.write(cpu.a);
+            status = iec_ctrl.write(cpu.s.a);
             break;
         default:
             std::cout << "\nUnknown ICE routine: " << (int)iec_routine;
             return false;
     }
 
-    cpu.clr(NMOS6502::Flag::C);
+    cpu.s.clr(NMOS6502::Flag::C);
     ram[0x90] |= status; // TODO: should it be cleared in some cases??
 
-    cpu.pc = 0xedee;  // jump to a 'rts'
+    cpu.s.pc = 0xedee;  // jump to a 'rts'
 
     return true;
 }

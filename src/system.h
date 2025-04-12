@@ -2,9 +2,7 @@
 #define SYSTEM_H_INCLUDED
 
 
-#include <cmath>
 #include <vector>
-#include <filesystem>
 #include <iostream>
 #include "common.h"
 #include "state.h"

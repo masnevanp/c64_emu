@@ -1,6 +1,5 @@
 
 #include <iostream>
-#include <optional>
 #include "expansion.h"
 #include "utils.h"
 #include "nmos6502/nmos6502_mc.h"
@@ -59,7 +58,8 @@ struct exrom_game {
         : exrom(bool(crt.header().exrom)), game(bool(crt.header().game)) {} 
 };
 
-using Result = std::optional<exrom_game>;
+
+using Result = Maybe<exrom_game>;
 
 
 static const auto& not_attached = std::nullopt;
