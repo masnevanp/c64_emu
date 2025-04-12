@@ -67,7 +67,7 @@ void get_Colodore(u32* target_palette, double brightness, double contrast, doubl
 }
 
 
-std::optional<std::vector<u8>> read_file(const std::string& filepath) {
+Maybe<Bin> read_file(const std::string& filepath) {
     std::ifstream f(filepath, std::ios::binary | std::ios::ate);
 
     if (!f) {
@@ -76,7 +76,7 @@ std::optional<std::vector<u8>> read_file(const std::string& filepath) {
     }
 
     auto sz = f.tellg();
-    std::vector<u8> bin(sz);
+    Bin bin(sz);
     f.seekg(0);
     f.read((char*)bin.data(), sz);
 

@@ -3,6 +3,8 @@
 
 #include "nmos6502/nmos6502.h"
 #include "nmos6502/nmos6502_core.h"
+#include <optional>
+
 
 using u8  = NMOS6502::u8;
 using i8  = NMOS6502::i8;
@@ -59,6 +61,14 @@ struct U32b {
     u8 b0; u8 b1; u8 b2; u8 b3;
     operator u32() const { return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3; }
 };
+
+
+using byte = u8;
+using Bin = std::vector<byte>;
+
+
+template<typename T>
+using Maybe = std::optional<T>;
 
 
 using Sig = NMOS6502::Sig;

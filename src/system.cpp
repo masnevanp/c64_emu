@@ -370,62 +370,73 @@ void System::C64::reset_cold() {
 }
 
 
-std::string get_filename(u8* ram) {
-    u16 filename_addr = ram[0xbc] * 0x100 + ram[0xbb];
-    u8 filename_len = ram[0xb7];
+std::string get_filename(const u8* ram) {
+    const u16 filename_addr = ram[0xbc] * 0x100 + ram[0xbb];
+    const u8 filename_len = ram[0xb7];
     return std::string(&ram[filename_addr], &ram[filename_addr + filename_len]);
 }
 
 
+void System::C64::handle_img(Files::Img& img) {
+    using Type = Files::Img::Type;
+
+    switch (img.type) {
+        case Type::crt: {
+            const Files::CRT crt{img.data};
+            if (crt.header().valid()) {
+                if (Cartridge::attach(crt, exp_ctx)) reset_cold();
+            } else {
+                std::cout << "CRT img: invalid header" << std::endl;
+            }
+            break;
+        }
+        case Type::d64:
+            // auto slot = s.ram[0xb9]; // secondary address
+            // slot=0 --> first free slot
+            c1541.disk_carousel.insert(0,
+                    new C1541::D64_disk(Files::D64{img.data}), img.name);
+            break;
+        case Type::g64:
+            c1541.disk_carousel.insert(0,
+                    new C1541::G64_disk(std::move(img.data)), img.name);
+            break;
+        default:
+            std::cout << "\nImg ignored: " << img.name << std::endl;
+            break;
+    }
+    // TODO: support 't64' (e.g. cold reset & feed the appropriate 'LOAD'
+    // command + 'RETURN' key into the C64 keyboard input buffer)
+};
+
+
 void System::C64::do_load() {
-    const u8 scnd_addr = s.ram[0xb9];
-
     auto inject = [&](const std::vector<u8>& bin) {
-        auto sz = bin.size();
-
         // load addr (used if 2nd.addr == 0)
         s.ram[0xc3] = cpu.s.x;
         s.ram[0xc4] = cpu.s.y;
 
+        const u8 scnd_addr = s.ram[0xb9];
         u16 addr = (scnd_addr == 0)
             ? cpu.s.y * 0x100 + cpu.s.x
             : bin[1] * 0x100 + bin[0];
 
         // 'load'
-        for (u32 b = 2; b < sz; ++b) s.ram[addr++] = bin[b];
+        for (u32 b = 2; b < bin.size(); ++b) s.ram[addr++] = bin[b];
 
         // end pointer
         s.ram[0xae] = cpu.s.x = addr;
         s.ram[0xaf] = cpu.s.y = addr >> 8;
     };
 
-    auto resolve_disk_img_op = [&]() {
-        using Iop = Files::Img_op;
-
-        switch (scnd_addr) {
-            case 0: return Iop(Iop::fwd | Iop::mount | Iop::inspect);
-            case 1: return Iop::fwd; // would be 'fwd_1st' (first drive on the bus)
-            case 8: return Iop::fwd; // would be 'fwd_8' if multiple drives were ever supported
-            // case 9: return Iop::fwd_9;
-            // ...
-            case 2: return Iop::mount;
-            case 3: return Iop::inspect;
-            default: return Iop::none;
-        }
-    };
-
-    auto bin = loader(get_filename(s.ram), resolve_disk_img_op());
-
-    if (!bin || (*bin).size() == 1 || (*bin).size() == 2) {
-        cpu.s.pc = 0xf704; // jmp to 'file not found'
-    } else {
-        // NOTE: File size 0 indicates that the loader operation was a success,
-        // although no binary was returned (so you get the 'READY.', with no errors).
-        if ((*bin).size() > 2) inject(*bin);
-
-        // 'return' status to kernal routine
+    auto [img, bin] = loader(get_filename(s.ram));
+    if (img || bin) {
+        if (bin) inject(*bin);
+        if (img) handle_img(*img);
+        //'return' status to kernal routine
         cpu.s.clr(NMOS6502::Flag::C); // no error
         s.ram[0x90] = 0x00; // io status ok
+    } else {
+        cpu.s.pc = 0xf704; // --> file not found
     }
 }
 

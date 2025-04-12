@@ -570,10 +570,7 @@ private:
         [this](const char* filepath) {
             std::cout << "\nDrop: " << filepath << std::endl;
             auto img = Files::read_img_file(filepath);
-            img_consumer(img);
-            // Could also just use the loader: loader(filepath, Files::Img_op::fwd);
-            // but that would require some changes to the loader
-            // (e.g. if a disk is mounted, then other 'incoming' disks are ignored currently..)
+            handle_img(img);
         }
     };
     Host::Input host_input{host_input_handlers};
@@ -617,40 +614,7 @@ private:
         }
     };
 
-    Files::consumer img_consumer {
-        [this](Files::Img& img) {
-            using Type = Files::Img::Type;
-
-            switch (img.type) {
-                case Type::crt: {
-                    Files::CRT crt{img.data};
-                    if (crt.header().valid()) {
-                        if (Cartridge::attach(crt, exp_ctx)) reset_cold();
-                    } else {
-                        std::cout << "CRT img: invalid header" << std::endl;
-                    }
-                    break;
-                }
-                case Type::d64:
-                    // auto slot = s.ram[0xb9]; // secondary address
-                    // slot=0 --> first free slot
-                    c1541.disk_carousel.insert(0,
-                            new C1541::D64_disk(Files::D64{img.data}), img.name);
-                    break;
-                case Type::g64:
-                    c1541.disk_carousel.insert(0,
-                            new C1541::G64_disk(std::move(img.data)), img.name);
-                    break;
-                default:
-                    std::cout << "\nImg ignored: " << img.name << std::endl;
-                    break;
-            }
-            // TODO: support 't64' (e.g. cold reset & feed the appropriate 'LOAD'
-            // command + 'RETURN' key into the C64 keyboard input buffer)
-        }
-    };
-
-    Files::loader loader{Files::Loader("data/prg", img_consumer)}; // TODO: init_dir configurable (program arg?)
+    Files::Loader loader{Files::init_loader("data/prg")}; // TODO: init_dir configurable (program arg?)
 
     Performance perf{};
 
@@ -670,6 +634,8 @@ private:
 
     void reset_warm();
     void reset_cold();
+
+    void handle_img(Files::Img& img);
 
     void do_load();
     void do_save();

@@ -3,9 +3,7 @@
 
 #include <string>
 #include <vector>
-#include <optional>
 #include <numeric>
-#include <filesystem>
 #include "common.h"
 
 
@@ -13,33 +11,25 @@
 namespace Files {
 
 struct Img {
-    enum class Type { crt, t64, d64, g64, raw, unknown };
+    enum class Type { crt, t64, d64, g64, raw, unknown, oversized };
 
     const Type type;
     const std::string name;
-    std::vector<u8> data;
+    Bin data;
 };
 
 Img read_img_file(const std::string& path);
 
 
-enum Img_op : u8 {
-    fwd  = 0b001, // fwd to consumer
-    mount = 0b010,
-    inspect = 0b100, // e.g. a dir listing (returned as a basic program listing)
-    none = 0,
-};
-
-using load_result = std::optional<std::vector<u8>>;
-using consumer = std::function<void (Files::Img&)>;
-using loader = std::function<load_result(const std::string&, const u8 img_ops)>;
+using Load_result = std::pair<Maybe<Img>, Maybe<Bin>>;
+using Loader = std::function<Load_result(const std::string&)>;
 
 // TODO: --> 'loader.h' ?
-loader Loader(const std::string& init_dir, consumer& img_consumer);
+Loader init_loader(const std::string& init_dir);
 
 
 struct T64 {
-    const std::vector<u8>& data;
+    const Bin& data;
 
     struct Dir_entry {
         u8 _todo[2]; // types
@@ -51,7 +41,7 @@ struct T64 {
         u8 __todo[16]; // name
     };
 
-    std::vector<u8> first_file() const { // TODO: handle multifile archives?
+    Bin first_file() const { // TODO: handle multifile archives?
         const auto& d = data.data();
         const auto& e = *((Dir_entry*)&d[0x40]);
 
@@ -62,8 +52,8 @@ struct T64 {
         // try to deal with falty images (probably fails on a multifile image)
         eo = eo > std::size(data) ? std::size(data) : eo;
 
-        std::vector<u8> file({e.start_address.b0, e.start_address.b1});
-        std::copy(&d[so], &d[eo], std::back_inserter<std::vector<u8>>(file));
+        Bin file({e.start_address.b0, e.start_address.b1});
+        std::copy(&d[so], &d[eo], std::back_inserter<Bin>(file));
 
         return file;
     }
@@ -71,7 +61,7 @@ struct T64 {
 
 
 struct D64 {
-    const std::vector<u8>& data;
+    const Bin& data;
 
     // standard 35-track disk
     static constexpr int track_count = 35;
@@ -180,8 +170,8 @@ struct D64 {
         return d;
     }
 
-    std::vector<u8> read_file(const BL& start) {
-        std::vector<u8> file_data;
+    Bin read_file(const BL& start) {
+        Bin file_data;
         for (auto bc = block_chain(start); bc.ok(); bc.next()) {
             if (bc.last()) {
                 auto end = &bc.data[bc.data[1] + 1];
@@ -197,7 +187,7 @@ struct D64 {
 
 
 struct G64 {
-    const std::vector<u8> data;
+    const Bin data;
 
     struct Header {
         const u8 signature[8];
@@ -226,7 +216,7 @@ struct G64 {
 
 
 struct CRT {
-    const std::vector<u8>& img;
+    const Bin& img;
 
     struct Header {
         struct Version { const u8 major; const u8 minor; };
