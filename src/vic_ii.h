@@ -1,7 +1,6 @@
 #ifndef VIC_II_H_INCLUDED
 #define VIC_II_H_INCLUDED
 
-#include <iostream>
 #include "common.h"
 #include "state.h"
 

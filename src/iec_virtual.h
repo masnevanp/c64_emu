@@ -105,7 +105,7 @@ public:
 private:
     u8 x = 0x00;
     int c = 0;
-    void msg(const char* m, int d) { std::cout << " DD:" << m << ',' << d; }
+    void msg(const char* m, int d) { Log::info(" DD: %s, %d", m, d); }
 };
 
 
@@ -334,7 +334,7 @@ bool on_trap(System::CPU& cpu, u8* ram, Controller& iec_ctrl) {
             status = iec_ctrl.write(cpu.s.a);
             break;
         default:
-            std::cout << "\nUnknown ICE routine: " << (int)iec_routine;
+            Log::error("Unknown ICE routine: %d", (int)iec_routine);
             return false;
     }
 

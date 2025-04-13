@@ -3,7 +3,6 @@
 
 
 #include <vector>
-#include <iostream>
 #include "common.h"
 #include "state.h"
 #include "utils.h"
@@ -566,7 +565,7 @@ private:
 
         // file drop
         [this](const char* filepath) {
-            std::cout << "\nDrop: " << filepath << std::endl;
+            Log::info("Incoming: '%s'", filepath);
             auto img = Files::read_img_file(filepath);
             handle_img(img);
         }
@@ -593,7 +592,7 @@ private:
                         case Trap_ID::save: do_save(); break;
                         default:
                             proceed = false;
-                            std::cout << "\nUnknown tape routine: " << (int)routine_id;
+                            Log::error("Unknown tape routine: %d", (int)routine_id);
                             break;
                     }
                     break;
@@ -606,7 +605,7 @@ private:
             if (proceed) {
                 cpu.resume();
             } else {
-                std::cout << "\n****** CPU halted! ******" << std::endl;
+                Log::error("****** CPU halted! ******");
                 Dbg::print_status(cpu, s.ram);
             }
         }
@@ -640,7 +639,10 @@ private:
 
     void init_ram();
 
-    void signal_shutdown() { /*run_cfg_change =*/ shutdown = true; }
+    void signal_shutdown() {
+        Log::info("Shutdown requested");
+        shutdown = true;
+    }
 
     std::vector<::Menu::Action> cart_menu_actions{
         {"CARTRIDGE / DETACH ?", [&](){ Cartridge::detach(exp_ctx); reset_cold(); }},

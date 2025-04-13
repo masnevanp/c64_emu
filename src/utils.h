@@ -71,7 +71,7 @@ public:
         start();
     }
     ~Stopwatch() {
-        std::cout << "\nTotal avg: " << (total_elapsed / total_n) << "\n";
+        Log::info("Stopwatch, total avg: %d", (total_elapsed / total_n));
     }
 
     void start() { QueryPerformanceCounter(&li); t0 = li.QuadPart; }

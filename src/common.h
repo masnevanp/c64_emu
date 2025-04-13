@@ -4,6 +4,7 @@
 #include "nmos6502/nmos6502.h"
 #include "nmos6502/nmos6502_core.h"
 #include <optional>
+#include <cstdio>
 
 
 using u8  = NMOS6502::u8;
@@ -84,6 +85,24 @@ enum Color : u8 {
     black, white, red, cyan, purple, green, blue, yellow,
     orange, brown, light_red, gray_1, gray_2, light_green, light_blue, gray_3
 };
+
+
+namespace Log {
+    template<typename... Args>
+    void info(const char* fmt, Args... args) {
+        printf("[INF] ");
+        printf(fmt, args...);
+        printf("\n");
+        fflush(stdout);
+    }
+
+    template<typename... Args>
+    void error(const char* fmt, Args... args) {
+        fprintf(stderr, "[ERR] ");
+        fprintf(stderr, fmt, args...);
+        fprintf(stderr, "\n");
+    }
+}
 
 
 namespace Key_code {

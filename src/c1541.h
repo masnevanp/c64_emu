@@ -1,7 +1,6 @@
 #ifndef C1541_H_INCLUDED
 #define C1541_H_INCLUDED
 
-#include <iostream>
 #include <vector>
 #include "common.h"
 #include "utils.h"
@@ -286,7 +285,7 @@ private:
 
         write_disk();
 
-        std::cout << "GCR data size: " << (int)(gcr_out.len()) << std::endl;
+        Log::info("GCR data size: %d", (int)(gcr_out.len()));
     }
 
     std::vector<Track> tracks;
@@ -409,7 +408,6 @@ public:
     }
 
     void via_r(const u8& ri, u8& data) {
-        //std::cout << "VIA r: " << (int)ri << std::endl;
         switch (ri) {
             case VIA::R::rb:
                 irq.clr(VIA::IRQ::Src::cb1_cb2);
@@ -447,7 +445,6 @@ public:
     }
 
     void via_w(const u8& ri, const u8& data) {
-        //std::cout << "VIA w: " << (int)ri << " " << (int)data << std::endl;
         switch (ri) {
             case VIA::R::rb:
                 irq.clr(VIA::IRQ::Src::cb1_cb2);
@@ -625,7 +622,6 @@ public:
     }
 
     void via_r(const u8& ri, u8& data) {
-        //std::cout << "VIA r: " << (int)ri << std::endl;
         switch (ri) {
             case VIA::R::rb:
                 irq.clr(VIA::IRQ::Src::cb1_cb2);
@@ -661,7 +657,6 @@ public:
     }
 
     void via_w(const u8& ri, const u8& data) {
-        //std::cout << "VIA w: " << (int)ri << " " << (int)data << std::endl;
         switch (ri) {
             case VIA::R::rb:
                 irq.clr(VIA::IRQ::Src::cb1_cb2);
@@ -853,16 +848,16 @@ public:
     Disk_carousel(Disk_ctrl& disk_ctrl_, u8& dos_wp_change_flag_)
       : disk_ctrl(disk_ctrl_), dos_wp_change_flag(dos_wp_change_flag_)
     {
-        slots[0] = Slot{&null_disk, "no disk", false};
+        slots[0] = Slot{&null_disk, "none", false};
     }
 
     void reset() { load(); }
 
-    void insert(int in_slot, const Disk* disk, std::string name) {
+    void insert(int in_slot, const Disk* disk, const std::string& name) {
         if (in_slot == 0) {
             in_slot = find_free_slot();
             if (in_slot == 0) {
-                std::cout << "Carousel full (TODO)" << std::endl;
+                Log::error("Carousel full (TODO)");
                 return;
             }
         } else if (slots[in_slot].disk) {
@@ -903,7 +898,7 @@ private:
         disk_ctrl.load_disk(selected().disk);
         disk_ctrl.set_write_prot(selected().write_prot);
 
-        std::cout << "Disk " << selected_slot << ": " << selected().disk_name << std::endl;
+        Log::info("Disk selected: %s (slot %d)", selected().disk_name.c_str(), selected_slot);
 
         // works...? or breaks some custom loader(s)?
         // (would need to fiddle with the PB WP bit then...)
@@ -1030,7 +1025,7 @@ private:
 
     NMOS6502::Sig cpu_trap {
         [this]() {
-            std::cout << "\n****** C1541 CPU halted! ******" << std::endl;
+            Log::error("****** C1541 CPU halted! ******");
             Dbg::print_status(cpu, ram);
         }
     };

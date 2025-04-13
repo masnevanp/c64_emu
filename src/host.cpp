@@ -102,13 +102,13 @@ Input::Input(Handlers& handlers_)
     int open_joys = 0;
     for (int j = 0; j < SDL_NumJoysticks() && open_joys < 2; ++j) {
         SDL_Joystick* sj = SDL_JoystickOpen(j);
-        if(!sj) SDL_Log("Unable to SDL_JoystickOpen: %s", SDL_GetError());
+        if(!sj) Log::error("Unable to SDL_JoystickOpen: %s", SDL_GetError());
         else {
             sdl_joystick_id[open_joys] = SDL_JoystickInstanceID(sj);
             sdl_joystick[open_joys++] = sj;
         }
     }
-    SDL_Log("%d joysticks attached", open_joys);
+    Log::info("%d joysticks attached", open_joys);
 }
 
 
@@ -139,10 +139,7 @@ u8 Input::translate_sdl_key() {
     static const i32 LAST_CHAR_KC       = SDLK_DELETE;
     static const i32 FIRST_NON_CHAR_KC  = SDLK_CAPSLOCK;
     static const i32 OFFSET_NON_CHAR_KC = FIRST_NON_CHAR_KC - (LAST_CHAR_KC + 1);
-    /*
-    std::cout << "\nkc: " << sdl_ev.key.keysym.sym << " ";
-    std::cout << "sc: " << sdl_ev.key.keysym.scancode << " ";
-    */
+
     SDL_Keysym key_sym = sdl_ev.key.keysym;
 
     if (key_sym.sym <= MAX_KC) {
@@ -414,12 +411,12 @@ SDL_Texture* Video_out::create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SD
 {
     SDL_Texture* t = SDL_CreateTexture(r, Video_out::pixel_format, ta, w, h);
     if (!t) {
-        SDL_Log("Failed to SDL_CreateTexture: %s", SDL_GetError());
+        Log::error("Failed to SDL_CreateTexture: %s", SDL_GetError());
         exit(1);
     }
 
     if (SDL_SetTextureBlendMode(t, bm) != 0) {
-        SDL_Log("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
+        Log::error("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
     }
 
     return t;
@@ -430,7 +427,7 @@ void Video_out::upd_mode() {
     if (!window) {
         window = SDL_CreateWindow("WIP #$40", 400, 100, 100, 100, 0);
         if (!window) {
-            SDL_Log("Failed to SDL_CreateWindow: %s", SDL_GetError());
+            Log::error("Failed to SDL_CreateWindow: %s", SDL_GetError());
             exit(1);
         }
     }
@@ -438,13 +435,13 @@ void Video_out::upd_mode() {
     switch (set.mode) {
         case Mode::win:
             if (SDL_SetWindowFullscreen(window, 0) != 0) {
-                SDL_Log("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
+                Log::error("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
                 exit(1);
             }
             break;
         case Mode::fullscr_win:
             if (SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP) != 0) {
-                SDL_Log("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
+                Log::error("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
                 exit(1);
             }
             break;
@@ -452,11 +449,11 @@ void Video_out::upd_mode() {
             auto fr = int(frame_rate_in);
             SDL_DisplayMode sdm = { pixel_format, 1920, 1080, fr, 0 };
             if (SDL_SetWindowDisplayMode(window, &sdm) != 0) {
-                SDL_Log("Failed to SDL_SetWindowDisplayMode: %s", SDL_GetError());
+                Log::error("Failed to SDL_SetWindowDisplayMode: %s", SDL_GetError());
                 exit(1);
             }
             if (SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN) != 0) {
-                SDL_Log("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
+                Log::error("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
                 exit(1);
             }
             break;
@@ -465,7 +462,7 @@ void Video_out::upd_mode() {
 
     int disp_idx = SDL_GetWindowDisplayIndex(window);
     if (SDL_GetCurrentDisplayMode(disp_idx, &sdl_mode) != 0) {
-        SDL_Log("Failed to SDL_GetCurrentDisplayMode: %s", SDL_GetError());
+        Log::error("Failed to SDL_GetCurrentDisplayMode: %s", SDL_GetError());
         exit(1);
     }
 
@@ -474,7 +471,7 @@ void Video_out::upd_mode() {
     const u32 v_sync_flag = v_synced() ? SDL_RENDERER_PRESENTVSYNC : 0;
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | v_sync_flag);
     if (!renderer) {
-        SDL_Log("Failed to SDL_CreateRenderer: %s", SDL_GetError());
+        Log::error("Failed to SDL_CreateRenderer: %s", SDL_GetError());
         exit(1);
     }
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
@@ -539,11 +536,9 @@ u16 Audio_out::config(u16 buf_sz) {
 
     dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
     if (dev == 0) {
-        SDL_Log("Unable to SDL_OpenAudioDevice: %s", SDL_GetError());
+        Log::error("Unable to SDL_OpenAudioDevice: %s", SDL_GetError());
         exit(1);
     }
-    //std::cout << (int)have.freq << " " << (int)have.channels << " ";
-    //std::cout << (int)want.format << " " << (int)have.format;
 
     SDL_PauseAudioDevice(dev, 0);
 

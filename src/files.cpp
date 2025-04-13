@@ -114,14 +114,18 @@ Files::Img Files::read_img_file(const std::string& path) {
     const auto fs_path = fs::path(path);
     const auto name = fs_path.filename().string();
 
-    if (fs::file_size(fs_path) <= HD_FILE_SIZE_MAX) {
-        if (auto data = read_file(path)) {
-            return Img{
-                file_type(*data),
-                name,
-                *data
-            };
+    try {
+        if (fs::file_size(fs_path) <= HD_FILE_SIZE_MAX) {
+            if (auto data = read_file(path)) {
+                return Img{
+                    file_type(*data),
+                    name,
+                    *data
+                };
+            }
         }
+    } catch (const fs::filesystem_error& e) {
+        Log::error("%s", e.what());
     }
 
     return Img{

@@ -70,7 +70,7 @@ Maybe<Bin> read_file(const std::string& filepath) {
     std::ifstream f(filepath, std::ios::binary | std::ios::ate);
 
     if (!f) {
-        std::cout << "Failed to read file '" << filepath << "'" << std::endl;
+        Log::error("Failed to read file '%s'", filepath.c_str());
         return {};
     }
 
@@ -79,7 +79,7 @@ Maybe<Bin> read_file(const std::string& filepath) {
     f.seekg(0);
     f.read((char*)bin.data(), sz);
 
-    std::cout << "File read: '" << filepath << "', " << sz << " bytes " << std::endl;
+    Log::info("File read: '%s', %d bytes", filepath.c_str(), int(sz));
 
     return bin;
 }

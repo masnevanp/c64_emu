@@ -342,6 +342,7 @@ void System::C64::output_frame() {
 
 
 void System::C64::reset_warm() {
+    Log::info("System reset (warm)");
     cia1.reset_warm(); // need to reset for correct irq handling
     cia2.reset_warm();
     cpu.reset();
@@ -350,6 +351,7 @@ void System::C64::reset_warm() {
 
 
 void System::C64::reset_cold() {
+    Log::info("System reset (cold)");
     init_ram();
     cia1.reset_cold();
     cia2.reset_cold();
@@ -382,11 +384,8 @@ void System::C64::handle_img(Files::Img& img) {
     switch (img.type) {
         case Type::crt: {
             const Files::CRT crt{img.data};
-            if (crt.header().valid()) {
-                if (Cartridge::attach(crt, exp_ctx)) reset_cold();
-            } else {
-                std::cout << "CRT img: invalid header" << std::endl;
-            }
+            Log::info("Attaching CRT '%s' ...", img.name.c_str());
+            if (Cartridge::attach(crt, exp_ctx)) reset_cold();
             break;
         }
         case Type::d64:
@@ -400,7 +399,7 @@ void System::C64::handle_img(Files::Img& img) {
                     new C1541::G64_disk(std::move(img.data)), img.name);
             break;
         default:
-            std::cout << "\nImg ignored: " << img.name << std::endl;
+            Log::info("'%s' ignored", img.name.c_str());
             break;
     }
     // TODO: support 't64' (e.g. cold reset & feed the appropriate 'LOAD'
@@ -449,7 +448,7 @@ void System::C64::do_save() {
         std::ofstream f(filename, std::ios::binary);
         f << (u8)(start_addr) << (u8)(start_addr >> 8);
         f.write((char*)data, sz);
-        std::cout << "\nSaved '" << filename << "', " << (sz + 2) << " bytes ";
+        Log::info("Saved '%s', %d bytes", filename.c_str(), int(sz + 2));
         return true;
     };
 
@@ -486,15 +485,14 @@ void System::C64::init_ram() { // TODO: parameterize pattern (+ add 'randomness'
 // would halt the CPU). The byte following the 'halt' is used to identify the 'request'.
 void System::C64::install_kernal_tape_traps(u8* kernal, u8 trap_opc) {
     static constexpr u16 kernal_start = 0xe000;
-    static constexpr u8  rts_opc = 0x60;
 
     // trap loading (device 1)
     kernal[0xf539 - kernal_start] = trap_opc;
     kernal[0xf53a - kernal_start] = Trap_ID::load;
-    kernal[0xf53b - kernal_start] = rts_opc;
+    kernal[0xf53b - kernal_start] = NMOS6502::OPC::rts;
 
     // trap saving (device 1)
     kernal[0xf65f - kernal_start] = trap_opc;
     kernal[0xf660 - kernal_start] = Trap_ID::save;
-    kernal[0xf661 - kernal_start] = rts_opc;
+    kernal[0xf661 - kernal_start] = NMOS6502::OPC::rts;
 }

@@ -44,7 +44,7 @@ void Dbg::print_mem(u8* mem, u16 from, u16 to) {
         //ascii += (char)mem[from];
         std::cout << print_u8(mem[from]) << ' ';
     }
-    std::cout << "\n";
+    std::cout << std::endl;
 }
 
 
@@ -82,7 +82,7 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     std::cout << "   mdr: " << (cpu.mrw() == MC::RW::w ? print_u8(cpu.mdr()) : "??");
     std::cout << " (" << Ri8_str[cpu.mcp->dr] << ")";
     std::cout << "   r/w: " << MC::RW_str[cpu.mrw()];
-    std::cout << "\n";
+    std::cout << std::endl;
     /*
     operator std::string() const {
             return "(" + R16_str[ar] + ") " + R8_str[dr] + " " + RW_str[rw]
@@ -113,7 +113,7 @@ void Dbg::reg_diff(const Core& cpu) {
             }
         }
     }
-    std::cout << "\n";
+    std::cout << std::endl;
 }
 
 

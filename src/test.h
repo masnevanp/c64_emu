@@ -16,7 +16,7 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     mem[0xfffc] = 0x00; mem[0xfffd] = 0x04;
 
     Core::State cpu_state;
-    Sig sig_halt = [](){ std::cout << "\nCPU halted!" << std::endl; };
+    Sig sig_halt = [](){ Log::error("CPU halted!"); };
     Core cpu{cpu_state, sig_halt};
     cpu.reset();
 

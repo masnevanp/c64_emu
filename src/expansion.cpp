@@ -1,5 +1,4 @@
 
-#include <iostream>
 #include "expansion.h"
 #include "utils.h"
 #include "nmos6502/nmos6502_mc.h"
@@ -24,7 +23,7 @@ int load_static_chips(const Files::CRT& crt, Ctx& ctx) {
         if (cp->load_addr == 0x8000) tgt_addr = 0x0000;
         else if (cp->load_addr == 0xa000 || cp->load_addr == 0xe000) tgt_addr = 0x2000;
         else {
-            std::cout << "CRT: invalid CHIP packet address - " << (int)cp->load_addr << std::endl;
+            Log::error("CRT: invalid CHIP packet address - %d", (int)cp->load_addr);
             continue;
         }
 
@@ -110,7 +109,7 @@ Result T5_Ocean_type_1(const Files::CRT& crt, Ctx& ctx) {
     for (auto cp : crt.chip_packets()) {
         auto la = cp->load_addr;
         if ((la != 0x8000 && la != 0xa000) || cp->data_size != 0x2000) {
-            std::cout << "CRT: invalid CHIP packet" << std::endl;
+            Log::error("CRT: invalid CHIP packet");
             return not_attached;
         }
 
@@ -270,10 +269,17 @@ Result T51_MACH_5(const Files::CRT& crt, Ctx& ctx) {
 
 
 bool Cartridge::attach(const Files::CRT& crt, Ctx& exp_ctx) {
+    if (!crt.header().valid()) {
+        Log::error("CRT: invalid img header");
+        return false;
+    }
+
     detach(exp_ctx);
 
     Result result;
-    switch (const auto type = crt.header().hw_type; type) {
+    const auto type = crt.header().hw_type;
+
+    switch (type) {
         using T = Files::CRT::Cartridge_HW_type;
 
         case T::T0_Normal_cartridge:
@@ -298,15 +304,17 @@ bool Cartridge::attach(const Files::CRT& crt, Ctx& exp_ctx) {
             result = T51_MACH_5(crt, exp_ctx);
             break;
         default:
-            std::cout << "CRT: unsupported HW type: " << (int)type << std::endl;
-            break;
+            Log::error("CRT: unsupported HW type: %d", (int)type);
+            return false;
     }
 
     if (result) {
         exp_ctx.io.exrom_game((*result).exrom, (*result).game);
+        Log::info("CRT: attached HW type: %d", (int)type);
         return true;
     }
 
+    Log::error("CRT: failed to attach");
     return false;
 }
 
@@ -378,7 +386,6 @@ public:
 
     bool attach() {
         exp_ctx.io.io2_r = [&](const u16& a, u8& d) {
-            // std::cout << "r: " << (int)(a & 0xf) << ' ';
             if (exp_ctx.io.dma_low) return; // switched out during dma
 
             switch (a & 0b11111) {
@@ -386,7 +393,6 @@ public:
                     d = r.status | R_status::sz_1764 | R_status::chip_ver_1764;
                     if (irq_on()) clr_irq();
                     r.status = 0x00;
-                    //std::cout << "(S: " << (int)(d) << ')';
                     return;
                 case R::cmd:       d = r.cmd;          return;
                 case R::saddr_l:   d = r.a.saddr;      return;
@@ -403,7 +409,6 @@ public:
         };
 
         exp_ctx.io.io2_w = [&](const u16& a, const u8& d) {
-            // std::cout << "w: " << (int)(a & 0xf) << ' ' << (int)d << ' ';
             if (exp_ctx.io.dma_low) return; // switched out during dma
 
             switch (a & 0b11111) {
@@ -518,8 +523,6 @@ private:
         do_tlen();
 
         if (ds != dr) {
-            //std::cout << "\nVERR: raddr: " << (int)(r.a.raddr) << ", saddr: " << (int)(r.a.saddr)
-            //            << ", tlen: " << (int)(r.a.tlen);
             r.status |= R_status::ver_err;
             done(); // might be an extra 'done()' (if tlen was 1), but meh...
         }
@@ -573,9 +576,6 @@ private:
             const auto op = ((r.cmd & R_cmd::xfer) << 2) | ((r.addr_ctrl & R_addr_ctrl::fix) >> 6);
             exp_ctx.tick = Tick[op];
             exp_ctx.io.dma_low = true;
-            //std::cout << "\n\nOP: raddr: " << (int)(r.a.raddr) << ", saddr: " << (int)(r.a.saddr)
-            //            << ", tlen: " << (int)(r.a.tlen) << ", cmd: " << (int)(r.cmd)
-            //            << ", op: " << op;
         }
     };
 
@@ -586,9 +586,6 @@ private:
         r.cmd = r.cmd & ~R_cmd::exec;
         r.cmd = r.cmd | R_cmd::no_ff00_trig;
         if (r.cmd & R_cmd::autoload) r.a = r._a;
-        //std::cout << "\nOP: done, sr: " << (int)(r.status);
-        //std::cout << "    raddr: " << (int)(r.a.raddr) << ", saddr: " << (int)(r.a.saddr)
-        //    << ", tlen: " << (int)(r.a.tlen) << ", cmd: " << (int)(r.cmd) << std::endl;
         check_irq();
     }
 };

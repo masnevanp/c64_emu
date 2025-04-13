@@ -320,7 +320,7 @@ void NMOS6502::Core::exec(const u8 mopc) {
         case jsr: s.a3 = s.sp16; --s.sp; s.a4 = s.sp16; --s.sp; s.a2 = s.pc; // fall through
         case jmp_abs: s.pc = s.a1; return;
         case rti: ++s.sp; s.a1 = s.sp16; // fall through
-        case rts: ++s.sp; s.a2 = s.sp16; // fall through
+        case MOPC::rts: ++s.sp; s.a2 = s.sp16; // fall through
         case inc_sp: ++s.sp; return;
         case MOPC::brk:
             // brk_srcs |= (irq_bit & ~p); // no effect (the same vector used anyway)

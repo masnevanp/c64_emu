@@ -42,14 +42,11 @@ public:
 
         if (buffered <= buffered_lo) {
             clock_speed = 1.01 * clock_speed_base;
-            //std::cout << "+";
         } else if (buffered >= buffered_hi) {
             const float reduction = 0.01 + (((buffered - buffered_hi) / audio_out_buf_sz) / 100.0);
             clock_speed = (1 - reduction) * clock_speed_base;
-            //std::cout << "-";
         } else {
             clock_speed = clock_speed_base;
-            //std::cout << ".";
         }
 
         buf_ptr = buf;

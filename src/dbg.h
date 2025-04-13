@@ -2,7 +2,6 @@
 #define DBG_H_INCLUDED
 
 #include <string>
-#include <iostream>
 #include "common.h"
 #include "nmos6502/nmos6502.h"
 #include "nmos6502/nmos6502_core.h"
@@ -50,7 +49,7 @@ public:
 private:
     NMOS6502::Sig cpu_trap {
         [this]() {
-            std::cout << "\n****** CPU halted! ******" << std::endl;
+            Log::error("****** CPU halted! ******");
             Dbg::print_status(cpu, mem);
         }
     };
