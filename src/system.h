@@ -611,7 +611,7 @@ private:
         }
     };
 
-    Files::Loader loader{Files::init_loader("data/prg")}; // TODO: init_dir configurable (program arg?)
+    Files::Loader loader{Files::init_loader("./data")}; // TODO: init_path configurable (program arg?)
 
     Performance perf{};
 

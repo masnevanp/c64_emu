@@ -25,7 +25,7 @@ using Load_result = std::pair<Maybe<Img>, Maybe<Bin>>;
 using Loader = std::function<Load_result(const std::string&)>;
 
 // TODO: --> 'loader.h' ?
-Loader init_loader(const std::string& init_dir);
+Loader init_loader(const std::string& init_path);
 
 
 struct T64 {

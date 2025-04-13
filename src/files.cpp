@@ -289,7 +289,15 @@ Bin load_win_drives_list() {
 
 class _Loader {
 public:
-    _Loader(const std::string& init_dir) : context{init_dir} {}
+    _Loader(const std::string& init_path) {
+        auto ip = fs::path(init_path);
+
+        if (ip.is_relative()) ip = fs::current_path() / ip;
+
+        context = fs::is_directory(ip) ? fs::canonical(ip.lexically_normal()) : "/";
+
+        Log::info("Loader context: '%s'", context.string().c_str());
+    }
 
     Load_result operator()(const std::string& what) { return load(what); }
 
