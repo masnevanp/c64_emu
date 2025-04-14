@@ -95,7 +95,7 @@ Files::Img::Type file_type(const Bin& file) {
     };
 
     auto is_raw = [&]() {
-        return std::size(file) > C64_BIN_SIZE_MIN && std::size(file) <= C64_BIN_SIZE_MAX;
+        return (std::size(file) >= C64_BIN_SIZE_MIN) && std::size(file) <= C64_BIN_SIZE_MAX;
     };
 
     using Type = Files::Img::Type;
