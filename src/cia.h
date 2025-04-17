@@ -88,7 +88,6 @@ public:
     }
 
     void w(const u8& ri, const u8& data) {
-        //if (ri == cra) std::cout << "CIA-" << (int)id << ": w " << (int)ri << " " << (int)data << "\n"; //getchar();
         switch (ri) {
             case pra:      port_a.w_pd(data);      return;
             case prb:      port_b.w_pd(data);      return;

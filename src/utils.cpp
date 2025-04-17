@@ -89,7 +89,7 @@ int read_file(const std::string& filepath, u8* buf) {
     std::ifstream f(filepath, std::ios::binary | std::ios::ate);
 
     if (!f) {
-        std::cout << "Failed to read file '" << filepath << "'" << std::endl;
+        Log::error("Failed to read file '%s'", filepath.c_str());
         return -1;
     }
 

@@ -411,7 +411,7 @@ Load_result _Loader::load_hd(const std::string& what) {
             return {NONE, hd_dir_basic_listing(d, dirs, files)};
         }
     } catch (const fs::filesystem_error& e) {
-        std::cout << e.what() << std::endl;
+        Log::error("%s", e.what());
     }
 
     return {NOT_FOUND, NOT_FOUND};
