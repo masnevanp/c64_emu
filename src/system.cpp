@@ -441,18 +441,20 @@ void System::C64::do_load() {
 
 // TODO: identify the addresses used
 void System::C64::do_save() {
-    static const std::string dir = "data/prg/"; // TODO...
+    static const std::string dir = "./_local"; // TODO...
 
     auto do_save = [](const std::string& filename, u16 start_addr, u8* data, size_t sz) -> bool {
-        // TODO: check stream state & hadle exceptions
-        std::ofstream f(filename, std::ios::binary);
-        f << (u8)(start_addr) << (u8)(start_addr >> 8);
-        f.write((char*)data, sz);
-        Log::info("Saved '%s', %d bytes", filename.c_str(), int(sz + 2));
-        return true;
+        // TODO: hadle exceptions?
+        if (auto f = std::ofstream(filename, std::ios::binary)) {
+            f << (u8)(start_addr) << (u8)(start_addr >> 8);
+            f.write((char*)data, sz);
+            if (f) return true;
+        }
+
+        return false;
     };
 
-    std::string filename = get_filename(s.ram);
+    const std::string filename = get_filename(s.ram);
     if (filename.length() == 0) {
         // TODO: error_code enum(s)
         cpu.s.a = 0x08; // missing filename
@@ -460,18 +462,23 @@ void System::C64::do_save() {
         return;
     }
 
-    std::string filepath = as_lower(dir + filename);
+    const std::string filepath = as_lower(dir + "/" + filename);
 
     // TODO: end < start ??
-    u16 start_addr = s.ram[0xc2] * 0x100 + s.ram[0xc1];
-    u16 end_addr = s.ram[0xaf] * 0x100 + s.ram[0xae]; // 1 beyond end
-    u16 sz = end_addr - start_addr;
+    const u16 start_addr = s.ram[0xc2] * 0x100 + s.ram[0xc1];
+    const u16 end_addr = s.ram[0xaf] * 0x100 + s.ram[0xae]; // 1 beyond end
+    const u16 sz = end_addr - start_addr;
 
-    do_save(filepath, start_addr, &s.ram[start_addr], sz);
-
-    // status
-    cpu.s.clr(NMOS6502::Flag::C); // no error
-    s.ram[0x90] = 0x00; // io status ok
+    if (do_save(filepath, start_addr, &s.ram[start_addr], sz)) {
+        // status
+        cpu.s.clr(NMOS6502::Flag::C); // no error
+        s.ram[0x90] = 0x00; // io status ok
+        Log::info("Saved '%s', %d bytes", filepath.c_str(), int(sz + 2));
+    } else {
+        cpu.s.a = 0x07; // not output file
+        cpu.s.set(NMOS6502::Flag::C); // error
+        Log::error("Failed to save '%s'", filename.c_str());
+    }
 }
 
 

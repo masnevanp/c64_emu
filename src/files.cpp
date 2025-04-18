@@ -446,7 +446,7 @@ Bin d64_dir_basic_listing(const D64& d64) {
         std::string text(" : \"N                :T    : S  ");
         int c = 0;
         for (; c < 16; ++c) { // TODO: simplify...?
-            char ch = entry->filename[c];
+            const char ch = entry->filename[c];
             if (ch == petscii::nbsp) break;
             text[c + 4] = ch;
         }
@@ -458,8 +458,8 @@ Bin d64_dir_basic_listing(const D64& d64) {
         bl.append({ 0x05, text });
     }
 
-    bl.append({ 0x00, " : \"=================: NON : " + std::to_string(d64.bam().blocks_free())});
-    bl.append({ 0x00, " :" });
+    bl.append({ 0x00, " :                   : FRE : " + std::to_string(d64.bam().blocks_free())});
+    bl.append({ 0x00, " : ================= : === : ===" });
     bl.append({ 0x09, std::string(" : \"") + unmount_filename + "\"               : *UNMOUNT*" });
 
     return bl.to_bin();
