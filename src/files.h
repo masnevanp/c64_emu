@@ -11,14 +11,14 @@
 namespace Files {
 
 struct Img {
-    enum class Type { crt, t64, d64, g64, raw, unknown, oversized };
+    enum class Type { crt, t64, d64, g64, raw, unknown };
 
     const Type type;
     const std::string name;
     Bin data;
 };
 
-Img read_img_file(const std::string& path);
+Maybe<Img> read_img_file(const std::string& path);
 
 
 using Load_result = std::pair<Maybe<Img>, Maybe<Bin>>;

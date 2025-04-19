@@ -110,7 +110,7 @@ Files::Img::Type file_type(const Bin& file) {
 }
 
 
-Files::Img Files::read_img_file(const std::string& path) {
+Maybe<Files::Img> Files::read_img_file(const std::string& path) {
     const auto fs_path = fs::path(path);
     const auto name = fs_path.filename().string();
 
@@ -123,16 +123,14 @@ Files::Img Files::read_img_file(const std::string& path) {
                     *data
                 };
             }
+        } else {
+            Log::error("Img oversized");
         }
     } catch (const fs::filesystem_error& e) {
         Log::error("%s", e.what());
     }
 
-    return Img{
-        Img::Type::oversized,
-        name,
-        Bin(0)
-    };
+    return NONE;
 }
 
 
@@ -334,9 +332,10 @@ private:
         auto is_already_mounted = [&]() { return context == path; };
         auto mount = [&]() { context = path; };
 
-        auto img = Files::read_img_file(path.string());
+        auto maybe_img = Files::read_img_file(path.string());
+        if (!maybe_img) return {NOT_FOUND, NOT_FOUND};
 
-        switch (img.type) {
+        switch (auto img = *maybe_img; img.type) {
             case Type::crt: return {img, NONE};
             case Type::t64: return {NONE, load_from_t64(img.data, what)};
             case Type::d64:
@@ -458,8 +457,7 @@ Bin d64_dir_basic_listing(const D64& d64) {
         bl.append({ 0x05, text });
     }
 
-    bl.append({ 0x00, " :                   : FRE : " + std::to_string(d64.bam().blocks_free())});
-    bl.append({ 0x00, " : ================= : === : ===" });
+    bl.append({ 0x00, " : ----------------- : FRE : " + std::to_string(d64.bam().blocks_free())});
     bl.append({ 0x09, std::string(" : \"") + unmount_filename + "\"               : *UNMOUNT*" });
 
     return bl.to_bin();

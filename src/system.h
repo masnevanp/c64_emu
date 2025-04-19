@@ -567,7 +567,7 @@ private:
         [this](const char* filepath) {
             Log::info("Incoming: '%s'", filepath);
             auto img = Files::read_img_file(filepath);
-            handle_img(img);
+            if (img) handle_img(*img);
         }
     };
     Host::Input host_input{host_input_handlers};
