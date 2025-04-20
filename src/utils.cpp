@@ -9,6 +9,30 @@
 
 
 
+int Timer::wait_elapsed(int elapsed_us, bool reset) {
+    const auto d = diff(elapsed_us, reset);
+    const auto diff_us = d.count();
+    if (diff_us < 0) {
+        const int ms = std::round(-diff_us / 1000.0);
+        #ifdef __MINGW32__
+            Sleep(ms);
+        #else
+            std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+        #endif
+    }
+    return diff_us;
+}
+
+
+Timer::us Timer::diff(int target_elapsed_us, bool reset) {
+    const auto elapsed = clock::now() - clock_start;
+    const auto target_elapsed = us(target_elapsed_us);
+    if (reset) clock_start = clock_start + target_elapsed;
+    const auto diff = std::chrono::duration_cast<us>(elapsed - target_elapsed);
+    return diff;
+}
+
+
 // Colodore by pepto - http://www.pepto.de/projects/colorvic/
 void get_Colodore(u32* target_palette, double brightness, double contrast, double saturation) {
     static const u8 levels[] = {  0, 32, 10, 20, 12, 16,  8, 24, 12,  8, 16, 10, 15, 24, 15, 20 };

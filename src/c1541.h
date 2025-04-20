@@ -397,15 +397,7 @@ public:
 
     IEC(IO::Port::PD_in& cia2_pa_in_) : cia2_pa_in(cia2_pa_in_) {}
 
-    void reset() {
-        irq.reset();
-
-        r_orb = r_ora = r_ddrb = r_ddra = r_acr = r_pcr = 0x00;
-        r_t1c = r_t1l = 0xffff;
-
-        t1_irq = VIA::IRQ::Src::none;
-        via_pb_in = 0b11111111;
-    }
+    void reset();
 
     void via_r(const u8& ri, u8& data) {
         switch (ri) {
@@ -512,30 +504,7 @@ private:
         update_iec_lines();
     }
 
-    void update_iec_lines() {
-        /*
-            - Commodore 64 Programmers Reference Guide, Chapter 8 - Schematics
-            - Commodore 1541 Troubleshooting and Repair Guide, Fig. 7-30 (p. 170..171)
-        */
-        const state clk = invert(cia2_pa(4)) & cia2_pa(6) & invert(via_pb(3));
-
-        const state atn_now = cia2_pa(3) & via_pb(7); // pa3 inverted twice --> taken as such
-        if (atn != atn_now) {
-            atn = atn_now;
-            ca1_edge(atn);
-        }
-
-        const state ud3a_out = via_pb(4) ^ atn;
-        const state data = invert(cia2_pa(5)) & cia2_pa(7) & invert(via_pb(1)) & invert(ud3a_out);
-
-        const u8 cia2_pa7_pa6 = (data << 7) | (clk << 6);
-        cia2_pa_in(0b11000000, cia2_pa7_pa6);
-
-        const u8 via_pb720_in = (atn << 7) | (invert(clk) << 2) | (invert(data) << 0);
-        const u8 via_pb65_in = (dev_num - 8) << 5;
-        const u8 pb_in = via_pb720_in | via_pb65_in | 0b00011010;
-        via_pb_in = via_pb_out & pb_in;
-    }
+    void update_iec_lines();
 
     void ca1_edge(u8 edge) {
         if (edge == (r_pcr & VIA::PCR::ca1)) irq.set(VIA::IRQ::Src::ca1);
@@ -606,20 +575,7 @@ public:
 
     Disk_ctrl(CPU& cpu_) : cpu(cpu_) { load_disk(&null_disk); }
 
-    void reset() {
-        irq.reset();
-
-        r_orb = r_ora = r_ddrb = r_ddra = r_acr = r_pcr = 0x00;
-        r_t1c = r_t1l = 0xffff;
-
-        t1_irq = VIA::IRQ::Src::none;
-
-        via_pb_in = via_pa_in = 0b11111111;
-        via_pb_out = 0xff;
-
-        head.mode = Head_status::Mode::uninit;
-        change_track((dir_track - 1) * 2);
-    }
+    void reset();
 
     void via_r(const u8& ri, u8& data) {
         switch (ri) {
@@ -724,15 +680,7 @@ public:
     VIA::IRQ irq;
 
 private:
-    void output_pb() {
-        const u8 via_pb_out_now = (r_orb & r_ddrb) | ~r_ddrb;
-
-        head.mode = Head_status::Mode((via_pb_out_now & PB::motor) | (head.mode & ~PB::motor));
-
-        if (via_pb_out_now & PB::motor) step_head(via_pb_out_now);
-
-        via_pb_out = via_pb_out_now;
-    }
+    void output_pb();
     void output_pa() { via_pa_out = (r_ora & r_ddra) | ~r_ddra; }
     void pcr_update() {
         head.mode = Head_status::Mode((r_pcr & VIA::PCR::cb2) | (head.mode & ~VIA::PCR::cb2));
@@ -751,17 +699,7 @@ private:
         cpu.s.set(NMOS6502::Flag::V); // NOTE: SO-detection delay (in the CPU) not happening..
     }
 
-    void step_head(const u8 via_pb_out_now) {
-        auto should_step = [&](const int step) -> bool {
-            return (via_pb_out_now & PB::head_step) == ((via_pb_out + step) & 0b11);
-        };
-
-        if (should_step(+1)) {
-            if (head.track_n < last_track) change_track(head.track_n + 1);
-        } else if (should_step(-1)) {
-            if (head.track_n > first_track) change_track(head.track_n - 1);
-        }
-    }
+    void step_head(const u8 via_pb_out_now);
 
     void read() {
         // TODO: work on bit level, e.g handle SYNC that is not byte aligned
@@ -853,27 +791,9 @@ public:
 
     void reset() { load(); }
 
-    void insert(int in_slot, const Disk* disk, const std::string& name) {
-        if (in_slot == 0) {
-            in_slot = find_free_slot();
-            if (in_slot == 0) {
-                Log::error("Carousel full (TODO)");
-                return;
-            }
-        } else if (slots[in_slot].disk) {
-            delete slots[in_slot].disk; // TODO: save changes...
-        }
-        slots[in_slot] = Slot{disk, name, true};
-        select(in_slot);
-    }
+    void insert(int in_slot, const Disk* disk, const std::string& name);
 
-    void rotate() {
-        for (int r = 0; r <= slot_count; ++r) {
-            selected_slot = (selected_slot + 1) % slot_count;
-            if (selected().disk) break;
-        }
-        load();
-    }
+    void rotate();
 
     void select(int slot) {
         selected_slot = (slot >= 0 && slot < slot_count && slots[slot].disk) ? slot : 0;
@@ -894,16 +814,7 @@ private:
     Disk_ctrl& disk_ctrl;
     u8& dos_wp_change_flag;
 
-    void load() {
-        disk_ctrl.load_disk(selected().disk);
-        disk_ctrl.set_write_prot(selected().write_prot);
-
-        Log::info("Disk selected: %s (slot %d)", selected().disk_name.c_str(), selected_slot);
-
-        // works...? or breaks some custom loader(s)?
-        // (would need to fiddle with the PB WP bit then...)
-        dos_wp_change_flag = 0x01;
-    }
+    void load();
 
     int find_free_slot() const {
         for (int slot = 1; slot < slot_count; ++slot) {
@@ -930,14 +841,7 @@ public:
         return group;
     }
 
-    void reset() {
-        cpu.reset();
-        iec.reset();
-        dc.reset();
-        disk_carousel.reset();
-        irq_state = 0x00;
-        //idle = false;
-    }
+    void reset();
 
     void tick();
 

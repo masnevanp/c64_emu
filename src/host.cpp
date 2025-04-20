@@ -241,6 +241,14 @@ void Input::handle_joy_axis() {
 
 
 
+void Video_out::put(const u8* vic_frame) {
+    //SDL_RenderClear(renderer);
+    frame.put(vic_frame, renderer);
+    mask.put(renderer);
+    flip();
+}
+
+
 Video_out::SDL_frame::SDL_frame(int max_w_, int max_h_, SDL_TextureAccess ta_, SDL_BlendMode bm_)
     : max_w(max_w_), max_h(max_h_), ta(ta_), bm(bm_), pixels(new u32[max_w * max_h])
 {

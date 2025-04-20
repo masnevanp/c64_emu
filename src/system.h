@@ -148,16 +148,9 @@ private:
         }
     }
 
-    void update_state() { // output bits set from 'pd', input bits unchanged
-        s.io_port_state = (s.io_port_pd & s.io_port_dd) | (s.io_port_state & ~s.io_port_dd);
-        set_pla();
-    }
+    void update_state();
 
-    void set_pla() {
-        const u8 lhc = (s.io_port_state | ~s.io_port_dd) & loram_hiram_charen_bits; // inputs -> pulled up
-        const u8 mode = s.exrom_game | lhc;
-        s.pla_line = Mode_to_PLA_line[mode];
-    }
+    void set_pla();
 
     // There is a PLA_Line for each mode, and for each mode there are separate r/w configs
     struct PLA_Line {
@@ -292,55 +285,8 @@ public:
     };
 
 private:
-    void update_matrix() {
-        auto get_row = [](int n, u64& from) -> u64 { return (from >> (8 * n)) & 0xff; };
-        auto set_row = [](int n, u64& to, u64 val) { to |= (val << (8 * n)); };
-
-        s.kb_matrix = s.key_states;
-
-        if (s.kb_matrix) { // any key down?
-            // emulate GND propagation in the matrix (can produce 'ghost' keys)
-            for (int ra = 0; ra < 7; ++ra) for (int rb = ra + 1; rb < 8; ++rb) {
-                const u64 a = get_row(ra, s.kb_matrix);
-                const u64 b = get_row(rb, s.kb_matrix);
-                if (a & b) {
-                    const u64 r = a | b;
-                    set_row(ra, s.kb_matrix, r);
-                    set_row(rb, s.kb_matrix, r);
-                }
-            }
-        }
-    }
-
-    void output() {
-        u8 pa = s.pa_state & s.cp2_state;
-        u8 pb = s.pb_state & s.cp1_state;
-
-        if (s.kb_matrix) { // any key down?
-            u64 key = 0b1;
-            for (int n = 0; n < 64; ++n, key <<= 1) {
-                const bool key_down = s.kb_matrix & key;
-                if (key_down) {
-                    // figure out connected lines & states
-                    const auto row_bit = (0b1 << (n / 8));
-                    const auto pa_bit = pa & row_bit;
-                    const auto col_bit = (0b1 << (n % 8));
-                    const auto pb_bit = pb & col_bit;
-
-                    if (!pa_bit || !pb_bit) { // at least one connected line is low?
-                        // pull both lines low
-                        pa &= (~row_bit);
-                        pb &= (~col_bit);
-                    }
-                }
-            }
-        }
-
-        pa_in(0b11111111, pa);
-        pb_in(0b11111111, pb);
-
-        vic.set_lp(VIC::LP_src::cia, pb & VIC_II::CIA1_PB_LP_BIT);
-    }
+    void update_matrix();
+    void output();
 
     State& s;
 
@@ -617,7 +563,7 @@ private:
 
     bool shutdown;
 
-    _Stopwatch watch;
+    Stopwatch watch;
     Timer frame_timer;
 
     void init_sync(); // call if system has been 'paused'

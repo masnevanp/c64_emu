@@ -19,39 +19,14 @@ public:
     void reset() { core.reset(); }
     void flush() { audio_out.flush(); }
 
-    void reconfig(double frame_rate, bool pitch_shift) {
-        if (pitch_shift) {
-            core.set_clock_freq(frame_rate * FRAME_CYCLE_COUNT);
-            clock_speed_base = 1.0;
-        } else {
-            core.set_clock_freq(CPU_FREQ_PAL);
-            clock_speed_base = FRAME_RATE_PAL / frame_rate;
-        }
-    }
+    void reconfig(double frame_rate, bool pitch_shift);
 
     void reconfig(u16 audio_out_buf_sz_) { audio_out_buf_sz = audio_out.config(audio_out_buf_sz_); }
 
     // Some crude clock speed control here. Good'nuff..? (Not tested on low-end machines though.)
-    void output() {
-        tick();
+    void output();
 
-        const int buffered = audio_out.put(buf, buf_ptr - buf);
-
-        const int buffered_lo = audio_out_buf_sz * 2;
-        const int buffered_hi = 3 * buffered_lo;
-
-        if (buffered <= buffered_lo) {
-            clock_speed = 1.01 * clock_speed_base;
-        } else if (buffered >= buffered_hi) {
-            const float reduction = 0.01 + (((buffered - buffered_hi) / audio_out_buf_sz) / 100.0);
-            clock_speed = (1 - reduction) * clock_speed_base;
-        } else {
-            clock_speed = clock_speed_base;
-        }
-
-        buf_ptr = buf;
-    }
-
+    // TODO: tick also on read of one/some of the regs (rnd generator(s)...)
     void r(const u8& ri, u8& data) { data = core.read(ri); }
     void w(const u8& ri, const u8& data) {
         tick(); // tick with old state first
@@ -104,15 +79,7 @@ private:
         {"RESID / SAMPLING", set.sampling, [&](){ core.set_sampling_method(set.sampling); }},
     };
 
-    void tick() {
-        int cycles = clock_speed * (system_cycle - last_tick_cycle);
-        last_tick_cycle = system_cycle;
-
-        if (cycles > 0) {
-            // there is always enough space in the buffer (hence the '0xffff')
-            buf_ptr += core.clock(cycles, buf_ptr, 0xffff);
-        }
-    }
+    void tick();
 };
 
 

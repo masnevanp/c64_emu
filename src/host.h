@@ -135,12 +135,7 @@ public:
     Video_out(const double& frame_rate_in_) : frame_rate_in(frame_rate_in_) {}
     ~Video_out();
 
-    void put(const u8* vic_frame) {
-        //SDL_RenderClear(renderer);
-        frame.put(vic_frame, renderer);
-        mask.put(renderer);
-        flip();
-    }
+    void put(const u8* vic_frame);
 
     void flip() { SDL_RenderPresent(renderer); }
 

@@ -32,30 +32,12 @@ public:
         return std::chrono::duration_cast<us>(clock::now() - clock_start).count();
     }
 
-    int wait_elapsed(int elapsed_us, bool reset = false) {
-        const auto d = diff(elapsed_us, reset);
-        const auto diff_us = d.count();
-        if (diff_us < 0) {
-            const int ms = std::round(-diff_us / 1000.0);
-            #ifdef __MINGW32__
-                Sleep(ms);
-            #else
-                std::this_thread::sleep_for(std::chrono::milliseconds(ms));
-            #endif
-        }
-        return diff_us;
-    }
+    int wait_elapsed(int elapsed_us, bool reset = false);
 
 private:
     clock::time_point clock_start;
 
-    us diff(int target_elapsed_us, bool reset) {
-        const auto elapsed = clock::now() - clock_start;
-        const auto target_elapsed = us(target_elapsed_us);
-        if (reset) clock_start = clock_start + target_elapsed;
-        const auto diff = std::chrono::duration_cast<us>(elapsed - target_elapsed);
-        return diff;
-    }
+    us diff(int target_elapsed_us, bool reset);
 };
 
 
