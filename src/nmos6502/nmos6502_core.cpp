@@ -2,10 +2,7 @@
 #include "nmos6502_core.h"
 
 
-NMOS6502::Core::Core(State& s_, Sig& sig_halt_) : s(s_), sig_halt(sig_halt_) {
-    s.r8(Ri8::zph) = 0x00;
-    s.r8(Ri8::sph) = 0x01;
-}
+NMOS6502::Core::Core(State& s_, Sig& sig_halt_) : s(s_), sig_halt(sig_halt_) {}
 
 
 void NMOS6502::Core::reset() {
@@ -13,7 +10,9 @@ void NMOS6502::Core::reset() {
     s.nmi_timer = s.irq_timer = 0x00;
     s.nmi_act = s.irq_act = false;
     mcp = MC::opc_mc_start(OPC::reset);
-    s.a1 = s.sp16; --s.sp; s.a2 = s.sp16; --s.sp; s.a3 = s.sp16; --s.sp;
+    s.r16(Ri16::a1) = s.sp; s.dec_sp();
+    s.a2 = s.sp; s.dec_sp();
+    s.a3 = s.sp; s.dec_sp();
     s.a4 = Vec::rst;
 }
 
@@ -86,13 +85,13 @@ namespace NMOS6502 {
         void ud_anc() { set_nz(s.a &= s.d); s.set(Flag::C, s.a & 0x80); }
         void ud_arr();
         void ud_axs() { s.x &= s.a; s.set(Flag::C, s.x >= s.d); set_nz(s.x -= s.d); }
-        void ud_las() { set_nz(s.a = s.x = s.sp = (s.sp & s.d)); }
+        void ud_las() { set_nz(s.a = s.x = (s.sp & s.d)); s.set_sp(s.a); }
         void ud_lxa() { set_nz(s.a = s.x = (s.a | 0xee) & s.d); }
         void ud_rla() { rol(s.d); set_nz(s.a &= s.d); }
         void ud_rra() { ror(s.d); adc(); }
         void ud_slo() { s.set(Flag::C, s.d & 0x80); set_nz(s.a |= (s.d <<= 1)); }
         void ud_sre() { s.set(Flag::C, s.d & 0x01); set_nz(s.a ^= (s.d >>= 1)); }
-        void ud_tas() { s.sp = s.a & s.x; s.d = s.sp & (s.a1h + 0x01); }
+        void ud_tas() { s.set_sp(s.a & s.x); s.d = s.sp & (s.a1h + 0x01); }
         void ud_xaa() { set_nz(s.a = (s.a | 0xee) & s.x & s.d); }
 
         void st_reg_sel() {
@@ -142,7 +141,7 @@ namespace NMOS6502 {
                 case 0x8b: ud_xaa(); return; /* ud_xaa */
                 case 0x93: case 0x9f: s.d=s.a&s.x&(s.a1h+1); return; /* ud_ahx */
                 case 0x98: set_nz(s.a=s.y); return; /* sb_tya */
-                case 0x9a: s.sp=s.x; return; /* sb_txs */
+                case 0x9a: s.set_sp(s.x); return; /* sb_txs */
                 case 0x9b: ud_tas(); return; /* ud_tas */
                 case 0x9c: s.d=s.y&(s.a1h+1); return; /* ud_shy */
                 case 0x9e: s.d=s.x&(s.a1h+1); return; /* ud_shx */
@@ -270,19 +269,22 @@ void NMOS6502::Core::exec(const u8 mopc) {
 
     static constexpr u8 nmi_timer_handled = 0b10000000;
 
+    //const auto a1 = [&]() -> Reg16& { return *((Reg16*)&s.a1l); };
+    const auto a1 = [&]() -> Reg16& { return s.r16(Ri16::a1); };
+
     switch (mopc) {
-        case abs_x: s.a2 = s.a1 + s.x; s.a1l += s.x; return;
+        case abs_x: s.a2 = a1() + s.x; s.a1l += s.x; return;
         case inc_zp: ++s.zp; return;
-        case abs_y: s.a2 = s.a1 + s.y; s.a1l += s.y; return;
+        case abs_y: s.a2 = a1() + s.y; s.a1l += s.y; return;
         case rm_zp_x: s.zp += s.x; return;
         case rm_zp_y: s.zp += s.y; return;
         case rm_x:
             s.a1l += s.x;
-            if (s.a1l < s.x) { s.a2 = s.a1 + 0x0100; mcp += 2; }
+            if (s.a1l < s.x) { s.a2 = a1() + 0x0100; mcp += 2; }
             return;
         case rm_y:
             s.a1l += s.y;
-            if (s.a1l < s.y) { s.a2 = s.a1 + 0x0100; mcp += 2; }
+            if (s.a1l < s.y) { s.a2 = a1() + 0x0100; mcp += 2; }
             return;
         case rm_idx_ind: s.zp += s.x; s.a2 = (u8)(s.zp + 0x01); return;
         case a_nz: Do{s}.set_nz(s.a); return;
@@ -305,7 +307,7 @@ void NMOS6502::Core::exec(const u8 mopc) {
                 s.pc += (i8)s.d;
                 if ((s.a2 ^ s.pc) & 0xff00) {
                     mcp += 2; // T2 (page cross)
-                    s.a1 = s.a2;
+                    a1() = s.a2;
                     s.a1l += s.d;
                 }
             }
@@ -316,12 +318,12 @@ void NMOS6502::Core::exec(const u8 mopc) {
             if (s.irq_timer == 0b10) s.irq_timer = 0b01;
             return;
         case php: s.p |= (Flag::B | Flag::u); // fall through
-        case pha: s.a1 = s.sp16; --s.sp; return;
-        case jsr: s.a3 = s.sp16; --s.sp; s.a4 = s.sp16; --s.sp; s.a2 = s.pc; // fall through
-        case jmp_abs: s.pc = s.a1; return;
-        case rti: ++s.sp; s.a1 = s.sp16; // fall through
-        case MOPC::rts: ++s.sp; s.a2 = s.sp16; // fall through
-        case inc_sp: ++s.sp; return;
+        case pha: a1() = s.sp; s.dec_sp(); return;
+        case jsr: s.a3 = s.sp; s.dec_sp(); s.a4 = s.sp; s.dec_sp(); s.a2 = s.pc; // fall through
+        case jmp_abs: s.pc = a1(); return;
+        case rti: s.inc_sp(); a1() = s.sp; // fall through
+        case MOPC::rts: s.inc_sp(); s.a2 = s.sp; // fall through
+        case inc_sp: s.inc_sp(); return;
         case MOPC::brk:
             // brk_srcs |= (irq_bit & ~p); // no effect (the same vector used anyway)
             if (s.nmi_timer & 0b11) { // Potential hijacking by nmi
@@ -363,10 +365,10 @@ void NMOS6502::Core::exec(const u8 mopc) {
                 s.ir = OPC::brk;
                 s.p = (s.p | (Flag::B | Flag::u)) & brk_ctrl[s.brk_srcs].p_mask;
                 s.pc -= brk_ctrl[s.brk_srcs].pc_t0;
-                s.a1 = s.pc + brk_ctrl[s.brk_srcs].pc_t1;
-                s.a2 = s.sp16; --s.sp;
-                s.a3 = s.sp16; --s.sp;
-                s.a4 = s.sp16; --s.sp;
+                a1() = s.pc + brk_ctrl[s.brk_srcs].pc_t1;
+                s.a2 = s.sp; s.dec_sp();
+                s.a3 = s.sp; s.dec_sp();
+                s.a4 = s.sp; s.dec_sp();
             }
 
             mcp = opc_mc_start(s.ir);
@@ -375,7 +377,7 @@ void NMOS6502::Core::exec(const u8 mopc) {
         case sig_hlt: sig_halt(); return;
         case hlt: --mcp; return; // stuck
         case MOPC::reset:
-            s.a1 = Vec::rst + 0x0001;
+            a1() = Vec::rst + 0x0001;
             s.set(Flag::I);
             return;
     }

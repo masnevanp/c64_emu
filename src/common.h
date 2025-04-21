@@ -147,9 +147,10 @@ namespace Key_code {
     };
 
     enum System : u8 {
-        rstre = GS, quit, nop,
+        rstre = GS, shutdown, nop,
         rst_c, swp_j, v_fsc, menu_tgl, rot_dsk,
         menu_ent, menu_up, menu_down,
+        state_save,
     };
 
 } // namespace Key_code

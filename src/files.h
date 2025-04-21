@@ -5,13 +5,13 @@
 #include <vector>
 #include <numeric>
 #include "common.h"
-
+#include "state.h"
 
 
 namespace Files {
 
 struct Img {
-    enum class Type { crt, t64, d64, g64, raw, unknown };
+    enum class Type { crt, t64, d64, g64, raw, sys_snap, unknown };
 
     const Type type;
     const std::string name;
@@ -26,6 +26,25 @@ using Loader = std::function<Load_result(const std::string&)>;
 
 // TODO: --> 'loader.h' ?
 Loader init_loader(const std::string& init_path);
+
+
+struct System_snapshot {
+    static constexpr char signature[16] = {
+        'c', '6', '4', '_', 'e', 'm', 'u', '_', 's', 'y', 's', '_', 's', 'n', 'a', 'p'
+    };
+    static constexpr int sign_len = sizeof(signature) / sizeof(signature[0]);
+
+private:
+    char sign[sign_len];
+public:
+    System_snapshot() {
+        for (int c = 0; c < sign_len; ++c) sign[c] = signature[c];
+    }
+
+    State::System sys_state;
+
+    u8 cpu_mcp;
+};
 
 
 struct T64 {

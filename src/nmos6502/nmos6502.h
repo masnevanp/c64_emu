@@ -36,8 +36,8 @@ namespace NMOS6502 {
     // 8bit reg indices
     enum Ri8 : u8 { // TODO: big-endian host
         zp = 0, zph = 1, pcl = 2, pch = 3, d = 4, ir = 5, a1l = 6, a1h = 7, a2l = 8, a2h = 9,
-        sp = 10, sph = 11, p = 12, a = 13, x = 14, y = 15,
-        _cnt8 = y + 1
+        sp = 10, sph = 11, p = 12, a = 13, x = 14, y = 15, a3l = 16, a3h = 17, a4l = 18, a4h = 19,
+        _cnt8 = a4h + 1
     };
     extern const std::string Ri8_str[];
 

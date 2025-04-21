@@ -8,5 +8,5 @@ const std::string NMOS6502::Ri16_str[] = {
 
 const std::string NMOS6502::Ri8_str[] = {
     "zp", "zph", "pcl", "pch", "d", "ir", "a1l", "a1h", "a2l", "a2h",
-    "sp", "sph", "p", "a", "x", "y",
+    "sp", "sph", "p", "a", "x", "y", "a3l", "a3h", "a4l", "a4h",
 };

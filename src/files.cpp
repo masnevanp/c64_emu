@@ -30,7 +30,8 @@ namespace ctrl_ch { // TOREDO...
 static const char* win_drive_list_filename = "?:/";
 static const char* unmount_filename = ":";
 
-static const int HD_FILE_SIZE_MAX = 0x200000; // TODO: check
+static const int SYS_SNAP_SIZE = sizeof(Files::System_snapshot);
+static const int HD_FILE_SIZE_MAX = SYS_SNAP_SIZE;
 static const int C64_BIN_SIZE_MIN = 0x0003; // TODO: check
 static const int C64_BIN_SIZE_MAX = 0xffff; // TODO: check
 static const int T64_SIZE_MIN = 0x60;
@@ -98,6 +99,12 @@ Files::Img::Type file_type(const Bin& file) {
         return (std::size(file) >= C64_BIN_SIZE_MIN) && std::size(file) <= C64_BIN_SIZE_MAX;
     };
 
+    auto is_sys_snap = [&]() {
+        const auto& sign = Files::System_snapshot::signature;
+        return std::size(file) == SYS_SNAP_SIZE
+            && std::equal(std::begin(sign), std::end(sign), std::begin(file));
+    };
+
     using Type = Files::Img::Type;
 
     if (is_crt()) return Type::crt;
@@ -105,6 +112,7 @@ Files::Img::Type file_type(const Bin& file) {
     if (is_g64()) return Type::g64;
     if (is_d64()) return Type::d64;
     if (is_raw()) return Type::raw;
+    if (is_sys_snap()) return Type::sys_snap;
 
     return Type::unknown;
 }
@@ -348,6 +356,7 @@ private:
                 }
             case Type::g64: return {img, NONE}; // TODO: handle same as a d64?
             case Type::raw: return {NONE, std::move(img.data)};
+            case Type::sys_snap: return {img, NONE};
             default:
                 return {NOT_FOUND, NOT_FOUND};
         }

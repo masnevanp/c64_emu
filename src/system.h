@@ -395,7 +395,7 @@ public:
         reset_cold();
 
         // TODO: consider special loops for different configs (e.g. REU with no 1541)
-        for (shutdown = false; !shutdown;) {
+        for (sys_req = Sys_req::nop; sys_req != Sys_req::shutdown;) {
             vic.tick();
 
             const auto rw = cpu.mrw();
@@ -424,9 +424,13 @@ public:
     }
 
 private:
+    using Sys_req = Key_code::System;
+
+    Files::System_snapshot sys_snap;
+
     const ROM& rom;
 
-    State::System s;
+    State::System& s{sys_snap.sys_state};
 
     CPU cpu{s.cpu, cpu_trap};
 
@@ -497,7 +501,7 @@ private:
             }
 
             switch (code) {
-                case kc::quit:      signal_shutdown();            break;
+                case kc::shutdown:  request_shutdown();           break;
                 case kc::rst_c:     reset_cold();                 break;
                 case kc::v_fsc:     vid_out.toggle_fullscr_win(); break;
                 case kc::swp_j:     host_input.swap_joysticks();  break;
@@ -561,22 +565,24 @@ private:
 
     Performance perf{};
 
-    bool shutdown;
+    Key_code::System sys_req{Sys_req::nop};
 
-    Stopwatch watch;
+    _Stopwatch watch;
     Timer frame_timer;
 
     void init_sync(); // call if system has been 'paused'
-    void sync();
     void check_sync() {
         const bool sync_point = (s.vic.cycle % perf.latency.chosen.sync_freq) == 0;
         if (sync_point) sync();
     }
+    void sync();
 
     void output_frame();
 
     void reset_warm();
     void reset_cold();
+
+    void handle_sys_req();
 
     void handle_img(Files::Img& img);
 
@@ -585,9 +591,9 @@ private:
 
     void init_ram();
 
-    void signal_shutdown() {
+    void request_shutdown() {
         Log::info("Shutdown requested");
-        shutdown = true;
+        sys_req = Sys_req::shutdown;
     }
 
     std::vector<::Menu::Action> cart_menu_actions{
@@ -619,9 +625,10 @@ private:
             {"RESET WARM !", [&](){ reset_warm(); } },
             {"RESET COLD !", [&](){ reset_cold(); } },
             {"SWAP JOYS !",  [&](){ host_input.swap_joysticks(); } },
+            {"SAVE STATE !", [&](){ sys_req = Key_code::System::state_save; } },
         },
         {
-            {"SHUTDOWN ?",   [&](){ signal_shutdown(); } },
+            {"SHUTDOWN ?",   [&](){ request_shutdown(); } },
         },
         {
             vid_out.settings_menu(),

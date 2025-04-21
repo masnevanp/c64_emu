@@ -366,6 +366,8 @@ void System::C64::sync() {
 
         watch.stop();
         watch.reset();
+
+        if (sys_req != Key_code::System::nop) handle_sys_req();
     } else {
         host_input.poll();
 
@@ -444,6 +446,37 @@ std::string get_filename(const u8* ram) {
 }
 
 
+void System::C64::handle_sys_req() {
+    static const std::string dir = "./_local"; // TODO...
+
+    auto do_state_save = [&]() {
+        sys_snap.cpu_mcp = cpu.mcp - &NMOS6502::MC::code[0];
+
+        const std::string filepath = as_lower(dir + "/emu.state"); // TODO...
+        // TODO: hadle exceptions?
+        if (auto f = std::ofstream(filepath, std::ios::binary)) {
+            f.write((const char*)&sys_snap, sizeof(sys_snap));
+            if (!f) Log::error("save state failed");
+        }
+    };
+
+    switch (sys_req) {
+        case Sys_req::state_save:
+            Log::info("ss");
+            do_state_save();
+            //init_sync();
+            break;
+        case Sys_req::shutdown:
+            return;
+        default:
+            Log::error("sys_req unhandled: %d", (int)sys_req);
+            break;
+    }
+
+    sys_req = Key_code::System::nop;
+}
+
+
 void System::C64::handle_img(Files::Img& img) {
     using Type = Files::Img::Type;
 
@@ -464,6 +497,19 @@ void System::C64::handle_img(Files::Img& img) {
             c1541.disk_carousel.insert(0,
                     new C1541::G64_disk(std::move(img.data)), img.name);
             break;
+        case Type::sys_snap: {
+            Log::error("TODO: restore sys_snap");
+            // Needs to be done on cycle-boundry.... (because that is where the sys_snap is saved).
+            // This 'handle_img()' is triggered by cpu.tick() i.e. (when 'LOAD' is encountered & trapped)
+            // ==> crash..
+            /*
+            Files::System_snapshot& iss = *((Files::System_snapshot*)img.data.data()); // brutal...
+            sys_snap.sys_state = iss.sys_state;
+            cpu.mcp = &NMOS6502::MC::code[0] + iss.cpu_mcp;
+            init_sync();
+            */
+            break;
+        }
         default:
             Log::info("'%s' ignored", img.name.c_str());
             break;

@@ -83,7 +83,7 @@ void run_test_suite()
         for (unsigned int i = 0, m = 0xff48; irq[i] != 0; ++i)
             mem[m + i] = irq[i];
 
-        sys.cpu.s.sp = 0xfd;
+        sys.cpu.s.sp = 0x1fd;
         sys.cpu.s.p = 0x04;
         sys.cpu.s.pc = 0x0801;
     };
@@ -118,8 +118,10 @@ void run_test_suite()
     };
 
     auto rts = [&]() {
-        ++sys.cpu.s.sp; sys.cpu.s.pcl = mem[sys.cpu.s.sp16];
-        ++sys.cpu.s.sp; sys.cpu.s.pch = mem[sys.cpu.s.sp16];
+        sys.cpu.s.inc_sp();
+        sys.cpu.s.pc = mem[sys.cpu.s.sp];
+        sys.cpu.s.inc_sp();
+        sys.cpu.s.pc |= (mem[sys.cpu.s.sp] << 8);
         ++sys.cpu.s.pc;
     };
 

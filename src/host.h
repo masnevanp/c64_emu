@@ -75,7 +75,7 @@ private:
     void handle_win_ev() {
         switch (sdl_ev.window.event) {
             case SDL_WINDOWEVENT_CLOSE:
-                handlers.sys(Key_code::System::quit, true);
+                handlers.sys(Key_code::System::shutdown, true);
                 break;
             case SDL_WINDOWEVENT_FOCUS_GAINED:
                 set_shift_lock();

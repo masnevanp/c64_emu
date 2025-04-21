@@ -58,9 +58,9 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     std::cout << " [ " << print_u8(mem[cpu.s.pc]);
     std::cout << " " << print_u8(mem[(cpu.s.pc+1) & 0xffff]) << " " << print_u8(mem[(cpu.s.pc+2) & 0xffff]);
     std::cout << " ]";
-    std::cout << "\nsp: " << print_u16(cpu.s.sp16);
+    std::cout << "\nsp: " << print_u16(cpu.s.sp);
     std::cout << " [";
-    for (int sp = cpu.s.sp16, i = 1; i < 9 && (sp + i) <= 0x1ff; ++i) {
+    for (int sp = cpu.s.sp, i = 1; i < 9 && (sp + i) <= 0x1ff; ++i) {
         std::cout << " " << print_u8(mem[sp + i]);
     }
     std::cout << " ]";
@@ -70,8 +70,8 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     std::cout << "   p: " << print_u8(cpu.s.p);
     std::cout << " [" << flag_str(cpu.s.p) << "]";
     //// zpaf, a1, a2, a3, a4
-    std::cout << "\n\nzp: " << print_u16(cpu.s.zp16);
-    std::cout << " a1: " << print_u16(cpu.s.a1);
+    std::cout << "\n\nzp: " << print_u16((cpu.s.zph <<8) | cpu.s.zp);
+    std::cout << " a1: " << print_u16((cpu.s.a1h << 8) | cpu.s.a1l);
     std::cout << " a2: " << print_u16(cpu.s.a2);
     std::cout << " a3: " << print_u16(cpu.s.a3);
     std::cout << " a4: " << print_u16(cpu.s.a4);
@@ -128,7 +128,7 @@ void Dbg::step(System& sys, u16 until_pc)
             if (sys.cpu.s.pc == until_pc) break;
         } else std::cout << "----------------------------------------------------------";
 
-        getchar();
+        //getchar();
         std::cout << std::dec << "C" << (int)sys.cn << " T" << (int)sys.tn << ": " << std::string(*sys.cpu.mcp);
 
         sys.exec_cycle();
