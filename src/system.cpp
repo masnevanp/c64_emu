@@ -367,7 +367,10 @@ void System::C64::sync() {
         watch.stop();
         watch.reset();
 
-        if (sys_req != Key_code::System::nop) handle_sys_req();
+        if (when_fram_done) {
+            when_fram_done();
+            when_fram_done = nullptr;
+        }
     } else {
         host_input.poll();
 
@@ -446,10 +449,10 @@ std::string get_filename(const u8* ram) {
 }
 
 
-void System::C64::handle_sys_req() {
+void System::C64::save_state_req() {
     static const std::string dir = "./_local"; // TODO...
 
-    auto do_state_save = [&]() {
+    when_fram_done = [&]() {
         sys_snap.cpu_mcp = cpu.mcp - &NMOS6502::MC::code[0];
 
         const std::string filepath = as_lower(dir + "/emu.state"); // TODO...
@@ -459,22 +462,7 @@ void System::C64::handle_sys_req() {
             if (!f) Log::error("save state failed");
         }
     };
-
-    switch (sys_req) {
-        case Sys_req::state_save:
-            Log::info("ss");
-            do_state_save();
-            //init_sync();
-            break;
-        case Sys_req::shutdown:
-            return;
-        default:
-            Log::error("sys_req unhandled: %d", (int)sys_req);
-            break;
-    }
-
-    sys_req = Key_code::System::nop;
-}
+};
 
 
 void System::C64::handle_img(Files::Img& img) {
@@ -482,9 +470,11 @@ void System::C64::handle_img(Files::Img& img) {
 
     switch (img.type) {
         case Type::crt: {
-            const Files::CRT crt{img.data};
-            Log::info("Attaching CRT '%s' ...", img.name.c_str());
-            if (Cartridge::attach(crt, exp_ctx)) reset_cold();
+            Log::info("CRT '%s' ...", img.name.c_str());
+            when_fram_done = [&, data = std::move(img.data)]() {
+                const Files::CRT crt{data};
+                if (Cartridge::attach(crt, exp_ctx)) reset_cold();
+            };
             break;
         }
         case Type::d64:
@@ -498,16 +488,12 @@ void System::C64::handle_img(Files::Img& img) {
                     new C1541::G64_disk(std::move(img.data)), img.name);
             break;
         case Type::sys_snap: {
-            Log::error("TODO: restore sys_snap");
-            // Needs to be done on cycle-boundry.... (because that is where the sys_snap is saved).
-            // This 'handle_img()' is triggered by cpu.tick() i.e. (when 'LOAD' is encountered & trapped)
-            // ==> crash..
-            /*
-            Files::System_snapshot& iss = *((Files::System_snapshot*)img.data.data()); // brutal...
-            sys_snap.sys_state = iss.sys_state;
-            cpu.mcp = &NMOS6502::MC::code[0] + iss.cpu_mcp;
-            init_sync();
-            */
+            when_fram_done = [&, d = std::move(img.data)]() {
+                Files::System_snapshot& iss = *((Files::System_snapshot*)d.data()); // brutal...
+                sys_snap.sys_state = iss.sys_state;
+                cpu.mcp = &NMOS6502::MC::code[0] + iss.cpu_mcp;
+                init_sync();
+            };
             break;
         }
         default:

@@ -395,7 +395,7 @@ public:
         reset_cold();
 
         // TODO: consider special loops for different configs (e.g. REU with no 1541)
-        for (sys_req = Sys_req::nop; sys_req != Sys_req::shutdown;) {
+        for (shutdown = false; !shutdown;) {
             vic.tick();
 
             const auto rw = cpu.mrw();
@@ -424,7 +424,7 @@ public:
     }
 
 private:
-    using Sys_req = Key_code::System;
+    using Action = std::function<void()>;
 
     Files::System_snapshot sys_snap;
 
@@ -565,7 +565,9 @@ private:
 
     Performance perf{};
 
-    Key_code::System sys_req{Sys_req::nop};
+    bool shutdown;
+
+    Action when_fram_done;
 
     _Stopwatch watch;
     Timer frame_timer;
@@ -582,7 +584,7 @@ private:
     void reset_warm();
     void reset_cold();
 
-    void handle_sys_req();
+    void save_state_req();
 
     void handle_img(Files::Img& img);
 
@@ -593,7 +595,7 @@ private:
 
     void request_shutdown() {
         Log::info("Shutdown requested");
-        sys_req = Sys_req::shutdown;
+        shutdown = true;
     }
 
     std::vector<::Menu::Action> cart_menu_actions{
@@ -625,7 +627,7 @@ private:
             {"RESET WARM !", [&](){ reset_warm(); } },
             {"RESET COLD !", [&](){ reset_cold(); } },
             {"SWAP JOYS !",  [&](){ host_input.swap_joysticks(); } },
-            {"SAVE STATE !", [&](){ sys_req = Key_code::System::state_save; } },
+            {"SAVE STATE !", [&](){ save_state_req(); } },
         },
         {
             {"SHUTDOWN ?",   [&](){ request_shutdown(); } },
