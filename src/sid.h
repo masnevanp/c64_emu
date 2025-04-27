@@ -17,7 +17,11 @@ public:
     }
 
     void reset() { core.reset(); }
-    void flush() { audio_out.flush(); }
+    void flush() {
+        audio_out.flush();
+        buf_ptr = buf;
+        last_tick_cycle = system_cycle;
+    }
 
     void reconfig(double frame_rate, bool pitch_shift);
 
