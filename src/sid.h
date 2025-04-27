@@ -16,6 +16,18 @@ public:
         buf = buf_ptr = new i16[max_buf_sz];
     }
 
+    class Core : public reSID::SID {
+    public:
+        bool set_clock_freq(double clock_freq) {
+            return set_sampling_parameters(clock_freq, sampling, AUDIO_OUTPUT_FREQ);
+        }
+        bool set_sampling_method(reSID::sampling_method method) {
+            return set_sampling_parameters(clock_frequency, method, AUDIO_OUTPUT_FREQ);
+        }
+    };
+
+    Core core;
+
     void reset() { core.reset(); }
     void flush() {
         audio_out.flush();
@@ -40,17 +52,6 @@ public:
     Menu::Group settings_menu() { return Menu::Group("RESID /", menu_items); }
 
 private:
-    class Core : public reSID::SID {
-    public:
-        bool set_clock_freq(double clock_freq) {
-            return set_sampling_parameters(clock_freq, sampling, AUDIO_OUTPUT_FREQ);
-        }
-        bool set_sampling_method(reSID::sampling_method method) {
-            return set_sampling_parameters(clock_frequency, method, AUDIO_OUTPUT_FREQ);
-        }
-    };
-    Core core;
-
     i16* buf;
     i16* buf_ptr;
 
