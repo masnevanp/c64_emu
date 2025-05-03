@@ -516,8 +516,12 @@ private:
         // file drop
         [this](const char* filepath) {
             Log::info("Incoming: '%s'", filepath);
-            auto img = Files::read_img_file(filepath);
-            if (img) handle_img(*img);
+            auto file = Files::read(filepath);
+            if (file && file.type != Files::File::Type::c64_bin) {
+                handle_file(file);
+            } else {
+                Log::info("Ignored: '%s'", filepath);
+            }
         }
     };
     Host::Input host_input{host_input_handlers};
@@ -567,7 +571,7 @@ private:
 
     bool shutdown;
 
-    Action when_fram_done;
+    Action when_frame_done;
 
     _Stopwatch watch;
     Timer frame_timer;
@@ -586,7 +590,7 @@ private:
 
     void save_state_req();
 
-    void handle_img(Files::Img& img);
+    void handle_file(Files::File& file);
 
     void do_load();
     void do_save();

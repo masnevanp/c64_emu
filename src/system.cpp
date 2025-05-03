@@ -367,9 +367,9 @@ void System::C64::sync() {
         watch.stop();
         watch.reset();
 
-        if (when_fram_done) {
-            when_fram_done();
-            when_fram_done = nullptr;
+        if (when_frame_done) {
+            when_frame_done();
+            when_frame_done = nullptr;
         }
     } else {
         host_input.poll();
@@ -452,7 +452,8 @@ std::string get_filename(const u8* ram) {
 void System::C64::save_state_req() {
     static const std::string dir = "./_local"; // TODO...
 
-    when_fram_done = [&]() {
+    when_frame_done = [&]() {
+        sys_snap.sid = sid.core.read_state();
         sys_snap.cpu_mcp = cpu.mcp - &NMOS6502::MC::code[0];
 
         const std::string filepath = as_lower(dir + "/emu.state"); // TODO...
@@ -465,13 +466,31 @@ void System::C64::save_state_req() {
 };
 
 
-void System::C64::handle_img(Files::Img& img) {
-    using Type = Files::Img::Type;
+void System::C64::handle_file(Files::File& file) {
+    auto inject = [&](const Bytes& data) {
+        // load addr (used if 2nd.addr == 0)
+        s.ram[0xc3] = cpu.s.x;
+        s.ram[0xc4] = cpu.s.y;
 
-    switch (img.type) {
+        const u8 scnd_addr = s.ram[0xb9];
+        u16 addr = (scnd_addr == 0)
+            ? cpu.s.y * 0x100 + cpu.s.x
+            : data[1] * 0x100 + data[0];
+
+        // 'load'
+        for (u32 b = 2; b < data.size(); ++b) s.ram[addr++] = data[b];
+
+        // end pointer
+        s.ram[0xae] = cpu.s.x = addr;
+        s.ram[0xaf] = cpu.s.y = addr >> 8;
+    };
+
+    using Type = Files::File::Type;
+
+    switch (file.type) {
         case Type::crt: {
-            Log::info("CRT '%s' ...", img.name.c_str());
-            when_fram_done = [&, data = std::move(img.data)]() {
+            Log::info("CRT '%s' ...", file.name.c_str());
+            when_frame_done = [&, data = std::move(file.data)]() {
                 const Files::CRT crt{data};
                 if (Cartridge::attach(crt, exp_ctx)) reset_cold();
             };
@@ -481,23 +500,27 @@ void System::C64::handle_img(Files::Img& img) {
             // auto slot = s.ram[0xb9]; // secondary address
             // slot=0 --> first free slot
             c1541.disk_carousel.insert(0,
-                    new C1541::D64_disk(Files::D64{img.data}), img.name);
+                    new C1541::D64_disk(Files::D64{file.data}), file.name);
             break;
         case Type::g64:
             c1541.disk_carousel.insert(0,
-                    new C1541::G64_disk(std::move(img.data)), img.name);
+                    new C1541::G64_disk(std::move(file.data)), file.name);
+            break;
+        case Type::c64_bin:
+            inject(file.data);
             break;
         case Type::sys_snap: {
-            when_fram_done = [&, d = std::move(img.data)]() {
+            when_frame_done = [&, d = std::move(file.data)]() {
                 Files::System_snapshot& iss = *((Files::System_snapshot*)d.data()); // brutal...
                 sys_snap.sys_state = iss.sys_state;
+                sid.core.write_state(sys_snap.sid);
                 cpu.mcp = &NMOS6502::MC::code[0] + iss.cpu_mcp;
                 init_sync();
             };
             break;
         }
         default:
-            Log::info("'%s' ignored", img.name.c_str());
+            Log::info("'%s' ignored", file.name.c_str());
             break;
     }
     // TODO: support 't64' (e.g. cold reset & feed the appropriate 'LOAD'
@@ -506,28 +529,9 @@ void System::C64::handle_img(Files::Img& img) {
 
 
 void System::C64::do_load() {
-    auto inject = [&](const std::vector<u8>& bin) {
-        // load addr (used if 2nd.addr == 0)
-        s.ram[0xc3] = cpu.s.x;
-        s.ram[0xc4] = cpu.s.y;
+    if (auto file = loader(get_filename(s.ram)); file) {
+        handle_file(file);
 
-        const u8 scnd_addr = s.ram[0xb9];
-        u16 addr = (scnd_addr == 0)
-            ? cpu.s.y * 0x100 + cpu.s.x
-            : bin[1] * 0x100 + bin[0];
-
-        // 'load'
-        for (u32 b = 2; b < bin.size(); ++b) s.ram[addr++] = bin[b];
-
-        // end pointer
-        s.ram[0xae] = cpu.s.x = addr;
-        s.ram[0xaf] = cpu.s.y = addr >> 8;
-    };
-
-    auto [img, bin] = loader(get_filename(s.ram));
-    if (img || bin) {
-        if (bin) inject(*bin);
-        if (img) handle_img(*img);
         //'return' status to kernal routine
         cpu.s.clr(NMOS6502::Flag::C); // no error
         s.ram[0x90] = 0x00; // io status ok

@@ -6,23 +6,26 @@
 #include <numeric>
 #include "common.h"
 #include "state.h"
+#include "sid.h"
 
 
 namespace Files {
 
-struct Img {
-    enum class Type { crt, t64, d64, g64, raw, sys_snap, unknown };
+
+struct File {
+    enum class Type { none = 0, crt, t64, d64, g64, c64_bin, sys_snap, unknown };
 
     const Type type;
     const std::string name;
-    Bin data;
+    Bytes data;
+
+    operator bool() const { return type != Type::none; }
 };
 
-Maybe<Img> read_img_file(const std::string& path);
+File read(const std::string& path);
 
 
-using Load_result = std::pair<Maybe<Img>, Maybe<Bin>>;
-using Loader = std::function<Load_result(const std::string&)>;
+using Loader = std::function<File (const std::string&)>;
 
 // TODO: --> 'loader.h' ?
 Loader init_loader(const std::string& init_path);
@@ -43,12 +46,14 @@ public:
 
     State::System sys_state;
 
+    reSID_Wrapper::Core::State sid;
+
     u8 cpu_mcp;
 };
 
 
 struct T64 {
-    const Bin& data;
+    const Bytes& data;
 
     struct Dir_entry {
         u8 _todo[2]; // types
@@ -60,7 +65,7 @@ struct T64 {
         u8 __todo[16]; // name
     };
 
-    Bin first_file() const { // TODO: handle multifile archives?
+    Bytes first_file() const { // TODO: handle multifile archives?
         const auto& d = data.data();
         const auto& e = *((Dir_entry*)&d[0x40]);
 
@@ -68,11 +73,11 @@ struct T64 {
         auto so = e.file_start;
         auto eo = e.file_start + sz;
 
-        // try to deal with falty images (probably fails on a multifile image)
+        // try to deal with faulty images (probably fails on a multifile image)
         eo = eo > std::size(data) ? std::size(data) : eo;
 
-        Bin file({e.start_address.b0, e.start_address.b1});
-        std::copy(&d[so], &d[eo], std::back_inserter<Bin>(file));
+        Bytes file({e.start_address.b0, e.start_address.b1});
+        std::copy(&d[so], &d[eo], std::back_inserter<Bytes>(file));
 
         return file;
     }
@@ -80,7 +85,7 @@ struct T64 {
 
 
 struct D64 {
-    const Bin& data;
+    const Bytes& data;
 
     // standard 35-track disk
     static constexpr int track_count = 35;
@@ -189,8 +194,8 @@ struct D64 {
         return d;
     }
 
-    Bin read_file(const BL& start) {
-        Bin file_data;
+    Bytes read_file(const BL& start) {
+        Bytes file_data;
         for (auto bc = block_chain(start); bc.ok(); bc.next()) {
             if (bc.last()) {
                 auto end = &bc.data[bc.data[1] + 1];
@@ -206,7 +211,7 @@ struct D64 {
 
 
 struct G64 {
-    const Bin data;
+    const Bytes data;
 
     struct Header {
         const u8 signature[8];
@@ -235,7 +240,7 @@ struct G64 {
 
 
 struct CRT {
-    const Bin& img;
+    const Bytes& img;
 
     struct Header {
         struct Version { const u8 major; const u8 minor; };

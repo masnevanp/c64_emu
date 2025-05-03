@@ -9,8 +9,7 @@
 namespace fs = std::filesystem;
 
 
-using D64 = Files::D64;
-using Load_result = Files::Load_result;
+namespace Files {
 
 
 namespace petscii { // TOREDO...
@@ -30,7 +29,7 @@ namespace ctrl_ch { // TOREDO...
 static const char* win_drive_list_filename = "?:/";
 static const char* unmount_filename = ":";
 
-static const int SYS_SNAP_SIZE = sizeof(Files::System_snapshot);
+static const int SYS_SNAP_SIZE = sizeof(System_snapshot);
 static const int HD_FILE_SIZE_MAX = SYS_SNAP_SIZE;
 static const int C64_BIN_SIZE_MIN = 0x0003; // TODO: check
 static const int C64_BIN_SIZE_MAX = 0xffff; // TODO: check
@@ -39,8 +38,7 @@ static const int G64_SIZE_MIN = 0xffff; // TODO: a more realistic minimum (this 
 static const int CRT_SIZE_MIN = 0x0050;
 
 
-static constexpr auto& NOT_FOUND = std::nullopt;
-static constexpr auto& NONE = std::nullopt;
+static const File NO_FILE{File::Type::none, "", {}};
 
 
 static constexpr u8 dir_list_first_line[] = { // 0 PRINT"<clr>":LIST1-:REM<del><del>...<del>
@@ -67,7 +65,7 @@ static constexpr u8 crt_signature[] = {
 
 
 
-Files::Img::Type file_type(const Bin& file) {
+File::Type file_type(const Bytes& file) {
     auto is_crt = [&]() {
         return std::size(file) >= CRT_SIZE_MIN
                     && std::equal(std::begin(crt_signature), std::end(crt_signature),
@@ -91,54 +89,54 @@ Files::Img::Type file_type(const Bin& file) {
     };
 
     auto is_d64 = [&]() {
-        return std::size(file) == Files::D64::size
-                    || std::size(file) == Files::D64::size_with_error_info;
+        return std::size(file) == D64::size
+                    || std::size(file) == D64::size_with_error_info;
     };
 
-    auto is_raw = [&]() {
+    auto is_c64_bin = [&]() {
         return (std::size(file) >= C64_BIN_SIZE_MIN) && std::size(file) <= C64_BIN_SIZE_MAX;
     };
 
     auto is_sys_snap = [&]() {
-        const auto& sign = Files::System_snapshot::signature;
+        const auto& sign = System_snapshot::signature;
         return std::size(file) == SYS_SNAP_SIZE
             && std::equal(std::begin(sign), std::end(sign), std::begin(file));
     };
 
-    using Type = Files::Img::Type;
+    using Type = File::Type;
 
     if (is_crt()) return Type::crt;
     if (is_t64()) return Type::t64;
     if (is_g64()) return Type::g64;
     if (is_d64()) return Type::d64;
-    if (is_raw()) return Type::raw;
+    if (is_c64_bin()) return Type::c64_bin;
     if (is_sys_snap()) return Type::sys_snap;
 
     return Type::unknown;
 }
 
 
-Maybe<Files::Img> Files::read_img_file(const std::string& path) {
+File read(const std::string& path) {
     const auto fs_path = fs::path(path);
     const auto name = fs_path.filename().string();
 
     try {
         if (fs::file_size(fs_path) <= HD_FILE_SIZE_MAX) {
-            if (auto data = read_file(path)) {
-                return Img{
-                    file_type(*data),
-                    name,
-                    *data
-                };
+            if (auto data = read_file(path); data) {
+                if (auto type = file_type(*data); type != File::Type::unknown) {
+                    return File{type, name, *data};
+                } else {
+                    Log::error("File unknown");
+                }
             }
         } else {
-            Log::error("Img oversized");
+            Log::error("File oversized");
         }
     } catch (const fs::filesystem_error& e) {
         Log::error("%s", e.what());
     }
 
-    return NONE;
+    return NO_FILE;
 }
 
 
@@ -214,8 +212,8 @@ public:
 
     void append(Line line) { listing.push_back(line); }
 
-    Bin to_bin() const {
-        Bin bin;
+    Bytes to_bin() const {
+        Bytes bin;
 
         u16 addr = 0x0801;
         bin.push_back(addr); // load addr. (lo)
@@ -245,7 +243,7 @@ private:
 
 
 // generates a basic program listing of the dir listing
-Bin hd_dir_basic_listing(
+File hd_dir_basic_listing(
     const std::string& dir,
     const std::vector<std::string>& sub_dirs,
     const std::vector<std::string>& files,
@@ -275,12 +273,12 @@ Bin hd_dir_basic_listing(
     for (const auto& d : sub_dirs) bl.append({ 0x03, " / " + quoted(to_client(d)) });
     for (const auto& f : files)    bl.append({ 0x04, " : " + quoted(to_client(f)) });
 
-    return bl.to_bin();
+    return File{File::Type::c64_bin, "", bl.to_bin()};
 }
 
 
 #ifdef _WIN32
-Bin load_win_drives_list() {
+File load_win_drives_list() {
     std::vector<std::string> drives;
     std::string d = "?:/";
     for (char c : "ABCDEFGHIJKLMNOPQRSTUWVXYZ") { // good ol' trial & error...
@@ -305,91 +303,76 @@ public:
         Log::info("Loader context: '%s'", context.string().c_str());
     }
 
-    Load_result operator()(const std::string& what) { return load(what); }
+    File operator()(const std::string& what) { return load(what); }
 
 private:
     fs::path context;
 
-    Load_result load(const std::string& what) {
-        if (fs::is_directory(context)) return load_hd(what);
-        if (fs::is_regular_file(context)) return load_hd_file(context, what);
-        context = "/";
-        return load_hd("");
-    }
+    File load(const std::string& what);
+    File load_hd_file(const fs::path& path, const std::string& what);
+    File load_hd(const std::string& what);
 
-    Bin load_hd_dir(const fs::path& new_dir) {
-        auto cd = fs::canonical(new_dir.lexically_normal());
-        auto [dirs, files] = list_dir(cd.string());
+    File load_hd_dir(const fs::path& new_dir);
 
-        bool drives_entry = false;
-        #ifdef _WIN32
-        drives_entry = cd == cd.root_path();
-        #endif
-        bool root_entry = cd.parent_path() != cd.root_path();
-        bool parent_entry = cd.parent_path() != cd;
+    File load_from_d64(const Bytes& d64_data, const std::string& what);
+    // File load_from_g64(const Bytes& g64_data, const std::string& what);
+    File load_from_t64(const Bytes& t64_data, const std::string& what);
 
-        context = cd;
-
-        return hd_dir_basic_listing(context.string(), dirs, files,
-                                        drives_entry, root_entry, parent_entry);
-    }
-
-    Load_result load_hd_file(const fs::path& path, const std::string& what) {
-        using Type = Files::Img::Type;
-
-        auto is_already_mounted = [&]() { return context == path; };
-        auto mount = [&]() { context = path; };
-
-        auto maybe_img = Files::read_img_file(path.string());
-        if (!maybe_img) return {NOT_FOUND, NOT_FOUND};
-
-        switch (auto img = *maybe_img; img.type) {
-            case Type::crt: return {img, NONE};
-            case Type::t64: return {NONE, load_from_t64(img.data, what)};
-            case Type::d64:
-                if (is_already_mounted()) {
-                    if (what == unmount_filename) return unmount();
-                    else return {NONE, load_from_d64(img.data, what)};
-                } else {
-                    mount();
-                    return {img, load_from_d64(img.data, "$")};
-                }
-            case Type::g64: return {img, NONE}; // TODO: handle same as a d64?
-            case Type::raw: return {NONE, std::move(img.data)};
-            case Type::sys_snap: return {img, NONE};
-            default:
-                return {NOT_FOUND, NOT_FOUND};
-        }
-    }
-
-    Load_result load_hd(const std::string& what);
-
-    Maybe<Bin> load_from_d64(const Bin& d64_data, const std::string& what);
-    Maybe<Bin> load_from_g64(const Bin& g64_data, const std::string& what);
-    Maybe<Bin> load_from_t64(const Bin& t64_data, const std::string& what);
-
-    Load_result unmount() {
+    File unmount() {
         context = context.parent_path();
         return load("");
     }
 };
 
 
-Load_result _Loader::load_hd(const std::string& what) {
+File _Loader::load(const std::string& what) {
+    if (fs::is_directory(context)) return load_hd(what);
+    if (fs::is_regular_file(context)) return load_hd_file(context, what);
+    context = "/";
+    return load_hd("");
+}
+
+
+File _Loader::load_hd_file(const fs::path& path, const std::string& what) {
+    using Type = File::Type;
+
+    switch (auto file = read(path.string()); file.type) {
+        case Type::t64: return load_from_t64(file.data, what);
+        case Type::d64: {
+            auto is_already_mounted = [&]() { return context == path; };
+            auto mount = [&]() { context = path; };
+
+            if (is_already_mounted()) {
+                if (what == unmount_filename) return unmount();
+                else return load_from_d64(file.data, what);
+            } else {
+                mount();
+                return file;
+            }
+        }
+        case Type::crt: case Type::g64: case Type::c64_bin: case Type::sys_snap:
+            return file;
+        default:
+            return NO_FILE;
+    }
+}
+
+
+File _Loader::load_hd(const std::string& what) {
     const auto& cur_dir = context;
 
     try {
-        if (what.length() == 0 || what == "$") return {NONE, load_hd_dir(cur_dir)};
+        if (what.length() == 0 || what == "$") return load_hd_dir(cur_dir);
 
         #ifdef _WIN32
-        if (what == win_drive_list_filename) return {NONE, load_win_drives_list()};
+        if (what == win_drive_list_filename) return load_win_drives_list();
         #endif
 
         // if file/dir --> load it
         std::string name = to_host(what);
         auto path = fs::path(name);
         if (!path.is_absolute()) path = cur_dir / path;
-        if (fs::is_directory(path)) return {NONE, load_hd_dir(path)};
+        if (fs::is_directory(path)) return load_hd_dir(path);
         if (fs::is_regular_file(path)) return load_hd_file(path, "");
 
         // no luck, try to filter something (TODO: special chars (e.g. "+" --> "\+")?)
@@ -409,24 +392,42 @@ Load_result _Loader::load_hd(const std::string& what) {
         if (n == 1) { // if only 1 --> just load it (dir/file)
             if (std::size(dirs) == 1) {
                 path = cur_dir / dirs[0];
-                return {NONE, load_hd_dir(path)};
+                return load_hd_dir(path);
             } else {
                 path = cur_dir / files[0];
                 return load_hd_file(path, "");
             }
         } else if (n > 1) { // if many --> load listing
             auto d = cur_dir.string() + '/' + what;
-            return {NONE, hd_dir_basic_listing(d, dirs, files)};
+            return hd_dir_basic_listing(d, dirs, files);
         }
     } catch (const fs::filesystem_error& e) {
         Log::error("%s", e.what());
     }
 
-    return {NOT_FOUND, NOT_FOUND};
+    return NO_FILE;
 }
 
 
-Bin d64_dir_basic_listing(const D64& d64) {
+File _Loader::load_hd_dir(const fs::path& new_dir) {
+    auto cd = fs::canonical(new_dir.lexically_normal());
+    auto [dirs, files] = list_dir(cd.string());
+
+    bool drives_entry = false;
+    #ifdef _WIN32
+    drives_entry = cd == cd.root_path();
+    #endif
+    bool root_entry = cd.parent_path() != cd.root_path();
+    bool parent_entry = cd.parent_path() != cd;
+
+    context = cd;
+
+    return hd_dir_basic_listing(context.string(), dirs, files,
+                                    drives_entry, root_entry, parent_entry);
+}
+
+
+File d64_dir_basic_listing(const D64& d64) {
     using File_type = D64::Dir_entry::File_type;
 
     auto type_str = [](const File_type& t){
@@ -469,14 +470,14 @@ Bin d64_dir_basic_listing(const D64& d64) {
     bl.append({ 0x00, " : ----------------- : FRE : " + std::to_string(d64.bam().blocks_free())});
     bl.append({ 0x09, std::string(" : \"") + unmount_filename + "\"               : *UNMOUNT*" });
 
-    return bl.to_bin();
+    return File{File::Type::c64_bin, "", bl.to_bin()};
 }
 
 
-Maybe<Bin> _Loader::load_from_d64(const Bin& d64_data, const std::string& what) {
+File _Loader::load_from_d64(const Bytes& d64_data, const std::string& what) {
     D64 d64{d64_data};
 
-    if (what.length() == 0 || what == "$") return d64_dir_basic_listing(d64);
+    if (what == "" || what == "$") return d64_dir_basic_listing(d64);
 
     std::function<bool(const std::string&)> match;
     try {
@@ -489,35 +490,41 @@ Maybe<Bin> _Loader::load_from_d64(const Bin& d64_data, const std::string& what) 
     }
 
     for (const auto entry : d64.dir()) {
-        if (match(extract_string(entry->filename))) {
+        const auto filename = extract_string(entry->filename);
+        if (match(filename)) {
             auto file = d64.read_file(entry->file_start);
-            if (file.size() > 0) return file;
+            if (file.size() > 0) return File{File::Type::c64_bin, filename, file};
             break;
         }
     }
 
-    return NOT_FOUND;
+    return NO_FILE;
 }
 
 
 // TODO: maybe.. does this make any sense?
-Maybe<Bin> _Loader::load_from_g64(const Bin& g64_data, const std::string& what) {
+/*
+File _Loader::load_from_g64(const Bytes& g64_data, const std::string& what) {
     UNUSED(g64_data); UNUSED(what);
     // TODO(?): g64->d64
     return NOT_FOUND;
 }
+*/
 
 
-Maybe<Bin> _Loader::load_from_t64(const Bin& t64_data, const std::string& what) { UNUSED(what);
-    Files::T64 t64{t64_data};
+File _Loader::load_from_t64(const Bytes& t64_data, const std::string& what) { UNUSED(what);
+    T64 t64{t64_data};
     auto file = t64.first_file();
     if (std::size(file) > 2 && std::size(file) <= C64_BIN_SIZE_MAX)
-        return file;
+        return File{File::Type::c64_bin, "", file};
     else
-        return NOT_FOUND;
+        return NO_FILE;
 }
 
 
-Files::Loader Files::init_loader(const std::string& init_dir) {
+Loader init_loader(const std::string& init_dir) {
     return _Loader(init_dir);
 }
+
+
+} // namespace Files

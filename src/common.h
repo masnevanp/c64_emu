@@ -65,7 +65,7 @@ struct U32b {
 
 
 using byte = u8;
-using Bin = std::vector<byte>;
+using Bytes = std::vector<byte>;
 
 
 template<typename T>

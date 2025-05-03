@@ -90,7 +90,7 @@ void get_Colodore(u32* target_palette, double brightness, double contrast, doubl
 }
 
 
-Maybe<Bin> read_file(const std::string& filepath) {
+Maybe<Bytes> read_file(const std::string& filepath) {
     std::ifstream f(filepath, std::ios::binary | std::ios::ate);
 
     if (!f) {
@@ -99,13 +99,13 @@ Maybe<Bin> read_file(const std::string& filepath) {
     }
 
     auto sz = f.tellg();
-    Bin bin(sz);
+    Bytes bytes(sz);
     f.seekg(0);
-    f.read((char*)bin.data(), sz);
+    f.read((char*)bytes.data(), sz);
 
     Log::info("File read: '%s', %d bytes", filepath.c_str(), int(sz));
 
-    return bin;
+    return bytes;
 }
 
 
