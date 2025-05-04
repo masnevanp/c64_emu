@@ -529,8 +529,17 @@ void System::C64::handle_file(Files::File& file) {
 
 
 void System::C64::do_load() {
+    // TODO: use secondary address as an action id, e.g.:
+    //           'LOAD "SOME.CRT",1,2' --> inspect only (i.e. generate_basic_info_list & inject)
     if (auto file = loader(get_filename(s.ram)); file) {
         handle_file(file);
+
+        if (auto info_file = generate_basic_info_list(file); info_file) {
+            // TOFIX: Here we rely on the fact, that 'generate_basic_info_list'
+            //        currently supports only D64s (so for example we don't corrupt
+            //        a restored snapshot with an injected info listing...)
+            handle_file(info_file);
+        }
 
         //'return' status to kernal routine
         cpu.s.clr(NMOS6502::Flag::C); // no error

@@ -24,6 +24,7 @@ struct File {
 
 File read(const std::string& path);
 
+File generate_basic_info_list(const File& file);
 
 using Loader = std::function<File (const std::string&)>;
 
@@ -158,8 +159,6 @@ struct D64 {
         bool file_exists() const { return file_type.file_type != 0x00; };
     };
 
-    using dir_list = std::vector<const Dir_entry*>;
-
     static constexpr BL bam_block{C1541::dir_track, 0};
     static constexpr BL dir_start{C1541::dir_track, 1};
 
@@ -182,31 +181,6 @@ struct D64 {
     Block_chain block_chain(const BL& start) const { return Block_chain(*this, start); }
 
     const BAM& bam() const { return *((BAM*)block(bam_block)); }
-
-    dir_list dir() const {
-        dir_list d;
-        for (auto bc = block_chain(dir_start); bc.ok(); bc.next()) {
-            const Dir_entry* de = (Dir_entry*)bc.data;
-            for (int dei = 0; dei < 8; ++dei, ++de) { // 8 entries/sector
-                if (de->file_exists()) d.push_back(de);
-            }
-        }
-        return d;
-    }
-
-    Bytes read_file(const BL& start) {
-        Bytes file_data;
-        for (auto bc = block_chain(start); bc.ok(); bc.next()) {
-            if (bc.last()) {
-                auto end = &bc.data[bc.data[1] + 1];
-                std::copy(&bc.data[2], end, std::back_inserter(file_data));
-                return file_data;
-            }
-            std::copy(&bc.data[2], &bc.data[256], std::back_inserter(file_data));
-            if (file_data.size() >= data.size()) break; // some kind of safe guard...
-        }
-        return {};
-    }
 };
 
 
@@ -240,7 +214,7 @@ struct G64 {
 
 
 struct CRT {
-    const Bytes& img;
+    const Bytes& data;
 
     struct Header {
         struct Version { const u8 major; const u8 minor; };
@@ -288,15 +262,15 @@ struct CRT {
         }
     };
 
-    const Header& header() const { return *((Header*)&img[0]); }
+    const Header& header() const { return *((Header*)&data[0]); }
 
     std::vector<const CHIP_packet*> chip_packets() const {
         std::vector<const CHIP_packet*> packets;
 
-        for (u32 offset = header().length; offset < img.size(); ) {
-            CHIP_packet* cp = (CHIP_packet*)&img[offset];
+        for (u32 offset = header().length; offset < data.size(); ) {
+            CHIP_packet* cp = (CHIP_packet*)&data[offset];
             if (!cp->valid()) break;
-            if ((offset + cp->length) > img.size()) break;
+            if ((offset + cp->length) > data.size()) break;
 
             packets.push_back(cp);
 
@@ -336,6 +310,14 @@ struct CRT {
         last = T74_HERO,
     };
 };
+
+
+std::vector<const D64::Dir_entry*> d64_dir_entries(const D64& d64);
+Bytes d64_read_file(const D64& d64, const D64::BL& start);
+
+File load_from_t64(const T64& t64, const std::string& what);
+File load_from_d64(const D64& d64, const std::string& what);
+
 
 } // namespace Files
 
