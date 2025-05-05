@@ -466,7 +466,7 @@ void System::C64::save_state_req() {
 };
 
 
-void System::C64::handle_file(Files::File& file) {
+bool System::C64::handle_file(Files::File& file) {
     auto inject = [&](const Bytes& data) {
         // load addr (used if 2nd.addr == 0)
         s.ram[0xc3] = cpu.s.x;
@@ -494,21 +494,21 @@ void System::C64::handle_file(Files::File& file) {
                 const Files::CRT crt{data};
                 if (Cartridge::attach(crt, exp_ctx)) reset_cold();
             };
-            break;
+            return true;
         }
         case Type::d64:
             // auto slot = s.ram[0xb9]; // secondary address
             // slot=0 --> first free slot
             c1541.disk_carousel.insert(0,
                     new C1541::D64_disk(Files::D64{file.data}), file.name);
-            break;
+            return true;
         case Type::g64:
             c1541.disk_carousel.insert(0,
                     new C1541::G64_disk(std::move(file.data)), file.name);
-            break;
+            return true;
         case Type::c64_bin:
             inject(file.data);
-            break;
+            return true;
         case Type::sys_snap: {
             when_frame_done = [&, d = std::move(file.data)]() {
                 Files::System_snapshot& iss = *((Files::System_snapshot*)d.data()); // brutal...
@@ -517,11 +517,11 @@ void System::C64::handle_file(Files::File& file) {
                 cpu.mcp = &NMOS6502::MC::code[0] + iss.cpu_mcp;
                 init_sync();
             };
-            break;
+            return true;
         }
         default:
             Log::info("'%s' ignored", file.name.c_str());
-            break;
+            return false;
     }
     // TODO: support 't64' (e.g. cold reset & feed the appropriate 'LOAD'
     // command + 'RETURN' key into the C64 keyboard input buffer)
@@ -531,9 +531,8 @@ void System::C64::handle_file(Files::File& file) {
 void System::C64::do_load() {
     // TODO: use secondary address as an action id, e.g.:
     //           'LOAD "SOME.CRT",1,2' --> inspect only (i.e. generate_basic_info_list & inject)
-    if (auto file = loader(get_filename(s.ram)); file) {
-        handle_file(file);
-
+    auto file = loader(get_filename(s.ram));
+    if (file.identified() && handle_file(file)) {
         if (auto info_file = generate_basic_info_list(file); info_file) {
             // TOFIX: Here we rely on the fact, that 'generate_basic_info_list'
             //        currently supports only D64s (so for example we don't corrupt

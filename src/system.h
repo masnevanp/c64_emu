@@ -517,7 +517,7 @@ private:
         [this](const char* filepath) {
             Log::info("Incoming: '%s'", filepath);
             auto file = Files::read(filepath);
-            if (file && file.type != Files::File::Type::c64_bin) {
+            if (file.identified() && file.type != Files::File::Type::c64_bin) {
                 handle_file(file);
             } else {
                 Log::info("Ignored: '%s'", filepath);
@@ -590,7 +590,7 @@ private:
 
     void save_state_req();
 
-    void handle_file(Files::File& file);
+    bool handle_file(Files::File& file);
 
     void do_load();
     void do_save();

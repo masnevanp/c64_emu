@@ -20,6 +20,7 @@ struct File {
     Bytes data;
 
     operator bool() const { return type != Type::none; }
+    bool identified() const { return (type != Type::none) && (type != Type::unknown); }
 };
 
 File read(const std::string& path);
