@@ -288,9 +288,10 @@ void System::Menu::handle_key(u8 code) {
 
     if (video_overlay.visible) {
         switch (code) {
-            case kc::menu_ent:  ctrl.key_enter(); break;
-            case kc::menu_up:   ctrl.key_up();    break;
-            case kc::menu_down: ctrl.key_down();  break;
+            case kc::menu_ent:  ctrl.enter(); break;
+            case kc::menu_back: ctrl.back();  break;
+            case kc::menu_up:   ctrl.up();    break;
+            case kc::menu_down: ctrl.down();  break;
         }
     } else {
         video_overlay.visible = true;
@@ -301,7 +302,7 @@ void System::Menu::handle_key(u8 code) {
 
 
 void System::Menu::toggle_visibility()  {
-    if (!video_overlay.visible) ctrl.select(&main_menu);
+    //if (!video_overlay.visible) ctrl.select(&main_menu);
     video_overlay.visible = !video_overlay.visible;
     update();
 }

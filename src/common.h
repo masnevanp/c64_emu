@@ -149,7 +149,7 @@ namespace Key_code {
     enum System : u8 {
         rstre = GS, shutdown, nop,
         rst_c, swp_j, v_fsc, menu_tgl, rot_dsk,
-        menu_ent, menu_up, menu_down,
+        menu_ent, menu_back, menu_up, menu_down,
         state_save,
     };
 

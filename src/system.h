@@ -508,6 +508,7 @@ private:
                 case kc::menu_tgl:  menu.toggle_visibility();     break;
                 case kc::rot_dsk:   c1541.disk_carousel.rotate(); break;
                 case kc::menu_ent:
+                case kc::menu_back:
                 case kc::menu_up:
                 case kc::menu_down: menu.handle_key(code);        break;
             }
