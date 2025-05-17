@@ -49,7 +49,7 @@ public:
         core.write(ri, data);
     }
 
-    Menu::Group settings_menu() { return Menu::Group("RESID /", menu_items); }
+    Menu::Group settings_menu() { return Menu::Group("RESID / ", menu_items); }
 
 private:
     i16* buf;
@@ -80,8 +80,8 @@ private:
     Settings set;
 
     std::vector<Menu::Knob> menu_items{
-        {"RESID / MODEL",    set.model,    [&](){ core.set_chip_model(set.model); }},
-        {"RESID / SAMPLING", set.sampling, [&](){ core.set_sampling_method(set.sampling); }},
+        {"MODEL",    set.model,    [&](){ core.set_chip_model(set.model); }},
+        {"SAMPLING", set.sampling, [&](){ core.set_sampling_method(set.sampling); }},
     };
 
     void tick();

@@ -836,7 +836,7 @@ public:
     }
 
     Menu::Group menu() {
-        auto group = Menu::Group("DISK /", menu_imm_actions);
+        auto group = Menu::Group("DISK / ", menu_imm_actions);
         group.add(menu_actions);
         return group;
     }
@@ -935,12 +935,12 @@ private:
     };
 
     std::vector<Menu::Kludge> menu_imm_actions{
-        {"DISK / TOGGLE WRITE PROTECTION !", [&](){ disk_carousel.toggle_wp(); return nullptr; }},
-        {"DISK / EJECT !",                   [&](){ disk_carousel.select(0); return nullptr; }},
+        {"TOGGLE WRITE PROTECTION !", [&](){ disk_carousel.toggle_wp(); return false; }},
+        {"EJECT !",                   [&](){ disk_carousel.select(0); return false; }},
     };
     std::vector<Menu::Action> menu_actions{
-        {"DISK / INSERT BLANK ?",            [&](){ insert_blank(); }},
-        {"DISK / RESET DRIVE ?",             [&](){ reset(); }},
+        {"INSERT BLANK ?",            [&](){ insert_blank(); }},
+        {"RESET DRIVE ?",             [&](){ reset(); }},
     };
 
     /*bool& run_cfg_change;

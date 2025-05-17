@@ -211,6 +211,10 @@ struct Performance {
         // @sync point: time syncing, input polling, and audio output
         u16 sync_freq; // divisor of FRAME_CYCLE_COUNT
         u16 audio_buf_sz;
+
+        bool operator==(const Latency_settings& l) const {
+            return (l.sync_freq == sync_freq) && (l.audio_buf_sz == audio_buf_sz);
+        }
     };
 
     Choice<double> frame_rate{
@@ -333,13 +337,11 @@ public:
     Video_overlay video_overlay;
 
 private:
-    ::Menu::Group main_menu{"^"};
+    ::Menu::Group root{""};
     std::vector<::Menu::Kludge> imm_actions;
     std::vector<::Menu::Action> actions;
 
     std::vector<::Menu::Group> subs;
-
-    ::Menu::Controller ctrl{&main_menu};
 
     void update();
 };
@@ -604,23 +606,23 @@ private:
     }
 
     std::vector<::Menu::Action> cart_menu_actions{
-        {"CARTRIDGE / DETACH ?", [&](){ Cartridge::detach(exp_ctx); reset_cold(); }},
-        {"CARTRIDGE / ATTACH REU ?", [&]() { if ( Cartridge::attach_REU(exp_ctx)) reset_cold(); }},
+        {"DETACH ?", [&](){ Cartridge::detach(exp_ctx); reset_cold(); }},
+        {"ATTACH REU ?", [&]() { if ( Cartridge::attach_REU(exp_ctx)) reset_cold(); }},
     };
 
     std::vector<::Menu::Knob> perf_menu_items{
-        {"PERFORMANCE / FPS",  perf.frame_rate,
+        {"FPS",  perf.frame_rate,
             [&]() {
                 vid_out.reconfig();
                 sid.reconfig(perf.frame_rate, perf.audio_pitch_shift);
             }
         },
-        {"PERFORMANCE / AUDIO PITCH", perf.audio_pitch_shift,
+        {"AUDIO PITCH", perf.audio_pitch_shift,
             [&]() {
                 sid.reconfig(perf.frame_rate, perf.audio_pitch_shift);
             }
         },
-        {"PERFORMANCE / LATENCY", perf.latency,
+        {"LATENCY", perf.latency,
             [&]() {
                 sid.reconfig(perf.latency.chosen.audio_buf_sz);
             }
@@ -641,8 +643,8 @@ private:
             vid_out.settings_menu(),
             sid.settings_menu(),
             c1541.menu(),
-            ::Menu::Group("CARTRIDGE /", cart_menu_actions),
-            ::Menu::Group("PERFORMANCE /", perf_menu_items),
+            ::Menu::Group("CARTRIDGE / ", cart_menu_actions),
+            ::Menu::Group("PERFORMANCE / ", perf_menu_items),
         },
         rom.charr
     };

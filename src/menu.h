@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include <stack>
+#include <algorithm>
 #include "utils.h"
 
 
@@ -16,56 +16,25 @@ public:
     Item(const std::string& name_ = "") : name(name_) {}
     virtual ~Item() {}
 
-    virtual Item* enter() = 0;
-    virtual Item* back() = 0;
-    virtual void up() = 0;
-    virtual void down() = 0;
+    virtual bool select() { return true; }
+    virtual bool enter()  { return false; }
+    virtual bool back()   { return true; }
+    virtual void up()     {}
+    virtual void down()   {}
 
-    virtual std::string state() const { return name; }
+    virtual std::string text() const { return name; }
 
     const std::string name;
 };
 
 
-class Controller : public Item {
-public:
-    Controller(Item* init) : act(init) {}
-    virtual ~Controller()  {}
-
-    virtual Item* enter() {
-        if (Item* e = act->enter(); e) {
-            path.push(act);
-            act = e;
-        }
-        return act; // TODO: ...?
-    }
-    virtual Item* back() {
-        if (Item* b = act->back(); b) {
-            act = b;
-        }
-        else if (!path.empty()) {
-            act = path.top();
-            path.pop();
-        }
-        return act; // TODO: ...?
-    }
-    virtual void up()   { act->up(); }
-    virtual void down() { act->down(); }
-
-    virtual std::string state() const { return act->state(); }
-
-private:
-    Item* act;
-
-    std::stack<Item*> path;
-};
-
-
 class Group : public Item {
 public:
-    Group(const std::string& name, std::vector<Item*> items_ = {}) : Item(name), items(items_) {}
+    Group(const std::string& name, std::vector<Item*> items_ = {})
+        : Item(name), items(items_) {}
     template<typename Cont>
-    Group(const std::string& name, Cont& items) : Item(name) { add(items); }
+    Group(const std::string& name, Cont& items)
+        : Item(name) { add(items); }
     virtual ~Group() {}
 
     Group& add(std::initializer_list<Item*> more_items) {
@@ -83,15 +52,43 @@ public:
         return *this;
     }
 
-    virtual Item* enter() { return selected(); }
-    virtual Item* back()  { return nullptr; }
-    virtual void up()     { if (selector == 0) { selector = items.size(); } --selector; }
-    virtual void down()   { ++selector; if (selector == items.size()) selector = 0; }
+    virtual bool enter() {
+        if (!selected) {
+            if (items[selector]->select()) selected = items[selector];
+        }
+        else if (!selected->enter()) {
+            selected = nullptr;
+        }
 
-    virtual std::string state() const { return selected()->name; }
+        return true;
+    }
+    virtual bool back() {
+        if (selected) {
+            if (selected -> back()) selected = nullptr;
+            return false;
+        }
+
+        return true;
+    }
+    virtual void up() {
+        if (selected) selected->up();
+        else {
+            if (selector == 0) selector = items.size();
+            --selector;
+        }
+    }
+    virtual void down() {
+        if (selected) selected->down();
+        else if (++selector == items.size()) selector = 0;
+    }
+
+    virtual std::string text() const {
+        if (selected) return name + selected->text();
+        else return name + items[selector]->name;
+    }
 
 private:
-    Item* selected() const { return items[selector]; }
+    Item* selected = nullptr;
 
     std::vector<Item*> items;
     unsigned int selector = 0;
@@ -101,21 +98,24 @@ private:
 class Kludge : public Item {
 public:
     Kludge(const std::string& name,
-        std::function<Item* ()> enter=[](){ return nullptr; },
-        std::function<Item* ()> back=[](){ return nullptr; },
+        std::function<bool ()> select_=[](){ return true; },
+        std::function<bool ()> enter=[](){ return false; },
+        std::function<bool ()> back=[](){ return true; },
         std::function<void ()> up=[](){},
         std::function<void ()> down=[](){}
-    ) : Item(name), _enter(enter), _back(back), _up(up), _down(down) {}
+    ) : Item(name), _select(select_), _enter(enter), _back(back), _up(up), _down(down) {}
     virtual ~Kludge() {}
 
-    virtual Item* enter() { return _enter(); }
-    virtual Item* back()  { return _back(); }
-    virtual void  up()    { _up(); }
-    virtual void  down()  { _down(); }
+    virtual bool select() { return _select(); }
+    virtual bool enter()  { return _enter(); }
+    virtual bool back()   { return _back(); }
+    virtual void up()     { _up(); }
+    virtual void down()   { _down(); }
 
 private:
-    std::function<Item* ()> _enter;
-    std::function<Item* ()> _back;
+    std::function<bool ()> _select;
+    std::function<bool ()> _enter;
+    std::function<bool ()> _back;
     std::function<void ()> _up;
     std::function<void ()> _down;
 };
@@ -126,16 +126,19 @@ public:
     Action(const std::string& name, std::function<void ()> a) : Item(name), act(a) {}
     virtual ~Action() {}
 
-    virtual Item* enter() {
-        if (accept) act();
-        accept = false;
-        return nullptr;
-    }
-    virtual Item* back() { return nullptr; }
-    virtual void up()    { accept = !accept; }
-    virtual void down()  { accept = !accept; }
+    virtual bool enter() {
+        if (accept) {
+            act();
+            accept = false;
+        }
 
-    virtual std::string state() const { return name + (accept ? "  YES" : "  NO"); }
+        return false;
+    }
+
+    virtual void up()   { accept = !accept; }
+    virtual void down() { accept = !accept; }
+
+    virtual std::string text() const { return name + (accept ? "  YES" : "  NO"); }
 
 private:
     bool accept = false;
@@ -155,12 +158,13 @@ public:
 
     virtual ~Knob() {}
 
-    virtual Item* enter() { return imp->enter(); }
-    virtual Item* back()  { return imp->back(); }
-    virtual void  up()    { imp->up(); }
-    virtual void  down()  { imp->down(); }
+    virtual bool select() { return imp->select(); }
+    virtual bool enter()  { return imp->enter(); }
 
-    virtual std::string state() const { return name + imp->state(); }
+    virtual void up()     { imp->up(); }
+    virtual void down()   { imp->down(); }
+
+    virtual std::string text() const { return name + imp->text(); }
 
 private:
     std::shared_ptr<Item> imp;
@@ -171,12 +175,11 @@ private:
         _Param(T& param_, Sig notify_) : Item(""), param(param_), notify(notify_) { notify(); }
         virtual ~_Param() {}
 
-        virtual Item* enter() { return nullptr; }
-        virtual Item* back()  { return nullptr; }
-        virtual void  up()    { ++param; notify(); }
-        virtual void  down()  { --param; notify(); }
+        virtual bool enter() { return false; }
+        virtual void up()    { ++param; notify(); }
+        virtual void down()  { --param; notify(); }
 
-        virtual std::string state() const { return "  # " + std::string(param); }
+        virtual std::string text() const { return "  # " + std::string(param); }
 
     private:
         T& param;
@@ -189,12 +192,16 @@ private:
         _Choice(T& choice_, Sig notify_) : Item(""), choice(choice_), notify(notify_) { notify(); }
         virtual ~_Choice() {}
 
-        virtual Item* enter() {
+        virtual bool select() {
+            const auto c = std::find(choice.choices.begin(), choice.choices.end(), choice.chosen);
+            ci =  std::distance(choice.choices.begin(), c);
+            return true;
+        }
+        virtual bool enter() {
             choice.chosen = chosen();
             notify();
-            return nullptr;
+            return false;
         }
-        virtual Item* back() { return nullptr; }
         virtual void up()   {
             ++ci;
             if (ci == choice.choices.size()) ci = 0;
@@ -204,7 +211,7 @@ private:
             --ci;
         }
 
-        virtual std::string state() const { return "  @ " + chosen_str(); }
+        virtual std::string text() const { return "  @ " + chosen_str(); }
 
     private:
         T& choice;
@@ -217,214 +224,6 @@ private:
 };
 
 }
-
-namespace Olde {
-
-/*
-    A simple menu operated with three keys:
-    - enter: to select/enter items (values/actions/etc..)
-    - up/down: adjust selected item
-*/
-
-class Item {
-public:
-    Item(const std::string& name_) : name(name_) {}
-    virtual ~Item() {}
-
-    virtual Item* select() { return this; }
-    virtual Item* done()   { return nullptr; }
-    virtual void  up()     {}
-    virtual void  down()   {}
-
-    virtual std::string state() const { return name; }
-
-    const std::string name;
-};
-
-
-class Controller {
-public:
-    Controller(Item* init) : prev(init) { select(init); }
-    virtual ~Controller()  {}
-
-    void key_enter() {
-        Item* next = act->done();
-        if (next) {
-            prev = act;
-            select(next);
-        } else {
-            act = prev;
-        }
-    }
-    void key_up()   { act->up(); }
-    void key_down() { act->down(); }
-
-    void select(Item* item) {
-        act = item->select();
-        if (!act) act = prev;
-    }
-
-    std::string state() const { return act->state(); }
-
-private:
-    Item* act = nullptr;
-    Item* prev = nullptr;
-};
-
-
-class Group : public Item {
-public:
-    Group(const std::string& name, std::vector<Item*> items_ = {}) : Item(name), items(items_) {}
-    template<typename Cont>
-    Group(const std::string& name, Cont& items) : Item(name) { add(items); }
-    virtual ~Group() {}
-
-    virtual Item* select() { selector = 0; return this; }
-    virtual Item* done()   { return selected(); }
-    virtual void up()      { if (selector == 0) { selector = items.size(); } --selector; }
-    virtual void down()    { ++selector; if (selector == items.size()) selector = 0; }
-
-    virtual std::string state() const { return selected()->name; }
-
-    Group& add(std::initializer_list<Item*> more_items) {
-        for (auto item : more_items) {
-            if (item != this) items.push_back(item);
-        }
-        return *this;
-    }
-
-    template<typename Cont>
-    Group& add(Cont& more_items) {
-        for (auto& item : more_items) {
-            if ((Item*)&item != (Item*)this) items.push_back(&item);
-        }
-        return *this;
-    }
-
-private:
-    Item* selected() const { return items[selector]; }
-
-    std::vector<Item*> items;
-    unsigned int selector = 0;
-};
-
-
-class Kludge : public Item {
-public:
-    Kludge(const std::string& name,
-        std::function<Item* ()> select=[](){ return nullptr; },
-        std::function<Item* ()> done=[](){ return nullptr; },
-        std::function<void ()> up=[](){},
-        std::function<void ()> down=[](){}
-    ) : Item(name), _select(select), _done(done), _up(up), _down(down) {}
-    virtual ~Kludge() {}
-
-    virtual Item* select() { return _select(); }
-    virtual Item* done()   { return _done(); }
-    virtual void  up()     { _up(); }
-    virtual void  down()   { _down(); }
-
-private:
-    std::function<Item* ()> _select;
-    std::function<Item* ()> _done;
-    std::function<void ()> _up;
-    std::function<void ()> _down;
-};
-
-
-class Action : public Item {
-public:
-    Action(const std::string& name, std::function<void ()> a) : Item(name), act(a) {}
-    virtual ~Action() {}
-
-    virtual Item* done() {
-        if (accept) act();
-        accept = false;
-        return nullptr;
-    }
-    virtual void up()   { accept = !accept; }
-    virtual void down() { accept = !accept; }
-
-    virtual std::string state() const { return name + (accept ? "  YES" : "  NO"); }
-
-private:
-    bool accept = false;
-    std::function<void ()> act;
-};
-
-
-class Knob : public Item {
-public:
-    template<typename T>
-    Knob(const std::string& name, Param<T>& param, Sig notify)
-      : Item(name), imp(std::make_shared<_Param<Param<T>>>(param, notify)) {}
-
-    template<typename T>
-    Knob(const std::string& name, Choice<T>& choice, Sig notify)
-      : Item(name), imp(std::make_shared<_Choice<Choice<T>>>(choice, notify)) {}
-
-    virtual ~Knob() {}
-
-    virtual Item* done() { return imp->done(); }
-    virtual void  up()   { imp->up(); }
-    virtual void  down() { imp->down(); }
-
-    virtual std::string state() const { return name + imp->state(); }
-
-private:
-    std::shared_ptr<Item> imp;
-
-    template<typename T>
-    class _Param : public Item {
-    public:
-        _Param(T& param_, Sig notify_) : Item(""), param(param_), notify(notify_) { notify(); }
-        virtual ~_Param() {}
-
-        virtual void  up()   { ++param; notify(); }
-        virtual void  down() { --param; notify(); }
-
-        virtual std::string state() const { return "  # " + std::string(param); }
-
-    private:
-        T& param;
-        Sig notify;
-    };
-
-    template<typename T>
-    class _Choice : public Item {
-    public:
-        _Choice(T& choice_, Sig notify_) : Item(""), choice(choice_), notify(notify_) { notify(); }
-        virtual ~_Choice() {}
-
-        virtual Item* done() {
-            choice.chosen = chosen();
-            notify();
-            return nullptr;
-        }
-        virtual void up()   {
-            ++ci;
-            if (ci == choice.choices.size()) ci = 0;
-        }
-        virtual void down() {
-            if (ci == 0) ci = choice.choices.size();
-            --ci;
-        }
-
-        virtual std::string state() const { return "  @ " + chosen_str(); }
-
-    private:
-        T& choice;
-        u32 ci = 0;
-        Sig notify;
-
-        auto chosen() const { return choice.choices[ci % choice.choices.size()]; }
-        const std::string& chosen_str() const { return choice.choices_str[ci % choice.choices_str.size()]; }
-    };
-};
-
-
-
-} // namespace Menu
 
 
 #endif // MENU_H_INCLUDED

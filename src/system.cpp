@@ -260,26 +260,31 @@ System::Menu::Menu(std::initializer_list<std::pair<std::string, std::function<vo
   : video_overlay(pos_x, pos_y, 36 * 8, 8, charrom), subs(subs_)
 {
     auto Imm_action = [&](const std::pair<std::string, std::function<void ()>>& a) {
-        return ::Menu::Kludge(a.first, [act = a.second, &vis = video_overlay.visible](){ act(); vis = false; return nullptr; });
+        return ::Menu::Kludge(
+            a.first,
+            [act = a.second, &vis = video_overlay.visible]() {
+                act();
+                vis = false;
+                return false;
+            }
+        );
     };
     auto Action = [&](const std::pair<std::string, std::function<void ()>>& a) {
-        return ::Menu::Action(a.first, [act = a.second, &vis = video_overlay.visible](){ act(); vis = false; return nullptr; });
+        return ::Menu::Action(
+            a.first,
+            [act = a.second, &vis = video_overlay.visible]() {
+                act();
+                vis = false;
+            }
+        );
     };
 
     for (auto a : imm_actions_) imm_actions.push_back(Imm_action(a));
     for (auto a : actions_) actions.push_back(Action(a));
 
-    imm_actions.push_back(Imm_action({"^", [&](){}}));
-
-    main_menu.add(actions);
-    main_menu.add(subs);
-    main_menu.add(imm_actions);
-
-    for (auto& sub : subs) { // link all to all
-        sub.add(subs);
-        sub.add(actions);
-        sub.add(imm_actions);
-    }
+    root.add(actions);
+    root.add(subs);
+    root.add(imm_actions);
 }
 
 
@@ -288,10 +293,10 @@ void System::Menu::handle_key(u8 code) {
 
     if (video_overlay.visible) {
         switch (code) {
-            case kc::menu_ent:  ctrl.enter(); break;
-            case kc::menu_back: ctrl.back();  break;
-            case kc::menu_up:   ctrl.up();    break;
-            case kc::menu_down: ctrl.down();  break;
+            case kc::menu_ent:  root.enter(); break;
+            case kc::menu_back: root.back();  break;
+            case kc::menu_up:   root.up();    break;
+            case kc::menu_down: root.down();  break;
         }
     } else {
         video_overlay.visible = true;
@@ -302,7 +307,6 @@ void System::Menu::handle_key(u8 code) {
 
 
 void System::Menu::toggle_visibility()  {
-    //if (!video_overlay.visible) ctrl.select(&main_menu);
     video_overlay.visible = !video_overlay.visible;
     update();
 }
@@ -311,7 +315,7 @@ void System::Menu::toggle_visibility()  {
 void System::Menu::update() {
     video_overlay.clear(col_bg);
 
-    const std::string text = ctrl.state();
+    const std::string text = root.text();
     auto x = 4;
     for (u8 ci = 0; ci < text.length(); ++ci, x += 8) {
         const auto c = (text[ci] % 64) + 256; // map ascii code to petscii (using the 'lower case' half)

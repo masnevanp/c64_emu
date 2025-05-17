@@ -130,7 +130,7 @@ public:
         Param<u8> mask_pattern{3, 0, 254, 1}; // TODO: actual max
         Param<u8> mask_level {15, 0,  15, 1}; // 0 --> all pass
     };
-    Menu::Group settings_menu() { return Menu::Group("VIDEO /", menu_items); }
+    Menu::Group settings_menu() { return Menu::Group("VIDEO / ", menu_items); }
 
     Video_out(const double& frame_rate_in_) : frame_rate_in(frame_rate_in_) {}
     ~Video_out();
@@ -222,15 +222,15 @@ private:
 
     std::vector<Menu::Knob> menu_items{
         //name                          connected setting   notify
-        {"VIDEO / MODE",                set.mode,           [&](){ upd_mode(); }},
-        {"VIDEO / WINDOW SCALE",        set.window_scale,   [&](){ upd_dimensions(); }},
-        {"VIDEO / ASPECT RATIO",        set.aspect_ratio,   [&](){ upd_dimensions(); }},
-        {"VIDEO / SHARPNESS",           set.sharpness,      [&](){ frame.upd_sharpness(set); }},
-        {"VIDEO / COLODORE BRIGHTNESS", set.brightness,     [&](){ frame.upd_palette(set); }},
-        {"VIDEO / COLODORE CONTRAST",   set.contrast,       [&](){ frame.upd_palette(set); }},
-        {"VIDEO / COLODORE SATURATION", set.saturation,     [&](){ frame.upd_palette(set); }},
-        {"VIDEO / MASK PATTERN",        set.mask_pattern,   [&](){ mask.upd(set); }},
-        {"VIDEO / MASK LEVEL",          set.mask_level,     [&](){ mask.upd(set); }},
+        {"MODE",                set.mode,           [&](){ upd_mode(); }},
+        {"WINDOW SCALE",        set.window_scale,   [&](){ upd_dimensions(); }},
+        {"ASPECT RATIO",        set.aspect_ratio,   [&](){ upd_dimensions(); }},
+        {"SHARPNESS",           set.sharpness,      [&](){ frame.upd_sharpness(set); }},
+        {"COLODORE BRIGHTNESS", set.brightness,     [&](){ frame.upd_palette(set); }},
+        {"COLODORE CONTRAST",   set.contrast,       [&](){ frame.upd_palette(set); }},
+        {"COLODORE SATURATION", set.saturation,     [&](){ frame.upd_palette(set); }},
+        {"MASK PATTERN",        set.mask_pattern,   [&](){ mask.upd(set); }},
+        {"MASK LEVEL",          set.mask_level,     [&](){ mask.upd(set); }},
     };
 };
 
