@@ -291,24 +291,24 @@ System::Menu::Menu(std::initializer_list<std::pair<std::string, std::function<vo
 void System::Menu::handle_key(u8 code) {
     using kc = Key_code::System;
 
-    if (video_overlay.visible) {
+    //if (video_overlay.visible) {
         switch (code) {
             case kc::menu_ent:  root.enter(); break;
             case kc::menu_back: root.back();  break;
             case kc::menu_up:   root.up();    break;
             case kc::menu_down: root.down();  break;
         }
-    } else {
+    /*} else {
         video_overlay.visible = true;
-    }
+    }*/
 
     update();
 }
 
 
-void System::Menu::toggle_visibility()  {
-    video_overlay.visible = !video_overlay.visible;
-    update();
+void System::Menu::toggle(bool on)  {
+    video_overlay.visible = on;
+    if (on) update();
 }
 
 

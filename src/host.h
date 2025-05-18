@@ -38,6 +38,7 @@ public:
 private:
     static u8 KC_LU_TBL[];
     static const u8 SC_LU_TBL[];
+    static const u8 SC_RALT_LU_TBL[];
 
     SDL_Event sdl_ev;
 
@@ -53,7 +54,8 @@ private:
     u16 sh_r_down = 0x00; // bit map - keeps track of 'auto shifted' keys
 
     void handle_key(u8 down) {
-        u8 code = translate_sdl_key();
+        // auto s=sdl_ev.key.keysym; Log::info("sym sc mod: %d %d %d %d", s.sym, s.scancode, s.mod, down);
+        const u8 code = translate_sdl_key();
         output_key(code, down);
     }
 

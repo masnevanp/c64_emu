@@ -332,7 +332,7 @@ public:
         const u8* charrom);
 
     void handle_key(u8 code);
-    void toggle_visibility();
+    void toggle(bool on);
 
     Video_overlay video_overlay;
 
@@ -497,22 +497,22 @@ private:
         [this](u8 code, u8 down) {
             using kc = Key_code::System;
 
-            if (!down) {
-                if (code == kc::rstre) int_hub.int_sig.set(IO::Int_sig::Src::rstr);
-                return;
-            }
-
-            switch (code) {
-                case kc::shutdown:  request_shutdown();           break;
-                case kc::rst_c:     reset_cold();                 break;
-                case kc::v_fsc:     vid_out.toggle_fullscr_win(); break;
-                case kc::swp_j:     host_input.swap_joysticks();  break;
-                case kc::menu_tgl:  menu.toggle_visibility();     break;
-                case kc::rot_dsk:   c1541.disk_carousel.rotate(); break;
-                case kc::menu_ent:
-                case kc::menu_back:
-                case kc::menu_up:
-                case kc::menu_down: menu.handle_key(code);        break;
+            if (down) {
+                switch (code) {
+                    case kc::shutdown:  request_shutdown();           break;
+                    case kc::rst_c:     reset_cold();                 break;
+                    case kc::v_fsc:     vid_out.toggle_fullscr_win(); break;
+                    case kc::swp_j:     host_input.swap_joysticks();  break;
+                    case kc::rot_dsk:   c1541.disk_carousel.rotate(); break;
+                    case kc::menu_tgl:  menu.toggle(true);            break;
+                    case kc::menu_ent:
+                    case kc::menu_back:
+                    case kc::menu_up:
+                    case kc::menu_down: menu.handle_key(code);        break;
+                }
+            } else {
+                if (code == kc::menu_tgl) menu.toggle(false);
+                else if (code == kc::rstre) int_hub.int_sig.set(IO::Int_sig::Src::rstr);
             }
         },
 

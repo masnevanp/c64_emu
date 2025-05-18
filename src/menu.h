@@ -64,7 +64,7 @@ public:
     }
     virtual bool back() {
         if (selected) {
-            if (selected -> back()) selected = nullptr;
+            if (selected->back()) selected = nullptr;
             return false;
         }
 

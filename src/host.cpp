@@ -47,9 +47,9 @@ u8 Input::KC_LU_TBL[] = {
     /* 80..   : SDL_Keycode 40000039.. --> Key_code (80 = kc 40000039, 81 = kc 4000003a, ...) */
     // 80..8f
     ke::s_lck, kb::f1,    ke::f2,    kb::f3,    ke::f4,    kb::f5,    ke::f6,     kb::f7,
-    ke::f8,    sy::rst_c, sy::swp_j, sy::v_fsc, sy::menu_tgl,sy::nop, sy::nop, sy::rstre,
+    ke::f8,    sy::rst_c, sy::swp_j, sy::v_fsc, sy::nop,   sy::nop,   sy::nop,    sy::rstre,
     // 90..9f
-    sy::rot_dsk,kb::home, sy::menu_up, sy::nop, sy::menu_ent, sy::menu_down, kb::crs_r, ke::crs_l,
+    sy::rot_dsk,kb::home, sy::nop,   sy::nop,   sy::nop,   sy::nop,   kb::crs_r,  ke::crs_l,
     kb::crs_d, ke::crs_u, sy::nop,   J1|js::ju, kb::mul,   kb::minus, kb::plus,   kb::ret,
     // a0..af
     J2|js::jl, J2|js::jd, J2|js::jr, J1|js::jb, J2|js::ju, sy::nop,   J1|js::jl,  J1|js::jd,
@@ -77,7 +77,7 @@ u8 Input::KC_LU_TBL[] = {
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,    sy::nop,
     // 120..12f
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,    kb::ctrl,
-    kb::sh_l,  kb::cmdre, sy::nop,   kb::ctrl,  kb::sh_r,  sy::nop,   sy::nop,    sy::nop,
+    kb::sh_l,  kb::cmdre, sy::nop,   kb::ctrl,  kb::sh_r,  sy::menu_tgl,sy::nop,  sy::nop,
     // 130..13f
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,    sy::nop,
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,    sy::nop,
@@ -87,6 +87,29 @@ u8 Input::KC_LU_TBL[] = {
 const u8 Input::SC_LU_TBL[] = {
     /* SDL_Scancode 2e..35 --> Key_code */
     kb::minus, kb::at,    kb::ar_up, sy::nop,   sy::nop,   kb::colon, kb::s_col, kb::pound,
+};
+
+
+const u8 Input::SC_RALT_LU_TBL[] = { // SDL_Scancode with RALT modifier */
+    // 00..0f
+    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    // 10..1f
+    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    // 20..2f
+    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    // 30..3f
+    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    // 40..4f
+    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::menu_ent,
+    // 50..5f
+    sy::menu_back, sy::menu_down, sy::menu_up,
+                                     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
 };
 
 
@@ -140,7 +163,14 @@ u8 Input::translate_sdl_key() {
     static const i32 FIRST_NON_CHAR_KC  = SDLK_CAPSLOCK;
     static const i32 OFFSET_NON_CHAR_KC = FIRST_NON_CHAR_KC - (LAST_CHAR_KC + 1);
 
-    SDL_Keysym key_sym = sdl_ev.key.keysym;
+    const SDL_Keysym key_sym = sdl_ev.key.keysym;
+
+    if (key_sym.mod & SDL_Keymod::KMOD_RALT) {
+        const auto sc = key_sym.scancode;
+        if (sc < std::size(SC_RALT_LU_TBL)) {
+            if (auto kc = SC_RALT_LU_TBL[sc]; kc != sy::nop) return kc;
+        }
+    }
 
     if (key_sym.sym <= MAX_KC) {
         // most mapped on keycode, some on scancode
