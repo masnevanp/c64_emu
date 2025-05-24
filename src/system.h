@@ -613,8 +613,10 @@ private:
     std::vector<::Menu::Knob> perf_menu_items{
         {"FPS",  perf.frame_rate,
             [&]() {
-                vid_out.reconfig();
-                sid.reconfig(perf.frame_rate, perf.audio_pitch_shift);
+                when_frame_done = [&]() {
+                    vid_out.reconfig();
+                    sid.reconfig(perf.frame_rate, perf.audio_pitch_shift);
+                };
             }
         },
         {"AUDIO PITCH", perf.audio_pitch_shift,

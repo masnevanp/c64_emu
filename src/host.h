@@ -223,7 +223,7 @@ private:
     Mask mask;
 
     std::vector<Menu::Knob> menu_items{
-        //name                          connected setting   notify
+        //name                  connected setting   notify
         {"MODE",                set.mode,           [&](){ upd_mode(); }},
         {"WINDOW SCALE",        set.window_scale,   [&](){ upd_dimensions(); }},
         {"ASPECT RATIO",        set.aspect_ratio,   [&](){ upd_dimensions(); }},

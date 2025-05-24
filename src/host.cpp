@@ -498,7 +498,7 @@ void Video_out::upd_mode() {
         }
     }
 
-    int disp_idx = SDL_GetWindowDisplayIndex(window);
+    const int disp_idx = SDL_GetWindowDisplayIndex(window);
     if (SDL_GetCurrentDisplayMode(disp_idx, &sdl_mode) != 0) {
         Log::error("Failed to SDL_GetCurrentDisplayMode: %s", SDL_GetError());
         exit(1);
