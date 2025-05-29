@@ -39,7 +39,6 @@ public:
 
     void reconfig(u16 audio_out_buf_sz_) { audio_out_buf_sz = audio_out.config(audio_out_buf_sz_); }
 
-    // Some crude clock speed control here. Good'nuff..? (Not tested on low-end machines though.)
     void output();
 
     // TODO: tick also on read of one/some of the regs (rnd generator(s)...)
