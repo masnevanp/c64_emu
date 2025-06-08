@@ -835,11 +835,7 @@ public:
         //install_idle_trap();
     }
 
-    Menu::Group menu() {
-        auto group = Menu::Group("DISK / ", menu_imm_actions);
-        group.add(menu_actions);
-        return group;
-    }
+    Menu::Group menu() { return {"DISK / ", menu_imm_actions, menu_actions}; }
 
     void reset();
 
@@ -934,9 +930,9 @@ private:
         }
     };
 
-    std::vector<Menu::Kludge> menu_imm_actions{
-        {"TOGGLE WRITE PROTECTION !", [&](){ disk_carousel.toggle_wp(); return false; }},
-        {"EJECT !",                   [&](){ disk_carousel.select(0); return false; }},
+    std::vector<Menu::Immediate_action> menu_imm_actions{
+        {"TOGGLE WRITE PROTECTION !", [&](){ disk_carousel.toggle_wp(); }},
+        {"EJECT !",                   [&](){ disk_carousel.select(0); }},
     };
     std::vector<Menu::Action> menu_actions{
         {"INSERT BLANK ?",            [&](){ insert_blank(); }},

@@ -253,54 +253,19 @@ void System::Video_overlay::draw_chr(u16 chr, u16 cx, u16 cy, Color fg, Color bg
 }
 
 
-System::Menu::Menu(std::initializer_list<std::pair<std::string, std::function<void ()>>> imm_actions_,
-    std::initializer_list<std::pair<std::string, std::function<void ()>>> actions_,
-    std::initializer_list<::Menu::Group> subs_,
-    const u8* charrom)
-  : video_overlay(pos_x, pos_y, 36 * 8, 8, charrom), subs(subs_)
-{
-    auto Imm_action = [&](const std::pair<std::string, std::function<void ()>>& a) {
-        return ::Menu::Kludge(
-            a.first,
-            [act = a.second, &vis = video_overlay.visible]() {
-                act();
-                vis = false;
-                return false;
-            }
-        );
-    };
-    auto Action = [&](const std::pair<std::string, std::function<void ()>>& a) {
-        return ::Menu::Action(
-            a.first,
-            [act = a.second, &vis = video_overlay.visible]() {
-                act();
-                vis = false;
-            }
-        );
-    };
-
-    for (auto a : imm_actions_) imm_actions.push_back(Imm_action(a));
-    for (auto a : actions_) actions.push_back(Action(a));
-
-    root.add(actions);
-    root.add(subs);
-    root.add(imm_actions);
-}
-
-
 void System::Menu::handle_key(u8 code) {
     using kc = Key_code::System;
 
-    //if (video_overlay.visible) {
+    if (video_overlay.visible) {
         switch (code) {
             case kc::menu_ent:  root.enter(); break;
             case kc::menu_back: root.back();  break;
             case kc::menu_up:   root.up();    break;
             case kc::menu_down: root.down();  break;
         }
-    /*} else {
+    } else {
         video_overlay.visible = true;
-    }*/
+    }
 
     update();
 }
@@ -340,54 +305,116 @@ void System::C1541_status_panel::update(const C1541::Disk_ctrl::Status& c1541_st
 }
 
 
-void System::C64::init_sync() {
-    vid_out.flip();
-    sid.flush();
-    frame_timer.reset();
-    watch.start();
-}
+void System::C64::run_clocked() {
+    auto init = [&]() {
+        vid_out.flip();
+        sid.flush();
+        frame_timer.reset();
+        watch.start();
+    };
 
+    auto clock = [&]() {
+        const bool sync_point = (s.vic.cycle % perf.latency.chosen.sync_freq) == 0;
+        if (!sync_point) return;
 
-void System::C64::sync() {
-    const auto frame_duration_us = [&]() { return 1000000.0 / perf.frame_rate.chosen; };
-
-    const bool frame_done = (s.vic.cycle % FRAME_CYCLE_COUNT) == 0;
-    if (frame_done) {
-        host_input.poll();
-
-        watch.stop();
-
-        if (vid_out.v_synced()) {
-            output_frame();
-            frame_timer.reset();
+        const auto frame_duration_us = [&]() { return 1000000.0 / perf.frame_rate.chosen; };
+        
+        const bool frame_done = (s.vic.cycle % FRAME_CYCLE_COUNT) == 0;
+        if (frame_done) {
+            host_input.poll();
+            
+            watch.stop();
+            
+            if (vid_out.v_synced()) {
+                output_frame();
+                frame_timer.reset();
+            } else {
+                frame_timer.wait_elapsed(frame_duration_us(), true);
+                output_frame();
+            }
+            
+            watch.start();
+            
+            sid.output();
+            
+            watch.stop();
+            watch.reset();
+            
+            if (when_frame_done) {
+                when_frame_done();
+                when_frame_done = nullptr;
+            }
         } else {
-            frame_timer.wait_elapsed(frame_duration_us(), true);
-            output_frame();
+            host_input.poll();
+            
+            watch.stop();
+            
+            const auto frame_progress = double(s.vic.raster_y) / double(FRAME_LINE_COUNT);
+            const auto frame_progress_us = frame_progress * frame_duration_us();
+            frame_timer.wait_elapsed(frame_progress_us);
+            
+            watch.start();
+            
+            sid.output();
+        }
+    };
+
+    host_input_handlers.sys = [&](u8 code, u8 down) {
+        using kc = Key_code::System;
+
+        enum op {
+            rst_cold = kc::opt_1,
+            swap_joy = kc::opt_2,
+            tgl_fscr = kc::opt_3,
+        };
+
+        if (down) {
+            switch (code) {
+                case op::rst_cold:  reset_cold();                 break;
+                case op::swap_joy:  host_input.swap_joysticks();  break;
+                case op::tgl_fscr:  vid_out.toggle_fullscr_win(); break;
+                case kc::mode:      /* TODO */                    break;
+                case kc::menu_tgl:  /*menu.toggle(true);*/        break;
+                case kc::menu_ent:
+                case kc::menu_back:
+                case kc::menu_up:
+                case kc::menu_down: menu.handle_key(code);        break;
+                case kc::rot_dsk:   c1541.disk_carousel.rotate(); break;
+                case kc::shutdown:  request_shutdown();           break;
+            }
+        } else {
+            if (code == kc::menu_tgl) menu.toggle(false);
+        }
+    };
+
+    init();
+
+    // TODO: consider special loops for different configs (e.g. REU with no 1541)
+    while (s.mode == Mode::clocked) {
+        vic.tick();
+
+        const auto rw = cpu.mrw();
+        const auto rdy_low = s.ba_low || s.dma_low;
+        if (rdy_low && rw == NMOS6502::MC::RW::r) {
+            c1541.tick();
+        } else {
+            // 'Slip in' the C1541 cycle
+            if (rw == NMOS6502::MC::RW::w) c1541.tick();
+            addr_space.access(cpu.mar(), cpu.mdr(), rw);
+            cpu.tick();
+            if (rw == NMOS6502::MC::RW::r) c1541.tick();
         }
 
-        watch.start();
+        if (exp_ctx.tick) exp_ctx.tick();
 
-        sid.output();
+        cia1.tick();
+        cia2.tick();
 
-        watch.stop();
-        watch.reset();
+        int_hub.tick(cpu);
 
-        if (when_frame_done) {
-            when_frame_done();
-            when_frame_done = nullptr;
-        }
-    } else {
-        host_input.poll();
+        if (s.vic.cycle % C1541::extra_cycle_freq == 0) c1541.tick();
 
-        watch.stop();
-
-        const auto frame_progress = double(s.vic.raster_y) / double(FRAME_LINE_COUNT);
-        const auto frame_progress_us = frame_progress * frame_duration_us();
-        frame_timer.wait_elapsed(frame_progress_us);
-
-        watch.start();
-
-        sid.output();
+        clock();
     }
 }
 
@@ -428,6 +455,12 @@ void System::C64::reset_warm() {
 
 void System::C64::reset_cold() {
     Log::info("System reset (cold)");
+
+    auto init_ram = [&]() { // TODO: parameterize pattern (+ add 'randomness'?)
+        for (int addr = 0x0000; addr <= 0xffff; ++addr)
+            s.ram[addr] = (addr & 0x80) ? 0xff : 0x00;
+    };
+
     init_ram();
     cia1.reset_cold();
     cia2.reset_cold();
@@ -442,15 +475,6 @@ void System::C64::reset_cold() {
 
     s.ba_low = false;
     s.dma_low = false;
-
-    init_sync();
-}
-
-
-std::string get_filename(const u8* ram) {
-    const u16 filename_addr = ram[0xbc] * 0x100 + ram[0xbb];
-    const u8 filename_len = ram[0xb7];
-    return std::string(&ram[filename_addr], &ram[filename_addr + filename_len]);
 }
 
 
@@ -520,7 +544,7 @@ bool System::C64::handle_file(Files::File& file) {
                 sys_snap.sys_state = iss.sys_state;
                 sid.core.write_state(sys_snap.sid);
                 cpu.mcp = &NMOS6502::MC::code[0] + iss.cpu_mcp;
-                init_sync();
+                // init_sync();
             };
             return true;
         }
@@ -531,6 +555,13 @@ bool System::C64::handle_file(Files::File& file) {
     // TODO: support 't64' (e.g. cold reset & feed the appropriate 'LOAD'
     // command + 'RETURN' key into the C64 keyboard input buffer)
 };
+
+
+std::string get_filename(const u8* ram) {
+    const u16 filename_addr = ram[0xbc] * 0x100 + ram[0xbb];
+    const u8 filename_len = ram[0xb7];
+    return std::string(&ram[filename_addr], &ram[filename_addr + filename_len]);
+}
 
 
 void System::C64::do_load() {
@@ -594,12 +625,6 @@ void System::C64::do_save() {
         cpu.s.set(NMOS6502::Flag::C); // error
         Log::error("Failed to save '%s'", filename.c_str());
     }
-}
-
-
-void System::C64::init_ram() { // TODO: parameterize pattern (+ add 'randomness'?)
-    for (int addr = 0x0000; addr <= 0xffff; ++addr)
-        s.ram[addr] = (addr & 0x80) ? 0xff : 0x00;
 }
 
 

@@ -14,7 +14,6 @@ namespace Menu {
 class Item {
 public:
     Item(const std::string& name_ = "") : name(name_) {}
-    virtual ~Item() {}
 
     virtual bool select() { return true; }
     virtual bool enter()  { return false; }
@@ -30,19 +29,22 @@ public:
 
 class Group : public Item {
 public:
-    Group(const std::string& name, std::vector<Item*> items_ = {})
-        : Item(name), items(items_) {}
     template<typename Cont>
     Group(const std::string& name, Cont& items)
         : Item(name) { add(items); }
-    virtual ~Group() {}
+    template<typename Cont1, typename Cont2>
+    Group(const std::string& name, Cont1& items1, Cont2& items2)
+        : Item(name) { add(items1); add(items2); }
+    template<typename Cont1, typename Cont2, typename Cont3>
+    Group(const std::string& name, Cont1& items1, Cont2& items2, Cont3& items3)
+        : Item(name) { add(items1); add(items2); add(items3); }
 
-    Group& add(std::initializer_list<Item*> more_items) {
+    /*Group& add(std::initializer_list<Item*> more_items) {
         for (auto item : more_items) {
             if (item != this) items.push_back(item);
         }
         return *this;
-    }
+    }*/
 
     template<typename Cont>
     Group& add(Cont& more_items) {
@@ -95,36 +97,9 @@ private:
 };
 
 
-class Kludge : public Item {
-public:
-    Kludge(const std::string& name,
-        std::function<bool ()> select_=[](){ return true; },
-        std::function<bool ()> enter=[](){ return false; },
-        std::function<bool ()> back=[](){ return true; },
-        std::function<void ()> up=[](){},
-        std::function<void ()> down=[](){}
-    ) : Item(name), _select(select_), _enter(enter), _back(back), _up(up), _down(down) {}
-    virtual ~Kludge() {}
-
-    virtual bool select() { return _select(); }
-    virtual bool enter()  { return _enter(); }
-    virtual bool back()   { return _back(); }
-    virtual void up()     { _up(); }
-    virtual void down()   { _down(); }
-
-private:
-    std::function<bool ()> _select;
-    std::function<bool ()> _enter;
-    std::function<bool ()> _back;
-    std::function<void ()> _up;
-    std::function<void ()> _down;
-};
-
-
 class Action : public Item {
 public:
     Action(const std::string& name, std::function<void ()> a) : Item(name), act(a) {}
-    virtual ~Action() {}
 
     virtual bool enter() {
         if (accept) {
@@ -146,6 +121,20 @@ private:
 };
 
 
+class Immediate_action : public Item {
+public:
+    Immediate_action(const std::string& name, std::function<void ()> a) : Item(name), act(a) {}
+
+    virtual bool select() {
+        act();
+        return false;
+    }
+
+private:
+    std::function<void ()> act;
+};
+
+
 class Knob : public Item {
 public:
     template<typename T>
@@ -155,8 +144,6 @@ public:
     template<typename T>
     Knob(const std::string& name, Choice<T>& choice, Sig notify)
         : Item(name), imp(std::make_shared<_Choice<Choice<T>>>(choice, notify)) {}
-
-    virtual ~Knob() {}
 
     virtual bool select() { return imp->select(); }
     virtual bool enter()  { return imp->enter(); }
@@ -173,9 +160,7 @@ private:
     class _Param : public Item {
     public:
         _Param(T& param_, Sig notify_) : Item(""), param(param_), notify(notify_) { notify(); }
-        virtual ~_Param() {}
 
-        virtual bool enter() { return false; }
         virtual void up()    { ++param; notify(); }
         virtual void down()  { --param; notify(); }
 
@@ -190,7 +175,6 @@ private:
     class _Choice : public Item {
     public:
         _Choice(T& choice_, Sig notify_) : Item(""), choice(choice_), notify(notify_) { notify(); }
-        virtual ~_Choice() {}
 
         virtual bool select() {
             const auto c = std::find(choice.choices.begin(), choice.choices.end(), choice.chosen);
@@ -222,6 +206,32 @@ private:
         const std::string& chosen_str() const { return choice.choices_str[ci % choice.choices_str.size()]; }
     };
 };
+
+
+/*class Kludge : public Item {
+public:
+    Kludge(const std::string& name,
+        std::function<bool ()> select_=[](){ return true; },
+        std::function<bool ()> enter=[](){ return false; },
+        std::function<bool ()> back=[](){ return true; },
+        std::function<void ()> up=[](){},
+        std::function<void ()> down=[](){}
+    ) : Item(name), _select(select_), _enter(enter), _back(back), _up(up), _down(down) {}
+
+    virtual bool select() { return _select(); }
+    virtual bool enter()  { return _enter(); }
+    virtual bool back()   { return _back(); }
+    virtual void up()     { _up(); }
+    virtual void down()   { _down(); }
+
+private:
+    std::function<bool ()> _select;
+    std::function<bool ()> _enter;
+    std::function<bool ()> _back;
+    std::function<void ()> _up;
+    std::function<void ()> _down;
+};*/
+
 
 }
 

@@ -326,10 +326,14 @@ public:
     static const Color col_fg = Color::light_green;
     static const Color col_bg = Color::gray_1;
 
-    Menu(std::initializer_list<std::pair<std::string, std::function<void ()>>> imm_actions_,
-        std::initializer_list<std::pair<std::string, std::function<void ()>>> actions_,
+    Menu(std::initializer_list<::Menu::Immediate_action> imm_actions_,
+        std::initializer_list<::Menu::Action> actions_,
         std::initializer_list<::Menu::Group> subs_,
-        const u8* charrom);
+        const u8* charrom)
+      :
+        video_overlay(pos_x, pos_y, 36 * 8, 8, charrom),
+        imm_actions(imm_actions_), actions(actions_), subs(subs_),
+        root("", imm_actions, actions, subs) {}
 
     void handle_key(u8 code);
     void toggle(bool on);
@@ -337,11 +341,11 @@ public:
     Video_overlay video_overlay;
 
 private:
-    ::Menu::Group root{""};
-    std::vector<::Menu::Kludge> imm_actions;
+    std::vector<::Menu::Immediate_action> imm_actions;
     std::vector<::Menu::Action> actions;
-
     std::vector<::Menu::Group> subs;
+
+    ::Menu::Group root;
 
     void update();
 };
@@ -377,6 +381,8 @@ struct C1541_status_panel {
 
 class C64 {
 public:
+    using Mode = State::System::Mode;
+
     enum Trap_OPC { // Halting instuctions are used as traps
         //IEC_virtual_routine = 0x02,
         tape_routine = 0x12,
@@ -393,44 +399,25 @@ public:
         Cartridge::detach(exp_ctx);
     }
 
-    void run() {
+    void run(Mode init = Mode::clocked) {
+        s.mode = init;
+
         reset_cold();
 
-        // TODO: consider special loops for different configs (e.g. REU with no 1541)
-        for (shutdown = false; !shutdown;) {
-            vic.tick();
-
-            const auto rw = cpu.mrw();
-            const auto rdy_low = s.ba_low || s.dma_low;
-            if (rdy_low && rw == NMOS6502::MC::RW::r) {
-                c1541.tick();
-            } else {
-                // 'Slip in' the C1541 cycle
-                if (rw == NMOS6502::MC::RW::w) c1541.tick();
-                addr_space.access(cpu.mar(), cpu.mdr(), rw);
-                cpu.tick();
-                if (rw == NMOS6502::MC::RW::r) c1541.tick();
+        while (s.mode != Mode::none) {
+            switch (s.mode) {
+                case Mode::none: break;
+                case Mode::clocked: run_clocked(); break;
+                case Mode::stepped: break; // step cycle(s), intstrucion(s), line(s), frame(s)
+                case Mode::load_state: break;
             }
-
-            if (exp_ctx.tick) exp_ctx.tick();
-
-            cia1.tick();
-            cia2.tick();
-
-            int_hub.tick(cpu);
-
-            if (s.vic.cycle % C1541::extra_cycle_freq == 0) c1541.tick();
-
-            check_sync();
         }
     }
 
 private:
-    using Action = std::function<void()>;
-
     Files::System_snapshot sys_snap;
 
-    const ROM& rom;
+    const ROM& rom; // TODO: include in sys_snap (but make it optional)?
 
     State::System& s{sys_snap.sys_state};
 
@@ -487,34 +474,17 @@ private:
     };
     IO::Port::PD_out cia2_pb_out { [](u8 _) { UNUSED(_); } };
 
-    Host::Input::Handlers host_input_handlers {
+    Host::Input::Handlers host_input_handlers{
         // client keyboard & controllers (including lightpen)
         input_matrix.keyboard,
         input_matrix.ctrl_port_1,
         input_matrix.ctrl_port_2,
 
+        // restore
+        [this](u8 down) { if (!down) int_hub.int_sig.set(IO::Int_sig::Src::rstr); },
+    
         // system keys
-        [this](u8 code, u8 down) {
-            using kc = Key_code::System;
-
-            if (down) {
-                switch (code) {
-                    case kc::shutdown:  request_shutdown();           break;
-                    case kc::rst_c:     reset_cold();                 break;
-                    case kc::v_fsc:     vid_out.toggle_fullscr_win(); break;
-                    case kc::swp_j:     host_input.swap_joysticks();  break;
-                    case kc::rot_dsk:   c1541.disk_carousel.rotate(); break;
-                    case kc::menu_tgl:  menu.toggle(true);            break;
-                    case kc::menu_ent:
-                    case kc::menu_back:
-                    case kc::menu_up:
-                    case kc::menu_down: menu.handle_key(code);        break;
-                }
-            } else {
-                if (code == kc::menu_tgl) menu.toggle(false);
-                else if (code == kc::rstre) int_hub.int_sig.set(IO::Int_sig::Src::rstr);
-            }
-        },
+        [this](u8 code, u8 down) { UNUSED(code); UNUSED(down); },
 
         // file drop
         [this](const char* filepath) {
@@ -527,6 +497,7 @@ private:
             }
         }
     };
+
     Host::Input host_input{host_input_handlers};
 
     Host::Video_out vid_out{perf.frame_rate.chosen};
@@ -572,19 +543,12 @@ private:
 
     Performance perf{};
 
-    bool shutdown;
-
-    Action when_frame_done;
+    std::function<void()> when_frame_done;
 
     _Stopwatch watch;
     Timer frame_timer;
 
-    void init_sync(); // call if system has been 'paused'
-    void check_sync() {
-        const bool sync_point = (s.vic.cycle % perf.latency.chosen.sync_freq) == 0;
-        if (sync_point) sync();
-    }
-    void sync();
+    void run_clocked();
 
     void output_frame();
 
@@ -598,11 +562,9 @@ private:
     void do_load();
     void do_save();
 
-    void init_ram();
-
     void request_shutdown() {
         Log::info("Shutdown requested");
-        shutdown = true;
+        s.mode = Mode::none;
     }
 
     std::vector<::Menu::Action> cart_menu_actions{
@@ -645,8 +607,8 @@ private:
             vid_out.settings_menu(),
             sid.settings_menu(),
             c1541.menu(),
-            ::Menu::Group("CARTRIDGE / ", cart_menu_actions),
-            ::Menu::Group("PERFORMANCE / ", perf_menu_items),
+            {"CARTRIDGE / ", cart_menu_actions},
+            {"PERFORMANCE / ", perf_menu_items},
         },
         rom.charr
     };

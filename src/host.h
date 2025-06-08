@@ -18,6 +18,7 @@ public:
         Sig_key keyboard;
         Sig_key controller_1;
         Sig_key controller_2;
+        Sig1<u8> restore;
         Sig_key sys;
         Sig1<const char*> filedrop;
     };
@@ -91,7 +92,7 @@ private:
     }
 
     void set_shift_lock() {
-        bool down = SDL_GetModState() & KMOD_CAPS;
+        const bool down = SDL_GetModState() & KMOD_CAPS;
         // disable/enable left shift
         KC_LU_TBL[sh_l_idx] = down
             ? (Key_code::Keyboard)Key_code::System::nop
@@ -132,7 +133,8 @@ public:
         Param<u8> mask_pattern{3, 0, 254, 1}; // TODO: actual max
         Param<u8> mask_level {15, 0,  15, 1}; // 0 --> all pass
     };
-    Menu::Group settings_menu() { return Menu::Group("VIDEO / ", menu_items); }
+
+    Menu::Group settings_menu() { return {"VIDEO / ", menu_items}; }
 
     Video_out(const double& frame_rate_in_) : frame_rate_in(frame_rate_in_) {}
     ~Video_out();

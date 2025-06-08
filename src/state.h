@@ -186,6 +186,10 @@ struct CIA {
 
 
 struct System {
+    enum class Mode {
+        none, clocked, stepped, load_state // warp, debug...? 
+    };
+    
     struct Adress_space {
         int pla_line; // the active PLA line (set based on mode)
 
@@ -216,6 +220,8 @@ struct System {
         u8 cp2_state;
         u8 cp1_state;
     };
+
+    Mode mode;
 
     u8 ram[0x10000];
     u8 color_ram[::VIC_II::Color_RAM::size] = {};

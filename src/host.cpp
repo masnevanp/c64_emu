@@ -47,7 +47,7 @@ u8 Input::KC_LU_TBL[] = {
     /* 80..   : SDL_Keycode 40000039.. --> Key_code (80 = kc 40000039, 81 = kc 4000003a, ...) */
     // 80..8f
     ke::s_lck, kb::f1,    ke::f2,    kb::f3,    ke::f4,    kb::f5,    ke::f6,     kb::f7,
-    ke::f8,    sy::rst_c, sy::swp_j, sy::v_fsc, sy::nop,   sy::nop,   sy::nop,    sy::rstre,
+    ke::f8,    sy::opt_1, sy::opt_2, sy::opt_3, sy::mode,  sy::nop,   sy::nop,    ke::rstre,
     // 90..9f
     sy::rot_dsk,kb::home, sy::nop,   sy::nop,   sy::nop,   sy::nop,   kb::crs_r,  ke::crs_l,
     kb::crs_d, ke::crs_u, sy::nop,   J1|js::ju, kb::mul,   kb::minus, kb::plus,   kb::ret,
@@ -192,45 +192,51 @@ void Input::output_key(u8 code, u8 down) {
         case Key_code::Group::keyboard:
             handlers.keyboard(code, down);
             break;
+
         case Key_code::Group::keyboard_ext: {
-            // NOTE: Currently 'ext' contains only 'auto shifted' type of keys.
-            //       This code might break if different type of keys get added.
-            if (code == Key_code::Keyboard_ext::s_lck) {
-                set_shift_lock();
-            } else {
-                static const u8 KC_OFFSET
-                    = Key_code::Keyboard_ext::crs_l - Key_code::Keyboard::crs_r;
-                // 6 of these are actually used (and probably there will not be more)
-                static const u8 BIT[] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
+            using ke = Key_code::Keyboard_ext;
+            switch (code) {
+                case ke::crs_u: case ke::f6: case ke::f4:
+                case ke::f2:    case ke::f8: case ke::crs_l: {
+                    // 6 of these are actually used (for crs_u, f6, f4, f2, f8, crs_l)
+                    static const u8 BIT[] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
 
-                if (down) {
-                    if (sh_r_down == 0x00) {
-                        // first 'auto shifted' key held down
-                        //   --> set 'left shift' key down & disable the 'real' one
-                        handlers.keyboard(Key_code::Keyboard::sh_r, true);
-                        disable_sh_r();
+                    if (down) {
+                        if (sh_r_down == 0x00) {
+                            // first 'auto shifted' key held down
+                            //   --> set 'right shift' key down & disable the 'real' one
+                            handlers.keyboard(Key_code::Keyboard::sh_r, true);
+                            disable_sh_r();
+                        }
+                        sh_r_down |= BIT[code & 0x7]; // keep track of key presses
+                    } else {
+                        sh_r_down &= (~BIT[code & 0x7]);
+                        if (sh_r_down == 0x00) {
+                            // last 'auto shifted' key released
+                            //   --> set 'right shift' key up & enable the 'real' one
+                            handlers.keyboard(Key_code::Keyboard::sh_r, false);
+                            enable_sh_r();
+                        }
                     }
-                    sh_r_down |= BIT[code & 0x7]; // keep track of key presses
-                } else {
-                    sh_r_down &= (~BIT[code & 0x7]);
-                    if (sh_r_down == 0x00) {
-                        // last 'auto shifted' key released
-                        //   --> set 'left shift' key up & enable the 'real' one
-                        handlers.keyboard(Key_code::Keyboard::sh_r, false);
-                        enable_sh_r();
-                    }
+
+                    const u8 kc_offset = Key_code::Keyboard_ext::crs_l - Key_code::Keyboard::crs_r;
+                    handlers.keyboard(code - kc_offset, down); // send the corresponding 'real' code
+
+                    break;
                 }
-
-                handlers.keyboard(code - KC_OFFSET, down); // send the corresponding 'real' code
+                case ke::s_lck: set_shift_lock();       break;
+                case ke::rstre: handlers.restore(down); break;
             }
 
             break;
         }
+
         case Key_code::Group::joystick: {
             auto id = code & JOY_ID_BIT ? 1 : 0;
             (*joy_handler[id])(code & 0x7, down);
             break;
         }
+
         case Key_code::Group::system:
             handlers.sys(code, down);
             break;

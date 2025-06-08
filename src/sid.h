@@ -48,7 +48,7 @@ public:
         core.write(ri, data);
     }
 
-    Menu::Group settings_menu() { return Menu::Group("RESID / ", menu_items); }
+    Menu::Group settings_menu() { return {"RESID / ", menu_items}; }
 
 private:
     i16* buf;

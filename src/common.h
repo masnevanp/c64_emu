@@ -139,7 +139,7 @@ namespace Key_code {
 
     enum Keyboard_ext : u8 {
         crs_u = GE, f6, f4, f2, f8, crs_l, // these translate to left shift + a 'real' key
-        s_lck,
+        s_lck, rstre
     };
 
     enum Joystick : u8 {
@@ -147,10 +147,10 @@ namespace Key_code {
     };
 
     enum System : u8 {
-        rstre = GS, shutdown, nop,
-        rst_c, swp_j, v_fsc, rot_dsk,
+        nop = GS,
+        opt_1, opt_2, opt_3, mode,
         menu_tgl, menu_ent, menu_back, menu_up, menu_down,
-        state_save,
+        rot_dsk, shutdown
     };
 
 } // namespace Key_code
