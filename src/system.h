@@ -399,8 +399,8 @@ public:
         Cartridge::detach(exp_ctx);
     }
 
-    void run(Mode init = Mode::clocked) {
-        s.mode = init;
+    void run(Mode init_mode = Mode::clocked) {
+        s.mode = init_mode;
 
         reset_cold();
 
@@ -409,7 +409,6 @@ public:
                 case Mode::none: break;
                 case Mode::clocked: run_clocked(); break;
                 case Mode::stepped: break; // step cycle(s), intstrucion(s), line(s), frame(s)
-                case Mode::load_state: break;
             }
         }
     }
@@ -484,7 +483,33 @@ private:
         [this](u8 down) { if (!down) int_hub.int_sig.set(IO::Int_sig::Src::rstr); },
     
         // system keys
-        [this](u8 code, u8 down) { UNUSED(code); UNUSED(down); },
+        [this](u8 code, u8 down) {
+            using kc = Key_code::System;
+    
+            enum op {
+                rst_cold = kc::opt_1,
+                swap_joy = kc::opt_2,
+                tgl_fscr = kc::opt_3,
+            };
+    
+            if (down) {
+                switch (code) {
+                    case op::rst_cold:  reset_cold();                 break;
+                    case op::swap_joy:  host_input.swap_joysticks();  break;
+                    case op::tgl_fscr:  vid_out.toggle_fullscr_win(); break;
+                    case kc::mode:      /* TODO */                    break;
+                    case kc::menu_tgl:  /*menu.toggle(true);*/        break;
+                    case kc::menu_ent:
+                    case kc::menu_back:
+                    case kc::menu_up:
+                    case kc::menu_down: menu.handle_key(code);        break;
+                    case kc::rot_dsk:   c1541.disk_carousel.rotate(); break;
+                    case kc::shutdown:  request_shutdown();           break;
+                }
+            } else {
+                if (code == kc::menu_tgl) menu.toggle(false);
+            }
+        },
 
         // file drop
         [this](const char* filepath) {
@@ -543,10 +568,13 @@ private:
 
     Performance perf{};
 
-    std::function<void()> when_frame_done;
-
     _Stopwatch watch;
     Timer frame_timer;
+
+    std::function<void()> deferred;
+    void check_deferred();
+
+    void init_run();
 
     void run_clocked();
 
@@ -575,9 +603,10 @@ private:
     std::vector<::Menu::Knob> perf_menu_items{
         {"FPS",  perf.frame_rate,
             [&]() {
-                when_frame_done = [&]() {
+                deferred = [&]() {
                     vid_out.reconfig();
                     sid.reconfig(perf.frame_rate, perf.audio_pitch_shift);
+                    init_run();
                 };
             }
         },

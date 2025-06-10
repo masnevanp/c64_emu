@@ -187,7 +187,7 @@ struct CIA {
 
 struct System {
     enum class Mode {
-        none, clocked, stepped, load_state // warp, debug...? 
+        none, clocked, stepped, // warp, debug...? 
     };
     
     struct Adress_space {

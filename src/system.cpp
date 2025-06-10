@@ -305,15 +305,30 @@ void System::C1541_status_panel::update(const C1541::Disk_ctrl::Status& c1541_st
 }
 
 
-void System::C64::run_clocked() {
-    auto init = [&]() {
-        vid_out.flip();
-        sid.flush();
-        frame_timer.reset();
-        watch.start();
-    };
+void System::C64::check_deferred() {
+    if (deferred) {
+        deferred();
+        deferred = nullptr;
+    }
+}
 
-    auto clock = [&]() {
+
+void System::C64::init_run() {
+    switch (s.mode) {
+        case Mode::none: break;
+        case Mode::clocked:
+            vid_out.flip();
+            sid.flush();
+            frame_timer.reset();
+            watch.start();
+            break;
+        case Mode::stepped: break; // step cycle(s), intstrucion(s), line(s), frame(s)
+    }
+}
+
+
+void System::C64::run_clocked() {
+    auto sync = [&]() {
         const bool sync_point = (s.vic.cycle % perf.latency.chosen.sync_freq) == 0;
         if (!sync_point) return;
 
@@ -340,10 +355,7 @@ void System::C64::run_clocked() {
             watch.stop();
             watch.reset();
             
-            if (when_frame_done) {
-                when_frame_done();
-                when_frame_done = nullptr;
-            }
+            check_deferred();
         } else {
             host_input.poll();
             
@@ -358,36 +370,6 @@ void System::C64::run_clocked() {
             sid.output();
         }
     };
-
-    host_input_handlers.sys = [&](u8 code, u8 down) {
-        using kc = Key_code::System;
-
-        enum op {
-            rst_cold = kc::opt_1,
-            swap_joy = kc::opt_2,
-            tgl_fscr = kc::opt_3,
-        };
-
-        if (down) {
-            switch (code) {
-                case op::rst_cold:  reset_cold();                 break;
-                case op::swap_joy:  host_input.swap_joysticks();  break;
-                case op::tgl_fscr:  vid_out.toggle_fullscr_win(); break;
-                case kc::mode:      /* TODO */                    break;
-                case kc::menu_tgl:  /*menu.toggle(true);*/        break;
-                case kc::menu_ent:
-                case kc::menu_back:
-                case kc::menu_up:
-                case kc::menu_down: menu.handle_key(code);        break;
-                case kc::rot_dsk:   c1541.disk_carousel.rotate(); break;
-                case kc::shutdown:  request_shutdown();           break;
-            }
-        } else {
-            if (code == kc::menu_tgl) menu.toggle(false);
-        }
-    };
-
-    init();
 
     // TODO: consider special loops for different configs (e.g. REU with no 1541)
     while (s.mode == Mode::clocked) {
@@ -414,7 +396,7 @@ void System::C64::run_clocked() {
 
         if (s.vic.cycle % C1541::extra_cycle_freq == 0) c1541.tick();
 
-        clock();
+        sync();
     }
 }
 
@@ -465,7 +447,7 @@ void System::C64::reset_cold() {
     cia1.reset_cold();
     cia2.reset_cold();
     sid.reset();
-    vic.reset();
+    vic.reset(); // TODO: cycle reset to zero (and more...? and check others)
     input_matrix.reset();
     addr_space.reset();
     cpu.reset();
@@ -475,13 +457,15 @@ void System::C64::reset_cold() {
 
     s.ba_low = false;
     s.dma_low = false;
+
+    init_run();
 }
 
 
 void System::C64::save_state_req() {
     static const std::string dir = "./_local"; // TODO...
 
-    when_frame_done = [&]() {
+    deferred = [&]() {
         sys_snap.sid = sid.core.read_state();
         sys_snap.cpu_mcp = cpu.mcp - &NMOS6502::MC::code[0];
 
@@ -519,7 +503,7 @@ bool System::C64::handle_file(Files::File& file) {
     switch (file.type) {
         case Type::crt: {
             Log::info("CRT '%s' ...", file.name.c_str());
-            when_frame_done = [&, data = std::move(file.data)]() {
+            deferred = [&, data = std::move(file.data)]() {
                 const Files::CRT crt{data};
                 if (Cartridge::attach(crt, exp_ctx)) reset_cold();
             };
@@ -539,12 +523,12 @@ bool System::C64::handle_file(Files::File& file) {
             inject(file.data);
             return true;
         case Type::sys_snap: {
-            when_frame_done = [&, d = std::move(file.data)]() {
+            deferred = [&, d = std::move(file.data)]() {
                 Files::System_snapshot& iss = *((Files::System_snapshot*)d.data()); // brutal...
                 sys_snap.sys_state = iss.sys_state;
                 sid.core.write_state(sys_snap.sid);
                 cpu.mcp = &NMOS6502::MC::code[0] + iss.cpu_mcp;
-                // init_sync();
+                init_run();
             };
             return true;
         }
