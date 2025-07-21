@@ -408,7 +408,7 @@ public:
             switch (s.mode) {
                 case Mode::none: break;
                 case Mode::clocked: run_clocked(); break;
-                case Mode::stepped: break; // step cycle(s), intstrucion(s), line(s), frame(s)
+                case Mode::stepped: run_stepped(); break;
             }
         }
     }
@@ -486,25 +486,25 @@ private:
         [this](u8 code, u8 down) {
             using kc = Key_code::System;
     
-            enum op {
-                rst_cold = kc::opt_1,
-                swap_joy = kc::opt_2,
-                tgl_fscr = kc::opt_3,
-            };
-    
             if (down) {
                 switch (code) {
-                    case op::rst_cold:  reset_cold();                 break;
-                    case op::swap_joy:  host_input.swap_joysticks();  break;
-                    case op::tgl_fscr:  vid_out.toggle_fullscr_win(); break;
-                    case kc::mode:      /* TODO */                    break;
-                    case kc::menu_tgl:  /*menu.toggle(true);*/        break;
+                    case kc::rst_cold:   reset_cold();                 break;
+                    case kc::swap_joy:   host_input.swap_joysticks();  break;
+                    case kc::tgl_fscr:   vid_out.toggle_fullscr_win(); break;
+                    case kc::mode:
+                        s.mode = (s.mode == Mode::clocked) ? Mode::stepped : Mode::clocked;
+                        break;
+                    case kc::step_cycle:
+                    case kc::step_instr:
+                    case kc::step_line:
+                    case kc::step_frame: if (s.mode == Mode::stepped) step_forward(code); break;
+                    case kc::menu_tgl:   /*menu.toggle(true);*/        break;
                     case kc::menu_ent:
                     case kc::menu_back:
                     case kc::menu_up:
-                    case kc::menu_down: menu.handle_key(code);        break;
-                    case kc::rot_dsk:   c1541.disk_carousel.rotate(); break;
-                    case kc::shutdown:  request_shutdown();           break;
+                    case kc::menu_down:  menu.handle_key(code);        break;
+                    case kc::rot_dsk:    c1541.disk_carousel.rotate(); break;
+                    case kc::shutdown:   request_shutdown();           break;
                 }
             } else {
                 if (code == kc::menu_tgl) menu.toggle(false);
@@ -574,9 +574,12 @@ private:
     std::function<void()> deferred;
     void check_deferred();
 
-    void init_run();
+    void pre_run();
 
     void run_clocked();
+    void run_stepped();
+
+    void step_forward(u8 key_code);
 
     void output_frame();
 
@@ -606,7 +609,7 @@ private:
                 deferred = [&]() {
                     vid_out.reconfig();
                     sid.reconfig(perf.frame_rate, perf.audio_pitch_shift);
-                    init_run();
+                    pre_run();
                 };
             }
         },

@@ -313,7 +313,7 @@ void System::C64::check_deferred() {
 }
 
 
-void System::C64::init_run() {
+void System::C64::pre_run() {
     switch (s.mode) {
         case Mode::none: break;
         case Mode::clocked:
@@ -322,7 +322,7 @@ void System::C64::init_run() {
             frame_timer.reset();
             watch.start();
             break;
-        case Mode::stepped: break; // step cycle(s), intstrucion(s), line(s), frame(s)
+        case Mode::stepped: break;
     }
 }
 
@@ -401,6 +401,28 @@ void System::C64::run_clocked() {
 }
 
 
+void System::C64::run_stepped() {
+    // step cycle(s), intstrucion(s), line(s), frame(s)
+    frame_timer.reset();
+    while (s.mode == Mode::stepped) {
+        frame_timer.wait_elapsed(100000, true);
+        host_input.poll();
+    }
+}
+
+
+void System::C64::step_forward(u8 key_code) {
+    using kc = Key_code::System;
+
+    switch (key_code) {
+        case kc::step_cycle: Log::info("c"); break;
+        case kc::step_instr: Log::info("i"); break;
+        case kc::step_line:  Log::info("l"); break;
+        case kc::step_frame: Log::info("f"); break;
+    }
+}
+
+
 void System::C64::output_frame() {
     auto output_overlay = [&](Video_overlay& ol) {
         const u8* src = ol.pixels;
@@ -458,7 +480,7 @@ void System::C64::reset_cold() {
     s.ba_low = false;
     s.dma_low = false;
 
-    init_run();
+    pre_run();
 }
 
 
@@ -528,7 +550,7 @@ bool System::C64::handle_file(Files::File& file) {
                 sys_snap.sys_state = iss.sys_state;
                 sid.core.write_state(sys_snap.sid);
                 cpu.mcp = &NMOS6502::MC::code[0] + iss.cpu_mcp;
-                init_run();
+                pre_run();
             };
             return true;
         }

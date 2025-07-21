@@ -148,7 +148,8 @@ namespace Key_code {
 
     enum System : u8 {
         nop = GS,
-        opt_1, opt_2, opt_3, mode,
+        rst_cold, swap_joy, tgl_fscr, mode,
+        step_cycle, step_instr, step_line, step_frame,
         menu_tgl, menu_ent, menu_back, menu_up, menu_down,
         rot_dsk, shutdown
     };
