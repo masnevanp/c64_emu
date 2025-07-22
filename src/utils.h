@@ -34,6 +34,11 @@ public:
 
     int wait_elapsed(int elapsed_us, bool reset = false);
 
+    static constexpr int one_second() {
+        constexpr auto s = std::chrono::seconds(1);
+        return std::chrono::duration_cast<us>(s).count();
+    }
+
 private:
     clock::time_point clock_start;
 
