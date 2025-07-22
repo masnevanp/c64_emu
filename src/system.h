@@ -399,19 +399,7 @@ public:
         Cartridge::detach(exp_ctx);
     }
 
-    void run(Mode init_mode = Mode::clocked) {
-        s.mode = init_mode;
-
-        reset_cold();
-
-        while (s.mode != Mode::none) {
-            switch (s.mode) {
-                case Mode::none: break;
-                case Mode::clocked: run_clocked(); break;
-                case Mode::stepped: run_stepped(); break;
-            }
-        }
-    }
+    void run(Mode init_mode = Mode::clocked);
 
 private:
     Files::System_snapshot sys_snap;
@@ -576,6 +564,8 @@ private:
 
     void pre_run();
 
+    void run_cycle();
+
     void run_clocked();
     void run_stepped();
 
@@ -649,6 +639,32 @@ private:
 
     static void install_kernal_tape_traps(u8* kernal, u8 trap_opc);
 };
+
+inline
+void C64::run_cycle() {
+    vic.tick();
+
+    const auto rw = cpu.mrw();
+    const auto rdy_low = s.ba_low || s.dma_low;
+    if (rdy_low && rw == NMOS6502::MC::RW::r) {
+        c1541.tick();
+    } else {
+        // 'Slip in' the C1541 cycle
+        if (rw == NMOS6502::MC::RW::w) c1541.tick();
+        addr_space.access(cpu.mar(), cpu.mdr(), rw);
+        cpu.tick();
+        if (rw == NMOS6502::MC::RW::r) c1541.tick();
+    }
+
+    if (exp_ctx.tick) exp_ctx.tick();
+
+    cia1.tick();
+    cia2.tick();
+
+    int_hub.tick(cpu);
+
+    if (s.vic.cycle % C1541::extra_cycle_freq == 0) c1541.tick();
+}
 
 
 } // namespace System

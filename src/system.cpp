@@ -305,6 +305,21 @@ void System::C1541_status_panel::update(const C1541::Disk_ctrl::Status& c1541_st
 }
 
 
+void System::C64::run(Mode init_mode) {
+    s.mode = init_mode;
+
+    reset_cold();
+
+    while (s.mode != Mode::none) {
+        switch (s.mode) {
+            case Mode::none: break;
+            case Mode::clocked: run_clocked(); break;
+            case Mode::stepped: run_stepped(); break;
+        }
+    }
+}
+
+
 void System::C64::check_deferred() {
     if (deferred) {
         deferred();
@@ -329,11 +344,8 @@ void System::C64::pre_run() {
 
 void System::C64::run_clocked() {
     auto sync = [&]() {
-        const bool sync_point = (s.vic.cycle % perf.latency.chosen.sync_freq) == 0;
-        if (!sync_point) return;
+        const auto frame_duration = [&]() { return Timer::one_second() / perf.frame_rate.chosen; };
 
-        const auto frame_duration_us = [&]() { return 1000000.0 / perf.frame_rate.chosen; };
-        
         const bool frame_done = (s.vic.cycle % FRAME_CYCLE_COUNT) == 0;
         if (frame_done) {
             host_input.poll();
@@ -344,7 +356,7 @@ void System::C64::run_clocked() {
                 output_frame();
                 frame_timer.reset();
             } else {
-                frame_timer.wait_elapsed(frame_duration_us(), true);
+                frame_timer.wait_elapsed(frame_duration(), true);
                 output_frame();
             }
             
@@ -362,8 +374,8 @@ void System::C64::run_clocked() {
             watch.stop();
             
             const auto frame_progress = double(s.vic.raster_y) / double(FRAME_LINE_COUNT);
-            const auto frame_progress_us = frame_progress * frame_duration_us();
-            frame_timer.wait_elapsed(frame_progress_us);
+            const auto frame_progress_time = frame_progress * frame_duration();
+            frame_timer.wait_elapsed(frame_progress_time);
             
             watch.start();
             
@@ -373,30 +385,9 @@ void System::C64::run_clocked() {
 
     // TODO: consider special loops for different configs (e.g. REU with no 1541)
     while (s.mode == Mode::clocked) {
-        vic.tick();
-
-        const auto rw = cpu.mrw();
-        const auto rdy_low = s.ba_low || s.dma_low;
-        if (rdy_low && rw == NMOS6502::MC::RW::r) {
-            c1541.tick();
-        } else {
-            // 'Slip in' the C1541 cycle
-            if (rw == NMOS6502::MC::RW::w) c1541.tick();
-            addr_space.access(cpu.mar(), cpu.mdr(), rw);
-            cpu.tick();
-            if (rw == NMOS6502::MC::RW::r) c1541.tick();
-        }
-
-        if (exp_ctx.tick) exp_ctx.tick();
-
-        cia1.tick();
-        cia2.tick();
-
-        int_hub.tick(cpu);
-
-        if (s.vic.cycle % C1541::extra_cycle_freq == 0) c1541.tick();
-
-        sync();
+        run_cycle();
+        const bool sync_point = (s.vic.cycle % perf.latency.chosen.sync_freq) == 0;
+        if (sync_point) sync();
     }
 }
 
@@ -405,8 +396,8 @@ void System::C64::run_stepped() {
     // step cycle(s), intstrucion(s), line(s), frame(s)
     frame_timer.reset();
     while (s.mode == Mode::stepped) {
-        frame_timer.wait_elapsed(100000, true);
         host_input.poll();
+        frame_timer.wait_elapsed(Timer::one_second() / 50.0, true);
     }
 }
 
@@ -414,12 +405,29 @@ void System::C64::run_stepped() {
 void System::C64::step_forward(u8 key_code) {
     using kc = Key_code::System;
 
+    const auto entry_cycle = s.vic.frame_cycle();
+
     switch (key_code) {
-        case kc::step_cycle: Log::info("c"); break;
-        case kc::step_instr: Log::info("i"); break;
-        case kc::step_line:  Log::info("l"); break;
-        case kc::step_frame: Log::info("f"); break;
+        case kc::step_cycle:
+            run_cycle();
+            break;
+        case kc::step_instr:
+            do run_cycle(); while (cpu.mcp->dr != NMOS6502::Ri8::ir);
+            break;
+        case kc::step_line:
+            do run_cycle(); while (s.vic.line_cycle() < (LINE_CYCLE_COUNT - 1));
+            break;
+        case kc::step_frame:
+            do run_cycle(); while (s.vic.frame_cycle() < (FRAME_CYCLE_COUNT - 1));
+            break;
     }
+
+    if (const bool frame_done = s.vic.frame_cycle() < entry_cycle; frame_done) {
+        for (auto& px : s.vic.frame) px = 0; // clear
+    }
+
+    output_frame(); // TODO: when stepping cycle/instr/line, add a beam_pos indicator (line/dot?)
+    sid.output();
 }
 
 
