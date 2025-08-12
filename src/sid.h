@@ -51,6 +51,9 @@ public:
     Menu::Group settings_menu() { return {"RESID / ", menu_items}; }
 
 private:
+    // TODO: consider moving stuph to 'state' (at least 'last_tick_cycle', since now a
+    //       'pre_run()' (which does a 'sid.flush()') call is required when state is loaded
+    //       
     i16* buf;
     i16* buf_ptr;
 

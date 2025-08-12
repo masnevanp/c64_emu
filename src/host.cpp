@@ -476,6 +476,8 @@ void Video_out::upd_mode() {
         }
     }
 
+    if (renderer) SDL_DestroyRenderer(renderer);
+
     switch (set.mode) {
         case Mode::win:
             if (SDL_SetWindowFullscreen(window, 0) != 0) {
@@ -509,8 +511,6 @@ void Video_out::upd_mode() {
         Log::error("Failed to SDL_GetCurrentDisplayMode: %s", SDL_GetError());
         exit(1);
     }
-
-    if (renderer) SDL_DestroyRenderer(renderer);
 
     const u32 v_sync_flag = v_synced() ? SDL_RENDERER_PRESENTVSYNC : 0;
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | v_sync_flag);

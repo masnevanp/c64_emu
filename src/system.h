@@ -596,6 +596,7 @@ private:
     std::vector<::Menu::Knob> perf_menu_items{
         {"FPS",  perf.frame_rate,
             [&]() {
+                // TODO: fade in sound after change (hide the blips...)?
                 deferred = [&]() {
                     vid_out.reconfig();
                     sid.reconfig(perf.frame_rate, perf.audio_pitch_shift);

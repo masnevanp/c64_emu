@@ -310,13 +310,15 @@ void System::C64::run(Mode init_mode) {
 
     reset_cold();
 
-    while (s.mode != Mode::none) {
+    do {
         switch (s.mode) {
             case Mode::none: break;
             case Mode::clocked: run_clocked(); break;
             case Mode::stepped: run_stepped(); break;
         }
+        pre_run();
     }
+    while (s.mode != Mode::none);
 }
 
 
@@ -348,8 +350,6 @@ void System::C64::run_clocked() {
 
         const bool frame_done = (s.vic.cycle % FRAME_CYCLE_COUNT) == 0;
         if (frame_done) {
-            host_input.poll();
-            
             watch.stop();
             
             if (vid_out.v_synced()) {
@@ -363,14 +363,14 @@ void System::C64::run_clocked() {
             watch.start();
             
             sid.output();
+
+            host_input.poll();
             
             watch.stop();
             watch.reset();
-            
+
             check_deferred();
         } else {
-            host_input.poll();
-            
             watch.stop();
             
             const auto frame_progress = double(s.vic.raster_y) / double(FRAME_LINE_COUNT);
@@ -380,6 +380,8 @@ void System::C64::run_clocked() {
             watch.start();
             
             sid.output();
+
+            host_input.poll();
         }
     };
 
@@ -393,19 +395,24 @@ void System::C64::run_clocked() {
 
 
 void System::C64::run_stepped() {
-    // step cycle(s), intstrucion(s), line(s), frame(s)
     frame_timer.reset();
+
     while (s.mode == Mode::stepped) {
-        host_input.poll();
+        output_frame();
         frame_timer.wait_elapsed(Timer::one_second() / 50.0, true);
+        host_input.poll();
+        check_deferred();
     }
 }
 
 
+// TODO: when stepping cycle/instr/line, add a beam_pos indicator (line/dot?)
 void System::C64::step_forward(u8 key_code) {
     using kc = Key_code::System;
 
-    const auto entry_cycle = s.vic.frame_cycle();
+    // 'clear' remaining pixels (yes, most of the time this is redundant, but meh... )
+    for (auto bp = s.vic.beam_pos; bp < VIC_II::FRAME_SIZE; ++bp)
+        s.vic.frame[bp] = Color::black;
 
     switch (key_code) {
         case kc::step_cycle:
@@ -422,11 +429,6 @@ void System::C64::step_forward(u8 key_code) {
             break;
     }
 
-    if (const bool frame_done = s.vic.frame_cycle() < entry_cycle; frame_done) {
-        for (auto& px : s.vic.frame) px = 0; // clear
-    }
-
-    output_frame(); // TODO: when stepping cycle/instr/line, add a beam_pos indicator (line/dot?)
     sid.output();
 }
 
@@ -495,6 +497,7 @@ void System::C64::reset_cold() {
 void System::C64::save_state_req() {
     static const std::string dir = "./_local"; // TODO...
 
+    // TODO: spawn thread (a copy of sys_snap required though...)?
     deferred = [&]() {
         sys_snap.sid = sid.core.read_state();
         sys_snap.cpu_mcp = cpu.mcp - &NMOS6502::MC::code[0];
@@ -558,7 +561,7 @@ bool System::C64::handle_file(Files::File& file) {
                 sys_snap.sys_state = iss.sys_state;
                 sid.core.write_state(sys_snap.sid);
                 cpu.mcp = &NMOS6502::MC::code[0] + iss.cpu_mcp;
-                pre_run();
+                pre_run(); // NOTE: required for now (see 'sid.h' for more info)
             };
             return true;
         }
