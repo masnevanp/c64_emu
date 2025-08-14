@@ -52,7 +52,7 @@ public:
           addr_space(s_.addr_space, ram_, charr, romh_r), irq(s, int_sig), ba(ba_low), lp(s, irq),
           mobs(s, addr_space, ba, irq), gfx(s, addr_space, col_ram_, ba), border(s) {}
 
-    void reset() { for (int r = 0; r < VS::REG_COUNT; ++r) w(r, 0); }
+    void reset();
 
     void set_ultimax(bool act)    { addr_space.set_ultimax(act); }
     void set_bank(u8 va14_va15)   { addr_space.set_bank(va14_va15); }

@@ -99,7 +99,7 @@ struct VIC_II {
 
     u64 cycle = 0; // good for ~595K years...
     u16 raster_y = 0;
-    u16 raster_y_cmp = 0;
+    u16 raster_y_cmp;
     u8 raster_y_cmp_edge;
     V_blank v_blank = V_blank::vb_on;
 

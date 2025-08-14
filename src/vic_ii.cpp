@@ -1,6 +1,18 @@
 #include "vic_ii.h"
 
 
+void VIC_II::Core::reset() {
+    s.gfx.ba_area = false;
+    s.gfx.ba_line = false;
+    // TODO: Check if we can get rid of some of these (since everything can be deduced from 'cycle'...)
+    s.cycle = 0;
+    s.raster_y = 0;
+    s.v_blank = VS::V_blank::vb_on;
+    s.beam_pos = 0;
+    for (int r = 0; r < VS::REG_COUNT; ++r) w(r, 0);
+}
+
+
 void VIC_II::Core::MOBs::do_dma(u8 mn)  { // do p&s -accesses
     VS::MOB& m = mob[mn];
     // if dma_on, then cpu has already been stopped --> safe to read all at once (1p + 3s)

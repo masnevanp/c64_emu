@@ -600,10 +600,11 @@ private:
                 deferred = [&]() {
                     vid_out.reconfig();
                     sid.reconfig(perf.frame_rate, perf.audio_pitch_shift);
-                    pre_run();
+                    //pre_run();
                 };
             }
         },
+        // TODO: defer also the following two?
         {"AUDIO PITCH", perf.audio_pitch_shift,
             [&]() {
                 sid.reconfig(perf.frame_rate, perf.audio_pitch_shift);

@@ -339,7 +339,9 @@ void System::C64::pre_run() {
             frame_timer.reset();
             watch.start();
             break;
-        case Mode::stepped: break;
+        case Mode::stepped:
+            sid.flush();
+            break;
     }
 }
 
@@ -479,7 +481,7 @@ void System::C64::reset_cold() {
     cia1.reset_cold();
     cia2.reset_cold();
     sid.reset();
-    vic.reset(); // TODO: cycle reset to zero (and more...? and check others)
+    vic.reset();
     input_matrix.reset();
     addr_space.reset();
     cpu.reset();
