@@ -462,6 +462,7 @@ private:
     IO::Port::PD_out cia2_pb_out { [](u8 _) { UNUSED(_); } };
 
     Host::Input::Handlers host_input_handlers{
+        // TODO: just-in-time polling for keyboard/ctrl-ports? (i.e. when CIA1 regs are read)
         // client keyboard & controllers (including lightpen)
         input_matrix.keyboard,
         input_matrix.ctrl_port_1,
