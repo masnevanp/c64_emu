@@ -6,7 +6,8 @@
 
 namespace State {
 
-// TODO: - optimize data layouts (hot data, proper alignment, etc...)
+// TODO: - c1541 and expansion states
+//       - optimize data layouts (hot data, proper alignment, etc...)
 //       - for better data locality, move all the data here...?
 //         (even things that strictly speaking don't need to be here)?
 //         (currently only data needed for 'save/load -state' included)
