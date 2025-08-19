@@ -535,6 +535,8 @@ bool System::C64::handle_file(Files::File& file) {
 
     using Type = Files::File::Type;
 
+    // NOTE: 'crt' & 'sys_snap' loads are deferred, because otherwise we could be
+    //       jumping in mid-cycle (because loading can be triggerd also by the cpu.tick())
     switch (file.type) {
         case Type::crt: {
             Log::info("CRT '%s' ...", file.name.c_str());
