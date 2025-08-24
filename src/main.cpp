@@ -24,7 +24,7 @@ void run_c64() {
 
     if (!read_roms()) return;
 
-    System::ROM roms{basic, kernal, charr, c1541};
+    State::System::ROM roms{basic, kernal, charr, c1541};
     System::C64 c64(roms);
 
     c64.run();

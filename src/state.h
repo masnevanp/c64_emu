@@ -190,7 +190,16 @@ struct System {
     enum class Mode {
         none, clocked, stepped, // warp, debug...? 
     };
-    
+
+    struct ROM {
+        // TODO: include in State::System, if ROMs are to be included in sys_snap
+        // (just the definition here for now...)
+        const u8* basic;
+        const u8* kernal;
+        const u8* charr;
+        const u8* c1541;
+    };
+
     struct Banking {
         int pla_line; // the active PLA line (set based on mode)
 
