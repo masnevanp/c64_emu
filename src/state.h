@@ -191,7 +191,7 @@ struct System {
         none, clocked, stepped, // warp, debug...? 
     };
     
-    struct Adress_space {
+    struct Banking {
         int pla_line; // the active PLA line (set based on mode)
 
         u8 io_port_dd;
@@ -230,7 +230,7 @@ struct System {
     u16 ba_low;
     u16 dma_low;
 
-    Adress_space addr_space;
+    Banking banking;
     Int_hub int_hub;
     Input_matrix input_matrix; // problems with load/save state?
 

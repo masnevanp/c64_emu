@@ -19,6 +19,30 @@
 
 
 
+namespace PLA {
+    // NOTE: Ultimax config --> writes also directed to ROM
+    enum Mapping : u8 {
+        ram0_r,  ram0_w, // Special mapping for RAM bank 0 due to IO port handling (addr 0&1)
+        ram_r,   ram_w,
+        bas_r,
+        kern_r,
+        charr_r,
+        roml_r,  roml_w,
+        romh_r,  romh_w,
+        io_r,    io_w,
+        none_r,  none_w,
+    };
+
+    // There is a PLA Line for each mode, and for each mode there are separate r/w configs
+    struct Line {
+        const Mapping pl[2][16]; // [w/r][bank]
+    };
+
+    extern const Line line[14];       // 14 unique configs
+    extern const u8 Mode_to_line[32]; // map: mode --> line idx (in line[])
+}
+
+
 namespace System {
 
 using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Address_space)
@@ -36,69 +60,55 @@ struct ROM {
 };
 
 
-class Address_space {
+template<typename CPU, typename CIA, typename SID, typename VIC, typename Color_RAM>  
+class Bus {
 public:
-    using State = State::System::Adress_space;
-
-    Address_space(
-        State& s_,
-        u8* ram_, const ROM& rom_,
+    Bus(
+        State::System& s_, const ROM& rom_,
         CIA& cia1_, CIA& cia2_, TheSID& sid_, VIC& vic_,
         Color_RAM& col_ram_, Expansion_ctx::IO& exp_)
       :
         s(s_),
-        ram(ram_), rom(rom_),
+        rom(rom_),
         cia1(cia1_), cia2(cia2_), sid(sid_), vic(vic_),
         col_ram(col_ram_), exp(exp_) {}
 
     void reset() {
-        s.io_port_pd = s.io_port_state = 0x00;
+        s.banking.io_port_pd = s.banking.io_port_state = 0x00;
         w_dd(0x00); // all inputs
     }
 
-    // NOTE: Ultimax config --> writes also directed to ROM
-    enum Mapping : u8 {
-        ram0_r,  ram0_w, // Special mapping for RAM bank 0 due to IO port handling (addr 0&1)
-        ram_r,   ram_w,
-        bas_r,
-        kern_r,
-        charr_r,
-        roml_r,  roml_w,
-        romh_r,  romh_w,
-        io_r,    io_w,
-        none_r,  none_w,
-    };
-
-
     void access(const u16& addr, u8& data, const u8 rw) {
-        switch (PLA[s.pla_line].pl[rw][addr >> 12]) {
-            case ram0_r:
+        using m = PLA::Mapping;
+
+        switch (PLA::line[s.banking.pla_line].pl[rw][addr >> 12]) {
+            case m::ram0_r:
                 data = (addr > 0x0001)
-                            ? ram[addr]
+                            ? s.ram[addr]
                             : ((addr == 0x0000) ? r_dd() : r_pd());
                 return;
-            case ram0_w:
-                if (addr > 0x0001) ram[addr] = data;
+            case m::ram0_w:
+                if (addr > 0x0001) s.ram[addr] = data;
                 else (addr == 0x0000) ? w_dd(data) : w_pd(data);
                 return;
-            case ram_r:   data = ram[addr];                 return; // 64 KB
-            case ram_w:   ram[addr] = data;                 return;
-            case bas_r:   data = rom.basic[addr & 0x1fff];  return; // 8 KB
-            case kern_r:  data = rom.kernal[addr & 0x1fff]; return;
-            case charr_r: data = rom.charr[addr & 0x0fff];  return; // 4 KB
-            case roml_r:  exp.roml_r(addr & 0x1fff, data);  return; // 8 KB
-            case roml_w:  exp.roml_w(addr & 0x1fff, data);  return;
-            case romh_r:  exp.romh_r(addr & 0x1fff, data);  return;
-            case romh_w:  exp.romh_w(addr & 0x1fff, data);  return;
-            case io_r:    r_io(addr & 0x0fff, data);        return; // 4 KB
-            case io_w:    w_io(addr & 0x0fff, data);        return;
-            case none_r:  // TODO: anything..? (return 'floating' state..)
-            case none_w:                                    return;
+            case m::ram_r:   data = s.ram[addr];               return; // 64 KB
+            case m::ram_w:   s.ram[addr] = data;               return;
+            case m::bas_r:   data = rom.basic[addr & 0x1fff];  return; // 8 KB
+            case m::kern_r:  data = rom.kernal[addr & 0x1fff]; return;
+            case m::charr_r: data = rom.charr[addr & 0x0fff];  return; // 4 KB
+            case m::roml_r:  exp.roml_r(addr & 0x1fff, data);  return; // 8 KB
+            case m::roml_w:  exp.roml_w(addr & 0x1fff, data);  return;
+            case m::romh_r:  exp.romh_r(addr & 0x1fff, data);  return;
+            case m::romh_w:  exp.romh_w(addr & 0x1fff, data);  return;
+            case m::io_r:    r_io(addr & 0x0fff, data);        return; // 4 KB
+            case m::io_w:    w_io(addr & 0x0fff, data);        return;
+            case m::none_r:  // TODO: anything..? (return 'floating' state..)
+            case m::none_w:                                    return;
         }
     }
 
     void set_exrom_game(bool exrom, bool game) {
-        s.exrom_game = (exrom << 4) | (game << 3);
+        s.banking.exrom_game = (exrom << 4) | (game << 3);
         set_pla();
 
         vic.set_ultimax(exrom && !game);
@@ -111,18 +121,18 @@ private:
         cassette_motor_control = 0x20,
     };
 
-    State& s;
+    State::System& s;
 
-    u8 r_dd() const { return s.io_port_dd; }
+    u8 r_dd() const { return s.banking.io_port_dd; }
     u8 r_pd() const {
         static constexpr u8 pull_up = IO_bits::loram_hiram_charen_bits | IO_bits::cassette_switch_sense;
-        const u8 pulled_up = ~s.io_port_dd & pull_up;
-        const u8 cmc = ~cassette_motor_control | s.io_port_dd; // dd input -> 0
-        return (s.io_port_state | pulled_up) & cmc;
+        const u8 pulled_up = ~s.banking.io_port_dd & pull_up;
+        const u8 cmc = ~cassette_motor_control | s.banking.io_port_dd; // dd input -> 0
+        return (s.banking.io_port_state | pulled_up) & cmc;
     }
 
-    void w_dd(const u8& dd) { s.io_port_dd = dd; update_state(); }
-    void w_pd(const u8& pd) { s.io_port_pd = pd; update_state(); }
+    void w_dd(const u8& dd) { s.banking.io_port_dd = dd; update_state(); }
+    void w_pd(const u8& pd) { s.banking.io_port_pd = pd; update_state(); }
 
     void r_io(const u16& addr, u8& data) {
         switch (addr >> 8) {
@@ -148,19 +158,19 @@ private:
         }
     }
 
-    void update_state();
+    void update_state() { // output bits set from 'pd', input bits unchanged
+        auto& b{s.banking};
+        b.io_port_state = (b.io_port_pd & b.io_port_dd) | (b.io_port_state & ~b.io_port_dd);
+        set_pla();
+    }
 
-    void set_pla();
+    void set_pla() {
+        auto& b{s.banking};
+        const u8 lhc = (b.io_port_state | ~b.io_port_dd) & loram_hiram_charen_bits; // inputs -> pulled up
+        const u8 mode = b.exrom_game | lhc;
+        b.pla_line = PLA::Mode_to_line[mode];
+    }
 
-    // There is a PLA_Line for each mode, and for each mode there are separate r/w configs
-    struct PLA_Line {
-        const u8 pl[2][16]; // [w/r][bank]
-    };
-
-    static const PLA_Line PLA[14];       // 14 unique configs
-    static const u8 Mode_to_PLA_line[32]; // map: mode --> mode_idx (in PLA[])
-
-    u8* ram;
     const ROM& rom;
 
     CIA& cia1;
@@ -419,24 +429,23 @@ private:
 
     VIC vic{s.vic, s.ram, col_ram, rom.charr, exp_io.romh_r, s.ba_low, int_hub.int_sig};
 
-    Address_space addr_space{s.addr_space, s.ram, rom, cia1, cia2, sid, vic, col_ram, exp_io};
+    Bus<CPU, CIA, SID, VIC, Color_RAM> bus{s, rom, cia1, cia2, sid, vic, col_ram, exp_io};
 
     Int_hub int_hub{s.int_hub};
-
-    IO::Bus bus{cpu};
 
     Input_matrix input_matrix{s.input_matrix, cia1.port_a.ext_in, cia1.port_b.ext_in, vic};
 
     Expansion_ctx::IO exp_io{
         s.ba_low,
         //std::bind(&Address_space::access, addr_space, std::placeholders::_1),
-        [this](const u16& a, u8& d, const u8 rw) { addr_space.access(a, d, rw); },
-        [this](bool e, bool g) { addr_space.set_exrom_game(e, g); },
+        [this](const u16& a, u8& d, const u8 rw) { bus.access(a, d, rw); },
+        [this](bool e, bool g) { bus.set_exrom_game(e, g); },
         int_hub.int_sig,
         s.dma_low
     };
+    IO::Bus _bus{cpu}; // TODO: get rid of this hacky kludge...
     Expansion_ctx exp_ctx{
-        exp_io, bus, s.ram, s.vic.cycle, s.exp_ram, nullptr, nullptr
+        exp_io, _bus, s.ram, s.vic.cycle, s.exp_ram, nullptr, nullptr
     };
 
     C1541::System c1541{cia2.port_a.ext_in, rom.c1541};
@@ -654,7 +663,7 @@ void C64::run_cycle() {
     } else {
         // 'Slip in' the C1541 cycle
         if (rw == NMOS6502::MC::RW::w) c1541.tick();
-        addr_space.access(cpu.mar(), cpu.mdr(), rw);
+        bus.access(cpu.mar(), cpu.mdr(), rw);
         cpu.tick();
         if (rw == NMOS6502::MC::RW::r) c1541.tick();
     }
