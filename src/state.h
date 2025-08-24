@@ -27,11 +27,6 @@ struct VIC_II {
 
     enum V_blank : u8 { vb_off = 0, vb_on = 63 };
 
-    struct Address_space {
-        u8 ultimax = false;
-        u8 bank = 0b11;
-    };
-
     struct Light_pen {
         u8 triggered = 0;
         u8 trigger_at_phi1 = false;
@@ -104,7 +99,6 @@ struct VIC_II {
     u8 raster_y_cmp_edge;
     V_blank v_blank = V_blank::vb_on;
 
-    Address_space addr_space;
     Light_pen lp;
     MOB mob[MOB_COUNT];
     GFX gfx;
@@ -210,6 +204,11 @@ struct System {
         u8 exrom_game;
     };
 
+    struct VIC_II_Banking {
+        u8 ultimax = false;
+        u8 bank = 0b11;
+    };
+
     struct Int_hub {
         u8 state;
         u8 old_state;
@@ -233,14 +232,17 @@ struct System {
 
     Mode mode;
 
-    u8 ram[0x10000];
-    u8 color_ram[::VIC_II::Color_RAM::size] = {};
+    u8 ram[RAM_SIZE];
+    u8 color_ram[COLOR_RAM_SIZE] = {};
 
     u16 ba_low;
     u16 dma_low;
 
     Banking banking;
+    VIC_II_Banking vic_banking;
+
     Int_hub int_hub;
+
     Input_matrix input_matrix; // problems with load/save state?
 
     VIC_II vic;

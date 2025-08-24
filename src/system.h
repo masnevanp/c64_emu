@@ -12,7 +12,6 @@
 #include "sid.h"
 #include "cia.h"
 #include "c1541.h"
-#include "bus.h"
 #include "host.h"
 #include "menu.h"
 #include "files.h"
@@ -22,12 +21,210 @@
 
 namespace System {
 
+class Bus;
+
 using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Address_space)
 using CIA = typename CIA::Core;
 using TheSID = reSID_Wrapper; // 'The' due to nameclash
-using VIC = VIC_II::Core;
-using Color_RAM = VIC_II::Color_RAM;
+using VIC = VIC_II::Core<Bus>;
 
+
+namespace PLA {
+    // NOTE: Ultimax config --> writes also directed to ROM
+    enum Mapping : u8 {
+        ram0_r,  ram0_w, // Special mapping for RAM bank 0 due to IO port handling (addr 0&1)
+        ram_r,   ram_w,
+        bas_r,
+        kern_r,
+        charr_r,
+        roml_r,  roml_w,
+        romh_r,  romh_w,
+        io_r,    io_w,
+        none_r,  none_w,
+    };
+
+    // There is a PLA Line for each mode, and for each mode there are separate r/w configs
+    struct Line {
+        const Mapping pl[2][16]; // [w/r][bank]
+    };
+
+    extern const Line line[14];       // 14 unique configs
+    extern const u8 Mode_to_line[32]; // map: mode --> line idx (in line[])
+
+
+    enum VIC_mapping : u8 {
+        ram_0, ram_1, ram_2, ram_3,
+        chr_r, romh,
+    };
+
+    static constexpr u8 vic_layouts[2][4][4] = {
+        {   // non-ultimax
+            { ram_3, ram_3, ram_3, ram_3 },
+            { ram_2, chr_r, ram_2, ram_2 },
+            { ram_1, ram_1, ram_1, ram_1 },
+            { ram_0, chr_r, ram_0, ram_0 },
+        },
+        {   // ultimax
+            { ram_3, ram_3, ram_3, romh },
+            { ram_2, ram_2, ram_2, romh },
+            { ram_1, ram_1, ram_1, romh },
+            { ram_0, ram_1, ram_0, romh },
+        }
+    };
+}
+
+
+
+class Bus {
+public:
+    Bus(
+        State::System& s_,
+        const State::System::ROM& rom_,
+        CIA& cia1_, CIA& cia2_, TheSID& sid_, VIC& vic_)
+      :
+        s(s_), rom(rom_), cia1(cia1_), cia2(cia2_), sid(sid_), vic(vic_)
+    {
+        set_exrom_game(true, true);
+    }
+
+    void reset() {
+        s.ba_low = false;
+        s.dma_low = false;
+
+        s.banking.io_port_pd = s.banking.io_port_state = 0x00;
+        w_dd(0x00); // all inputs
+    }
+
+    void access(const u16& addr, u8& data, const u8 rw) {
+        using m = PLA::Mapping;
+
+        switch (PLA::line[s.banking.pla_line].pl[rw][addr >> 12]) {
+            case m::ram0_r:
+                data = (addr > 0x0001)
+                            ? s.ram[addr]
+                            : ((addr == 0x0000) ? r_dd() : r_pd());
+                return;
+            case m::ram0_w:
+                if (addr > 0x0001) s.ram[addr] = data;
+                else (addr == 0x0000) ? w_dd(data) : w_pd(data);
+                return;
+            case m::ram_r:   data = s.ram[addr];               return; // 64 KB
+            case m::ram_w:   s.ram[addr] = data;               return;
+            case m::bas_r:   data = rom.basic[addr & 0x1fff];  return; // 8 KB
+            case m::kern_r:  data = rom.kernal[addr & 0x1fff]; return;
+            case m::charr_r: data = rom.charr[addr & 0x0fff];  return; // 4 KB
+            case m::roml_r:  /*exp.roml_r(addr & 0x1fff, data);*/  return; // 8 KB
+            case m::roml_w:  /*exp.roml_w(addr & 0x1fff, data);*/  return;
+            case m::romh_r:  /*exp.romh_r(addr & 0x1fff, data);*/  return;
+            case m::romh_w:  /*exp.romh_w(addr & 0x1fff, data);*/  return;
+            case m::io_r:    r_io(addr & 0x0fff, data);        return; // 4 KB
+            case m::io_w:    w_io(addr & 0x0fff, data);        return;
+            case m::none_r:  // TODO: anything..? (return 'floating' state..)
+            case m::none_w:                                    return;
+        }
+    }
+
+    u8 vic_access(const u16& addr) const { // addr is 14bits
+        using m = PLA::VIC_mapping;
+        // silence compiler (we do handle all the cases)
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wreturn-type"
+
+        switch (PLA::vic_layouts[s.vic_banking.ultimax][s.vic_banking.bank][addr >> 12]) {
+            case m::ram_0: return s.ram[0x0000 | addr];
+            case m::ram_1: return s.ram[0x4000 | addr];
+            case m::ram_2: return s.ram[0x8000 | addr];
+            case m::ram_3: return s.ram[0xc000 | addr];
+            case m::chr_r: return rom.charr[0x0fff & addr];
+            case m::romh: {
+                u8 data = 0x00;
+                //romh_r(addr & 0x01fff, data); // TODO
+                return data;
+            }
+        }
+
+        #pragma GCC diagnostic push
+    }
+
+    void col_ram_r(const u16& addr, u8& data) const { data = s.color_ram[addr]; }
+
+    void set_exrom_game(bool exrom, bool game) {
+        s.banking.exrom_game = (exrom << 4) | (game << 3);
+        set_pla();
+
+        s.vic_banking.ultimax = (exrom && !game);
+    }
+
+    // TODO: combine .ultimax & .bank to a single index (0..7)
+    //       (--> make vic_layouts an array of 8 entries...)
+    void set_vic_bank(u8 va14_va15) { s.vic_banking.bank = va14_va15; }
+
+private:
+    enum IO_bits : u8 {
+        loram_hiram_charen_bits = 0x07,
+        cassette_switch_sense = 0x10,
+        cassette_motor_control = 0x20,
+    };
+
+    u8 r_dd() const { return s.banking.io_port_dd; }
+    u8 r_pd() const {
+        static constexpr u8 pull_up = IO_bits::loram_hiram_charen_bits | IO_bits::cassette_switch_sense;
+        const u8 pulled_up = ~s.banking.io_port_dd & pull_up;
+        const u8 cmc = ~cassette_motor_control | s.banking.io_port_dd; // dd input -> 0
+        return (s.banking.io_port_state | pulled_up) & cmc;
+    }
+
+    void w_dd(const u8& dd) { s.banking.io_port_dd = dd; update_state(); }
+    void w_pd(const u8& pd) { s.banking.io_port_pd = pd; update_state(); }
+
+    void col_ram_w(const u16& addr, const u8& data) { s.color_ram[addr] = data & 0xf; } // masking the write is enough
+
+    void r_io(const u16& addr, u8& data) {
+        switch (addr >> 8) {
+            case 0x0: case 0x1: case 0x2: case 0x3: vic.r(addr & 0x003f, data);     return;
+            case 0x4: case 0x5: case 0x6: case 0x7: sid.r(addr & 0x001f, data);     return;
+            case 0x8: case 0x9: case 0xa: case 0xb: col_ram_r(addr & 0x03ff, data); return;
+            case 0xc:                               cia1.r(addr & 0x000f, data);    return;
+            case 0xd:                               cia2.r(addr & 0x000f, data);    return;
+            case 0xe:                               /*exp.io1_r(addr, data);*/          return;
+            case 0xf:                               /*exp.io2_r(addr, data);*/          return;
+        }
+    }
+
+    void w_io(const u16& addr, const u8& data) {
+        switch (addr >> 8) {
+            case 0x0: case 0x1: case 0x2: case 0x3: vic.w(addr & 0x003f, data);     return;
+            case 0x4: case 0x5: case 0x6: case 0x7: sid.w(addr & 0x001f, data);     return;
+            case 0x8: case 0x9: case 0xa: case 0xb: col_ram_w(addr & 0x03ff, data); return;
+            case 0xc:                               cia1.w(addr & 0x000f, data);    return;
+            case 0xd:                               cia2.w(addr & 0x000f, data);    return;
+            case 0xe:                               /*exp.io1_w(addr, data);*/          return;
+            case 0xf:                               /*exp.io2_w(addr, data);*/          return;
+        }
+    }
+
+    void update_state() { // output bits set from 'pd', input bits unchanged
+        auto& b{s.banking};
+        b.io_port_state = (b.io_port_pd & b.io_port_dd) | (b.io_port_state & ~b.io_port_dd);
+        set_pla();
+    }
+
+    void set_pla() {
+        auto& b{s.banking};
+        const u8 lhc = (b.io_port_state | ~b.io_port_dd) & loram_hiram_charen_bits; // inputs -> pulled up
+        const u8 mode = b.exrom_game | lhc;
+        b.pla_line = PLA::Mode_to_line[mode];
+    }
+
+    State::System& s;
+
+    const State::System::ROM& rom;
+
+    CIA& cia1;
+    CIA& cia2;
+    TheSID& sid;
+    VIC& vic;
+};
 
 
 class Int_hub {
@@ -253,7 +450,7 @@ public:
         // intercept load/save for tape device
         install_kernal_tape_traps(const_cast<u8*>(rom.kernal), Trap_OPC::tape_routine);
 
-        Cartridge::detach(exp_ctx);
+        //Cartridge::detach(exp_ctx);
     }
 
     void run(Mode init_mode = Mode::clocked);
@@ -273,17 +470,15 @@ private:
 
     TheSID sid{int(FRAME_RATE_MIN), Performance::min_sync_points, s.vic.cycle};
 
-    Color_RAM col_ram{s.color_ram};
+    VIC vic{s.vic, bus, s.ba_low, int_hub.int_sig};
 
-    VIC vic{s.vic, s.ram, col_ram, rom.charr, exp_io.romh_r, s.ba_low, int_hub.int_sig};
-
-    Bus<CPU, CIA, TheSID, VIC, Color_RAM> bus{s, rom, cia1, cia2, sid, vic, col_ram, exp_io};
+    Bus bus{s, rom, cia1, cia2, sid, vic};
 
     Int_hub int_hub{s.int_hub};
 
     Input_matrix input_matrix{s.input_matrix, cia1.port_a.ext_in, cia1.port_b.ext_in, vic};
 
-    Expansion_ctx::IO exp_io{
+    /*Expansion_ctx::IO exp_io{
         s.ba_low,
         //std::bind(&Address_space::access, addr_space, std::placeholders::_1),
         [this](const u16& a, u8& d, const u8 rw) { bus.access(a, d, rw); },
@@ -295,6 +490,7 @@ private:
     Expansion_ctx exp_ctx{
         exp_io, _bus, s.ram, s.vic.cycle, s.exp_ram, nullptr, nullptr
     };
+    */
 
     C1541::System c1541{cia2.port_a.ext_in, rom.c1541};
 
@@ -307,7 +503,7 @@ private:
     IO::Port::PD_out cia2_pa_out {
         [this](u8 state) {
             const u8 va14_va15 = state & 0b11;
-            vic.set_bank(va14_va15);
+            bus.set_vic_bank(va14_va15);
 
             c1541.iec.cia2_pa_output(state);
             /*if (c1541.idle) {
@@ -447,8 +643,9 @@ private:
     }
 
     std::vector<::Menu::Action> cart_menu_actions{
-        {"DETACH ?", [&](){ Cartridge::detach(exp_ctx); reset_cold(); }},
-        {"ATTACH REU ?", [&]() { if ( Cartridge::attach_REU(exp_ctx)) reset_cold(); }},
+        // TODO
+        {"DETACH ?", [&](){ /*Cartridge::detach(exp_ctx);*/ reset_cold(); }},
+        {"ATTACH REU ?", [&]() { /*if ( Cartridge::attach_REU(exp_ctx))*/ reset_cold(); }},
     };
 
     std::vector<::Menu::Knob> perf_menu_items{
@@ -516,7 +713,7 @@ void C64::run_cycle() {
         if (rw == NMOS6502::MC::RW::r) c1541.tick();
     }
 
-    if (exp_ctx.tick) exp_ctx.tick();
+    // if (exp_ctx.tick) exp_ctx.tick(); // TODO
 
     cia1.tick();
     cia2.tick();

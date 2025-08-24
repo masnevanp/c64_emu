@@ -17,6 +17,7 @@
 */
 
 
+/*
 // gather everything required by an expansion (e.g. cart)
 struct Expansion_ctx {
     struct IO {
@@ -75,6 +76,6 @@ void detach(Expansion_ctx& exp_ctx);
 bool attach_REU(Expansion_ctx& exp_ctx);
 
 }
-
+*/
 
 #endif // EXPANSION_H_INCLUDED
