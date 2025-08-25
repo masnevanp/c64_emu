@@ -525,8 +525,7 @@ bool System::C64::handle_file(Files::File& file) {
         case Type::crt: {
             Log::info("CRT '%s' ...", file.name.c_str());
             deferred = [&, data = std::move(file.data)]() {
-                //const Files::CRT crt{data};
-                /*if (Cartridge::attach(crt, exp_ctx))*/ reset_cold(); // TODO
+                if (bus.attach_crt(Files::CRT{data})) reset_cold();
             };
             return true;
         }

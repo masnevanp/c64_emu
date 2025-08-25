@@ -316,8 +316,43 @@ private:
     const PD_out& ext_out;
 };
 
-
 } // namespace IO
+
+
+namespace Expansion {
+
+// Source: VICE manual (https://vice-emu.sourceforge.io/vice_17.html)
+enum Type : u16 {
+    T0_Normal_cartridge = 0, T1_Action_Replay = 1, T2_KCS_Power_Cartridge = 2,
+    T3_Final_Cartridge_III = 3, T4_Simons_BASIC = 4, T5_Ocean_type_1 = 5,
+    T6_Expert_Cartridge = 6, T7_Fun_Play_Power_Play = 7, T8_Super_Games = 8,
+    T9_Atomic_Power = 9, T10_Epyx_Fastload = 10, T11_Westermann_Learning = 11,
+    T12_Rex_Utility = 12, T13_Final_Cartridge_I = 13, T14_Magic_Formel = 14,
+    T15_C64_Game_System_System_3 = 15, T16_Warp_Speed = 16, T17_Dinamic = 17,
+    T18_Zaxxon_Super_Zaxxon_SEGA = 18, T19_Magic_Desk_Domark_HES_Australia = 19, T20_Super_Snapshot_V5 = 20,
+    T21_Comal_80 = 21, T22_Structured_BASIC = 22, T23_Ross = 23,
+    T24_Dela_EP64 = 24, T25_Dela_EP7x8 = 25, T26_Dela_EP256 = 26,
+    T27_Rex_EP256 = 27, T28_Mikro_Assembler = 28, T29_Final_Cartridge_Plus = 29,
+    T30_Action_Replay_4 = 30, T31_Stardos = 31, T32_EasyFlash = 32,
+    T33_EasyFlash_Xbank = 33, T34_Capture = 34, T35_Action_Replay_3 = 35,
+    T36_Retro_Replay = 36, T37_MMC64 = 37, T38_MMC_Replay = 38,
+    T39_IDE64 = 39, T40_Super_Snapshot_V4 = 40, T41_IEEE_488 = 41,
+    T42_Game_Killer = 42, T43_Prophet64 = 43, T44_EXOS = 44,
+    T45_Freeze_Frame = 45, T46_Freeze_Machine = 46, T47_Snapshot64 = 47,
+    T48_Super_Explode_V5_0 = 48, T49_Magic_Voice = 49, T50_Action_Replay_2 = 50,
+    T51_MACH_5 = 51, T52_Diashow_Maker = 52, T53_Pagefox = 53,
+    T54_Kingsoft = 54, T55_Silverrock_128K_Cartridge = 55, T56_Formel_64 = 56,
+    T57_RGCD = 57, T58_RR_Net_MK3 = 58, T59_EasyCalc = 59,
+    T60_GMod2 = 60, T61_MAX_Basic = 61, T62_GMod3 = 62,
+    T63_ZIPP_CODE_48 = 63, T64_Blackbox_V8 = 64, T65_Blackbox_V3 = 65,
+    T66_Blackbox_V4 = 66, T67_REX_RAM_Floppy = 67, T68_BIS_Plus = 68,
+    T69_SD_BOX = 69, T70_MultiMAX = 70, T71_Blackbox_V9 = 71,
+    T72_Lt_Kernal_Host_Adaptor = 72, T73_RAMLink = 73, T74_HERO = 74,
+
+    REU = 0xfffe, None = 0xffff,
+};
+
+} // namespace Expansion
 
 
 namespace C1541 {

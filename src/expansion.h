@@ -17,6 +17,20 @@
 */
 
 
+namespace Expansion {
+
+struct exrom_game {
+    bool exrom;
+    bool game;
+};
+
+
+Maybe<exrom_game> load_crt(const Files::CRT& crt, u8* exp_ram);
+
+
+} // namespace Expansion
+
+
 /*
 // gather everything required by an expansion (e.g. cart)
 struct Expansion_ctx {

@@ -241,6 +241,8 @@ struct System {
     Banking banking;
     VIC_II_Banking vic_banking;
 
+    Expansion::Type expansion_type;
+
     Int_hub int_hub;
 
     Input_matrix input_matrix; // problems with load/save state?

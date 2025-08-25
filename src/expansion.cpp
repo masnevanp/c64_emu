@@ -11,6 +11,130 @@
       in order)
 */
 
+// for the basic 'no fancy dynamic banking' carts
+int load_static_chips(const Files::CRT& crt, u8* exp_ram) {
+    int count = 0;
+
+    for (auto cp : crt.chip_packets()) {
+        u32 tgt_addr;
+
+        if (cp->load_addr == 0x8000) tgt_addr = 0x0000;
+        else if (cp->load_addr == 0xa000 || cp->load_addr == 0xe000) tgt_addr = 0x2000;
+        else {
+            Log::error("CRT: invalid CHIP packet address - %d", (int)cp->load_addr);
+            continue;
+        }
+
+        std::copy(cp->data(), cp->data() + cp->data_size, exp_ram + tgt_addr);
+
+        ++count;
+    }
+
+    return count;
+}
+
+// just load all the chips in the order found (TODO: ever need to check the order?)
+int load_chips(const Files::CRT& crt, u8* exp_ram) {
+    int count = 0;
+
+    u8* tgt = exp_ram;
+    for (auto cp : crt.chip_packets()) {
+        std::copy(cp->data(), cp->data() + cp->data_size, tgt);
+        tgt += cp->data_size;
+        ++count;
+    }
+
+    return count;
+}
+
+
+/*
+Maybe<Expansion::exrom_game> T0_Normal_cartridge(const Files::CRT& crt, u8* exp_ram) {
+    if (load_static_chips(crt, exp_ram) == 0) return {};
+
+    ctx.io.roml_r = [&](const u16& a, u8& d) { d = ctx.ram[a]; };
+    ctx.io.romh_r = [&](const u16& a, u8& d) { d = ctx.ram[0x2000 + a]; };
+
+    return exrom_game(crt);
+}
+*/
+
+
+Maybe<Expansion::exrom_game> Expansion::load_crt(const Files::CRT& crt, u8* exp_ram) {
+    if (!crt.header().valid()) {
+        Log::error("CRT: invalid img header");
+        return {};
+    }
+
+    bool success;
+
+    const auto type = Expansion::Type{(u16)crt.header().hw_type};
+    switch (type) {
+        using T = Expansion::Type;
+
+        case T::T0_Normal_cartridge: success = load_static_chips(crt, exp_ram) > 0; break;
+        default:
+            Log::error("CRT: unsupported HW type: %d", (int)crt.header().hw_type);
+            success = false;
+            break;
+    }
+
+    if (success) return exrom_game{bool(crt.header().exrom), bool(crt.header().game)};
+    else return {};
+}
+
+/*
+bool Cartridge::attach(const Files::CRT& crt, Ctx& exp_ctx) {
+    if (!crt.header().valid()) {
+        Log::error("CRT: invalid img header");
+        return false;
+    }
+
+    detach(exp_ctx);
+
+    Result result;
+    const auto type = crt.header().hw_type;
+
+    switch (type) {
+        using T = Files::CRT::Cartridge_HW_type;
+
+        case T::T0_Normal_cartridge:
+            result = T0_Normal_cartridge(crt, exp_ctx);
+            break;
+        case T::T4_Simons_BASIC:
+            result = T4_Simons_BASIC(crt, exp_ctx);
+            break;
+        case T::T5_Ocean_type_1:
+            result = T5_Ocean_type_1(crt, exp_ctx);
+            break;
+        case T::T10_Epyx_Fastload:
+            result = T10_Epyx_Fastload(crt, exp_ctx);
+            break;
+        case T::T16_Warp_Speed:
+            result = T16_Warp_Speed(crt, exp_ctx);
+            break;
+        case T::T18_Zaxxon_Super_Zaxxon_SEGA:
+            result = T18_Zaxxon_Super_Zaxxon_SEGA(crt, exp_ctx);
+            break;
+        case T::T51_MACH_5:
+            result = T51_MACH_5(crt, exp_ctx);
+            break;
+        default:
+            Log::error("CRT: unsupported HW type: %d", (int)type);
+            return false;
+    }
+
+    if (result) {
+        exp_ctx.io.exrom_game((*result).exrom, (*result).game);
+        Log::info("CRT: attached HW type: %d", (int)type);
+        return true;
+    }
+
+    Log::error("CRT: failed to attach");
+    return false;
+}
+*/
+
 /*
 using Ctx = Expansion_ctx;
 

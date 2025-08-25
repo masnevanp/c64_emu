@@ -84,7 +84,7 @@ public:
       :
         s(s_), rom(rom_), cia1(cia1_), cia2(cia2_), sid(sid_), vic(vic_)
     {
-        set_exrom_game(true, true);
+        set_exrom_game({true, true});
     }
 
     void reset() {
@@ -148,16 +148,26 @@ public:
 
     void col_ram_r(const u16& addr, u8& data) const { data = s.color_ram[addr]; }
 
-    void set_exrom_game(bool exrom, bool game) {
-        s.banking.exrom_game = (exrom << 4) | (game << 3);
-        set_pla();
-
-        s.vic_banking.ultimax = (exrom && !game);
-    }
-
     // TODO: combine .ultimax & .bank to a single index (0..7)
     //       (--> make vic_layouts an array of 8 entries...)
     void set_vic_bank(u8 va14_va15) { s.vic_banking.bank = va14_va15; }
+
+    bool attach_crt(const Files::CRT& crt) {
+        // need to 'detach' something first?
+        auto eg = Expansion::load_crt(crt, s.exp_ram);
+        if (eg) {
+            set_exrom_game(*eg);
+            s.expansion_type = Expansion::Type((u16)crt.header().hw_type);
+            Log::info("CRT: attached HW type: %d", (u16)crt.header().hw_type);
+            return true;
+        } else {
+            Log::error("CRT: failed to attach");
+            return false;
+        }
+    }
+    bool attach_REU() { Log::error("TODO: attach REU"); return false; }
+
+    void detach_expansion() { s.expansion_type = Expansion::Type::None; }
 
 private:
     enum IO_bits : u8 {
@@ -165,6 +175,13 @@ private:
         cassette_switch_sense = 0x10,
         cassette_motor_control = 0x20,
     };
+
+    void set_exrom_game(const Expansion::exrom_game& eg) {
+        s.banking.exrom_game = (eg.exrom << 4) | (eg.game << 3);
+        set_pla();
+
+        s.vic_banking.ultimax = (eg.exrom && !eg.game);
+    }
 
     u8 r_dd() const { return s.banking.io_port_dd; }
     u8 r_pd() const {
@@ -450,7 +467,7 @@ public:
         // intercept load/save for tape device
         install_kernal_tape_traps(const_cast<u8*>(rom.kernal), Trap_OPC::tape_routine);
 
-        //Cartridge::detach(exp_ctx);
+        bus.detach_expansion();
     }
 
     void run(Mode init_mode = Mode::clocked);
@@ -644,8 +661,8 @@ private:
 
     std::vector<::Menu::Action> cart_menu_actions{
         // TODO
-        {"DETACH ?", [&](){ /*Cartridge::detach(exp_ctx);*/ reset_cold(); }},
-        {"ATTACH REU ?", [&]() { /*if ( Cartridge::attach_REU(exp_ctx))*/ reset_cold(); }},
+        {"DETACH ?", [&](){ bus.detach_expansion(); reset_cold(); }},
+        {"ATTACH REU ?", [&]() { if (bus.attach_REU()) reset_cold(); }},
     };
 
     std::vector<::Menu::Knob> perf_menu_items{
