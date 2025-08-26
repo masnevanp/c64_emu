@@ -84,7 +84,7 @@ public:
       :
         s(s_), rom(rom_), cia1(cia1_), cia2(cia2_), sid(sid_), vic(vic_)
     {
-        set_exrom_game({true, true});
+        detach_expansion();
     }
 
     void reset() {
@@ -97,8 +97,9 @@ public:
 
     void access(const u16& addr, u8& data, const u8 rw) {
         using m = PLA::Mapping;
+        namespace E = Expansion;
 
-        switch (PLA::line[s.banking.pla_line].pl[rw][addr >> 12]) {
+        switch (auto mapping = PLA::line[s.banking.pla_line].pl[rw][addr >> 12]; mapping) {
             case m::ram0_r:
                 data = (addr > 0x0001)
                             ? s.ram[addr]
@@ -113,10 +114,11 @@ public:
             case m::bas_r:   data = rom.basic[addr & 0x1fff];  return; // 8 KB
             case m::kern_r:  data = rom.kernal[addr & 0x1fff]; return;
             case m::charr_r: data = rom.charr[addr & 0x0fff];  return; // 4 KB
-            case m::roml_r:  /*exp.roml_r(addr & 0x1fff, data);*/  return; // 8 KB
-            case m::roml_w:  /*exp.roml_w(addr & 0x1fff, data);*/  return;
-            case m::romh_r:  /*exp.romh_r(addr & 0x1fff, data);*/  return;
-            case m::romh_w:  /*exp.romh_w(addr & 0x1fff, data);*/  return;
+            case m::roml_r: case m::roml_w: case m::romh_r: case m::romh_w: { // 8 KB
+                const auto op = E::Op::roml_r + (mapping - m::roml_r); // translate mapping to op
+                E::do_op(s.expansion_type, E::Op(op), addr & 0x1fff, data, s.exp_ram);
+                return;
+            }
             case m::io_r:    r_io(addr & 0x0fff, data);        return; // 4 KB
             case m::io_w:    w_io(addr & 0x0fff, data);        return;
             case m::none_r:  // TODO: anything..? (return 'floating' state..)
@@ -154,9 +156,8 @@ public:
 
     bool attach_crt(const Files::CRT& crt) {
         // need to 'detach' something first?
-        auto eg = Expansion::load_crt(crt, s.exp_ram);
-        if (eg) {
-            set_exrom_game(*eg);
+        if (Expansion::load_crt(crt, s.exp_ram)) {
+            set_exrom_game(crt);
             s.expansion_type = Expansion::Type((u16)crt.header().hw_type);
             Log::info("CRT: attached HW type: %d", (u16)crt.header().hw_type);
             return true;
@@ -167,7 +168,10 @@ public:
     }
     bool attach_REU() { Log::error("TODO: attach REU"); return false; }
 
-    void detach_expansion() { s.expansion_type = Expansion::Type::None; }
+    void detach_expansion() {
+        s.expansion_type = Expansion::Type::None;
+        set_exrom_game({true, true});
+    }
 
 private:
     enum IO_bits : u8 {
@@ -197,26 +201,28 @@ private:
     void col_ram_w(const u16& addr, const u8& data) { s.color_ram[addr] = data & 0xf; } // masking the write is enough
 
     void r_io(const u16& addr, u8& data) {
+        namespace E = Expansion;
         switch (addr >> 8) {
             case 0x0: case 0x1: case 0x2: case 0x3: vic.r(addr & 0x003f, data);     return;
             case 0x4: case 0x5: case 0x6: case 0x7: sid.r(addr & 0x001f, data);     return;
             case 0x8: case 0x9: case 0xa: case 0xb: col_ram_r(addr & 0x03ff, data); return;
             case 0xc:                               cia1.r(addr & 0x000f, data);    return;
             case 0xd:                               cia2.r(addr & 0x000f, data);    return;
-            case 0xe:                               /*exp.io1_r(addr, data);*/          return;
-            case 0xf:                               /*exp.io2_r(addr, data);*/          return;
+            case 0xe: E::do_op(s.expansion_type, E::Op::io1_r, addr, data, s.exp_ram); return;
+            case 0xf: E::do_op(s.expansion_type, E::Op::io2_r, addr, data, s.exp_ram); return;
         }
     }
 
     void w_io(const u16& addr, const u8& data) {
+        namespace E = Expansion;
         switch (addr >> 8) {
             case 0x0: case 0x1: case 0x2: case 0x3: vic.w(addr & 0x003f, data);     return;
             case 0x4: case 0x5: case 0x6: case 0x7: sid.w(addr & 0x001f, data);     return;
             case 0x8: case 0x9: case 0xa: case 0xb: col_ram_w(addr & 0x03ff, data); return;
             case 0xc:                               cia1.w(addr & 0x000f, data);    return;
             case 0xd:                               cia2.w(addr & 0x000f, data);    return;
-            case 0xe:                               /*exp.io1_w(addr, data);*/          return;
-            case 0xf:                               /*exp.io2_w(addr, data);*/          return;
+            case 0xe: E::do_op(s.expansion_type, E::Op::io1_w, addr, const_cast<u8&>(data), s.exp_ram); return;
+            case 0xf: E::do_op(s.expansion_type, E::Op::io2_w, addr, const_cast<u8&>(data), s.exp_ram); return;
         }
     }
 
@@ -466,8 +472,6 @@ public:
     {
         // intercept load/save for tape device
         install_kernal_tape_traps(const_cast<u8*>(rom.kernal), Trap_OPC::tape_routine);
-
-        bus.detach_expansion();
     }
 
     void run(Mode init_mode = Mode::clocked);

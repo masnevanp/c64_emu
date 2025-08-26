@@ -11,8 +11,11 @@
       in order)
 */
 
+using namespace Expansion;
+
+
 // for the basic 'no fancy dynamic banking' carts
-int load_static_chips(const Files::CRT& crt, u8* exp_ram) {
+int Expansion::load_static_chips(const Files::CRT& crt, u8* exp_ram) {
     int count = 0;
 
     for (auto cp : crt.chip_packets()) {
@@ -34,7 +37,7 @@ int load_static_chips(const Files::CRT& crt, u8* exp_ram) {
 }
 
 // just load all the chips in the order found (TODO: ever need to check the order?)
-int load_chips(const Files::CRT& crt, u8* exp_ram) {
+int Expansion::load_chips(const Files::CRT& crt, u8* exp_ram) {
     int count = 0;
 
     u8* tgt = exp_ram;
@@ -48,39 +51,23 @@ int load_chips(const Files::CRT& crt, u8* exp_ram) {
 }
 
 
-/*
-Maybe<Expansion::exrom_game> T0_Normal_cartridge(const Files::CRT& crt, u8* exp_ram) {
-    if (load_static_chips(crt, exp_ram) == 0) return {};
-
-    ctx.io.roml_r = [&](const u16& a, u8& d) { d = ctx.ram[a]; };
-    ctx.io.romh_r = [&](const u16& a, u8& d) { d = ctx.ram[0x2000 + a]; };
-
-    return exrom_game(crt);
-}
-*/
-
-
-Maybe<Expansion::exrom_game> Expansion::load_crt(const Files::CRT& crt, u8* exp_ram) {
+bool Expansion::load_crt(const Files::CRT& crt, u8* exp_ram) {
     if (!crt.header().valid()) {
         Log::error("CRT: invalid img header");
-        return {};
+        return false;
     }
-
-    bool success;
 
     const auto type = Expansion::Type{(u16)crt.header().hw_type};
     switch (type) {
         using T = Expansion::Type;
 
-        case T::T0_Normal_cartridge: success = load_static_chips(crt, exp_ram) > 0; break;
+        case T::T0_Normal_cartridge: return T0{exp_ram}.load(crt);
         default:
             Log::error("CRT: unsupported HW type: %d", (int)crt.header().hw_type);
-            success = false;
             break;
     }
 
-    if (success) return exrom_game{bool(crt.header().exrom), bool(crt.header().game)};
-    else return {};
+    return false;
 }
 
 /*

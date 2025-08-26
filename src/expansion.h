@@ -22,11 +22,70 @@ namespace Expansion {
 struct exrom_game {
     bool exrom;
     bool game;
+    exrom_game(bool e, bool g) : exrom(e), game(g) {}
+    exrom_game(const Files::CRT& crt)
+        : exrom(bool(crt.header().exrom)), game(bool(crt.header().game)) {} 
 };
 
 
-Maybe<exrom_game> load_crt(const Files::CRT& crt, u8* exp_ram);
+int load_static_chips(const Files::CRT& crt, u8* exp_ram);
+int load_chips(const Files::CRT& crt, u8* exp_ram);
 
+
+struct Null {
+    u8* exp_ram;
+
+    Null(u8* exp_ram_) : exp_ram(exp_ram_) {}
+
+    // TODO: reading unconnected areas should return whatever is 'floating' on the bus
+    void roml_r(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
+    void roml_w(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
+    void romh_r(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
+    void romh_w(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
+
+    void io1_r(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
+    void io1_w(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
+    void io2_r(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
+    void io2_w(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
+};
+
+
+struct T0 : public Null {
+    T0(u8* exp_ram) : Null(exp_ram) {}
+
+    void roml_r(const u16& addr, u8& data) { data = exp_ram[addr]; }
+    void romh_r(const u16& addr, u8& data) { data = exp_ram[0x2000 + addr]; }
+
+    bool load(const Files::CRT& crt) {
+        return (load_static_chips(crt, exp_ram) > 0) ;
+    }
+};
+
+
+bool load_crt(const Files::CRT& crt, u8* exp_ram);
+
+
+enum Op : u8 {
+    roml_r = 0,  roml_w = 1,
+    romh_r = 2,  romh_w = 3,
+    io1_r  = 4,  io2_r  = 5,
+    io1_w  = 6,  io2_w  = 7,
+
+    _cnt = 8
+};
+
+inline void do_op(Expansion::Type type, Op op, const u16& addr, u8& data, u8* exp_ram) {
+    switch ((type * Op::_cnt) + op) {
+        case 0: T0{exp_ram}.roml_r(addr, data); return;
+        case 1: T0{exp_ram}.roml_w(addr, data); return;
+        case 2: T0{exp_ram}.romh_r(addr, data); return;
+        case 3: T0{exp_ram}.romh_w(addr, data); return;
+        case 4: T0{exp_ram}.io1_r(addr, data); return;
+        case 5: T0{exp_ram}.io2_r(addr, data); return;
+        case 6: T0{exp_ram}.io1_w(addr, data); return;
+        case 7: T0{exp_ram}.io2_w(addr, data); return;
+    }
+}
 
 } // namespace Expansion
 
