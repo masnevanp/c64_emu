@@ -51,19 +51,17 @@ int Expansion::load_chips(const Files::CRT& crt, u8* exp_ram) {
 }
 
 
-bool Expansion::load_crt(const Files::CRT& crt, u8* exp_ram) {
+bool Expansion::load_crt(const Files::CRT& crt, State::System& s) {
     if (!crt.header().valid()) {
         Log::error("CRT: invalid img header");
         return false;
     }
 
-    const auto type = Expansion::Type{(u16)crt.header().hw_type};
+    const auto type = crt.header().hw_type;
     switch (type) {
-        using T = Expansion::Type;
-
-        case T::T0_Normal_cartridge: return T0{exp_ram}.load(crt);
+        case 0: return T0{s}.load(crt);
         default:
-            Log::error("CRT: unsupported HW type: %d", (int)crt.header().hw_type);
+            Log::error("CRT: unsupported HW type: %d", (int)type);
             break;
     }
 

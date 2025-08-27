@@ -173,12 +173,6 @@ const System::PLA::Line System::PLA::line[14] = {
 };
 
 
-const u8 System::PLA::Mode_to_line[32] = {
-    0,  0,  1,  2,  0, 11,  3,  4, 0,  8,  9,  5,  0, 11, 12,  6,
-    7,  7,  7,  7,  7,  7,  7,  7, 0,  8,  9, 10,  0, 11, 12, 13,
-};
-
-
 void System::Input_matrix::update_matrix() {
     auto get_row = [](int n, u64& from) -> u64 { return (from >> (8 * n)) & 0xff; };
     auto set_row = [](int n, u64& to, u64 val) { to |= (val << (8 * n)); };

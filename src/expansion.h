@@ -19,12 +19,8 @@
 
 namespace Expansion {
 
-struct exrom_game {
-    bool exrom;
-    bool game;
-    exrom_game(bool e, bool g) : exrom(e), game(g) {}
-    exrom_game(const Files::CRT& crt)
-        : exrom(bool(crt.header().exrom)), game(bool(crt.header().game)) {} 
+enum Type : u16 {
+    REU = 0xfffe, None = 0xffff,
 };
 
 
@@ -33,36 +29,36 @@ int load_chips(const Files::CRT& crt, u8* exp_ram);
 
 
 struct Null {
-    u8* exp_ram;
+    State::System& s;
 
-    Null(u8* exp_ram_) : exp_ram(exp_ram_) {}
+    Null(State::System& s_) : s(s_) {}
 
     // TODO: reading unconnected areas should return whatever is 'floating' on the bus
-    void roml_r(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
-    void roml_w(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
-    void romh_r(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
-    void romh_w(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
+    void roml_r(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
+    void roml_w(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
+    void romh_r(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
+    void romh_w(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
 
-    void io1_r(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
-    void io1_w(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
-    void io2_r(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
-    void io2_w(const u16& addr, u8& data) { UNUSED(addr); UNUSED(data); }
+    void io1_r(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
+    void io1_w(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
+    void io2_r(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
+    void io2_w(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
 };
 
 
 struct T0 : public Null {
-    T0(u8* exp_ram) : Null(exp_ram) {}
+    T0(State::System& s) : Null(s) {}
 
-    void roml_r(const u16& addr, u8& data) { data = exp_ram[addr]; }
-    void romh_r(const u16& addr, u8& data) { data = exp_ram[0x2000 + addr]; }
+    void roml_r(const u16& a, u8& d) { d = s.exp_ram[a]; }
+    void romh_r(const u16& a, u8& d) { d = s.exp_ram[0x2000 + a]; }
 
     bool load(const Files::CRT& crt) {
-        return (load_static_chips(crt, exp_ram) > 0) ;
+        return (load_static_chips(crt, s.exp_ram) > 0) ;
     }
 };
 
 
-bool load_crt(const Files::CRT& crt, u8* exp_ram);
+bool load_crt(const Files::CRT& crt, State::System& s);
 
 
 enum Op : u8 {
@@ -74,18 +70,24 @@ enum Op : u8 {
     _cnt = 8
 };
 
-inline void do_op(Expansion::Type type, Op op, const u16& addr, u8& data, u8* exp_ram) {
-    switch ((type * Op::_cnt) + op) {
-        case 0: T0{exp_ram}.roml_r(addr, data); return;
-        case 1: T0{exp_ram}.roml_w(addr, data); return;
-        case 2: T0{exp_ram}.romh_r(addr, data); return;
-        case 3: T0{exp_ram}.romh_w(addr, data); return;
-        case 4: T0{exp_ram}.io1_r(addr, data); return;
-        case 5: T0{exp_ram}.io2_r(addr, data); return;
-        case 6: T0{exp_ram}.io1_w(addr, data); return;
-        case 7: T0{exp_ram}.io2_w(addr, data); return;
+
+inline void do_op(u16 exp_type, Op op, const u16& a, u8& d, State::System& s) {
+    #define CASE(t) case (t * Op::_cnt) + Op::roml_r: T##t{s}.roml_r(a, d); return; \
+                    case (t * Op::_cnt) + Op::roml_w: T##t{s}.roml_w(a, d); return; \
+                    case (t * Op::_cnt) + Op::romh_r: T##t{s}.romh_r(a, d); return; \
+                    case (t * Op::_cnt) + Op::romh_w: T##t{s}.romh_w(a, d); return; \
+                    case (t * Op::_cnt) + Op::io1_r: T##t{s}.io1_r(a, d); return; \
+                    case (t * Op::_cnt) + Op::io2_r: T##t{s}.io2_r(a, d); return; \
+                    case (t * Op::_cnt) + Op::io1_w: T##t{s}.io1_w(a, d); return; \
+                    case (t * Op::_cnt) + Op::io2_w: T##t{s}.io2_w(a, d); return; \
+
+    switch ((exp_type * Op::_cnt) + op) {
+        CASE(0)
     }
+
+    #undef CASE
 }
+
 
 } // namespace Expansion
 
@@ -102,7 +104,7 @@ struct Expansion_ctx {
           : ba_low(ba_low_), sys_addr_space(sys_addr_space_), exrom_game(exrom_game_),
             int_sig(int_sig_), dma_low(dma_low_) {}
 
-        using r = std::function<void (const u16& addr, u8& data)>;
+        using r = std::function<void (const u16& a, u8& d)>;
         using w = std::function<void (const u16& addr, const u8& data)>;
 
         // sys -> exp

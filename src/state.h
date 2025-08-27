@@ -241,7 +241,7 @@ struct System {
     Banking banking;
     VIC_II_Banking vic_banking;
 
-    Expansion::Type expansion_type;
+    u16 expansion_type;
 
     Int_hub int_hub;
 
@@ -263,6 +263,31 @@ struct System {
 
 
 } // namespace State
+
+
+namespace System {
+
+inline void set_pla(State::System& s) { // TODO: non-inlined? (definition to .cpp)
+    static constexpr u8 Mode_to_line[32] = {
+        0,  0,  1,  2,  0, 11,  3,  4, 0,  8,  9,  5,  0, 11, 12,  6,
+        7,  7,  7,  7,  7,  7,  7,  7, 0,  8,  9, 10,  0, 11, 12, 13,
+    };
+    static constexpr u8 loram_hiram_charen_bits = 0x07;
+
+    auto& b{s.banking};
+    const u8 lhc = (b.io_port_state | ~b.io_port_dd) & loram_hiram_charen_bits; // inputs -> pulled up
+    const u8 mode = b.exrom_game | lhc;
+    b.pla_line = Mode_to_line[mode];
+}
+
+inline void set_exrom_game(const Expansion::exrom_game& eg, State::System& s) { // TODO: non-inlined? (definition to .cpp)
+    s.banking.exrom_game = (eg.exrom << 4) | (eg.game << 3);
+    set_pla(s);
+
+    s.vic_banking.ultimax = (eg.exrom && !eg.game);
+}
+
+}
 
 
 #endif // STATE_H_INCLUDED

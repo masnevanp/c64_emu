@@ -279,6 +279,8 @@ struct CRT {
 
         return packets;
     };
+
+    Expansion::exrom_game get_exrom_game() const { return {bool(header().exrom), bool(header().game)}; }
 };
 
 

@@ -116,7 +116,7 @@ public:
             case m::charr_r: data = rom.charr[addr & 0x0fff];  return; // 4 KB
             case m::roml_r: case m::roml_w: case m::romh_r: case m::romh_w: { // 8 KB
                 const auto op = E::Op::roml_r + (mapping - m::roml_r); // translate mapping to op
-                E::do_op(s.expansion_type, E::Op(op), addr & 0x1fff, data, s.exp_ram);
+                E::do_op(s.expansion_type, E::Op(op), addr & 0x1fff, data, s);
                 return;
             }
             case m::io_r:    r_io(addr & 0x0fff, data);        return; // 4 KB
@@ -141,6 +141,7 @@ public:
             case m::romh: {
                 u8 data = 0x00;
                 //romh_r(addr & 0x01fff, data); // TODO
+                Expansion::do_op(s.expansion_type, Expansion::Op::romh_r, addr & 0x1fff, data, s);
                 return data;
             }
         }
@@ -156,9 +157,9 @@ public:
 
     bool attach_crt(const Files::CRT& crt) {
         // need to 'detach' something first?
-        if (Expansion::load_crt(crt, s.exp_ram)) {
-            set_exrom_game(crt);
-            s.expansion_type = Expansion::Type((u16)crt.header().hw_type);
+        if (Expansion::load_crt(crt, s)) {
+            set_exrom_game(crt.get_exrom_game(), s);
+            s.expansion_type = crt.header().hw_type;
             Log::info("CRT: attached HW type: %d", (u16)crt.header().hw_type);
             return true;
         } else {
@@ -170,7 +171,7 @@ public:
 
     void detach_expansion() {
         s.expansion_type = Expansion::Type::None;
-        set_exrom_game({true, true});
+        set_exrom_game({true, true}, s);
     }
 
 private:
@@ -180,13 +181,6 @@ private:
         cassette_motor_control = 0x20,
     };
 
-    void set_exrom_game(const Expansion::exrom_game& eg) {
-        s.banking.exrom_game = (eg.exrom << 4) | (eg.game << 3);
-        set_pla();
-
-        s.vic_banking.ultimax = (eg.exrom && !eg.game);
-    }
-
     u8 r_dd() const { return s.banking.io_port_dd; }
     u8 r_pd() const {
         static constexpr u8 pull_up = IO_bits::loram_hiram_charen_bits | IO_bits::cassette_switch_sense;
@@ -195,8 +189,8 @@ private:
         return (s.banking.io_port_state | pulled_up) & cmc;
     }
 
-    void w_dd(const u8& dd) { s.banking.io_port_dd = dd; update_state(); }
-    void w_pd(const u8& pd) { s.banking.io_port_pd = pd; update_state(); }
+    void w_dd(const u8& dd) { s.banking.io_port_dd = dd; update_io_port_state(); }
+    void w_pd(const u8& pd) { s.banking.io_port_pd = pd; update_io_port_state(); }
 
     void col_ram_w(const u16& addr, const u8& data) { s.color_ram[addr] = data & 0xf; } // masking the write is enough
 
@@ -208,8 +202,8 @@ private:
             case 0x8: case 0x9: case 0xa: case 0xb: col_ram_r(addr & 0x03ff, data); return;
             case 0xc:                               cia1.r(addr & 0x000f, data);    return;
             case 0xd:                               cia2.r(addr & 0x000f, data);    return;
-            case 0xe: E::do_op(s.expansion_type, E::Op::io1_r, addr, data, s.exp_ram); return;
-            case 0xf: E::do_op(s.expansion_type, E::Op::io2_r, addr, data, s.exp_ram); return;
+            case 0xe: E::do_op(s.expansion_type, E::Op::io1_r, addr, data, s); return;
+            case 0xf: E::do_op(s.expansion_type, E::Op::io2_r, addr, data, s); return;
         }
     }
 
@@ -221,22 +215,15 @@ private:
             case 0x8: case 0x9: case 0xa: case 0xb: col_ram_w(addr & 0x03ff, data); return;
             case 0xc:                               cia1.w(addr & 0x000f, data);    return;
             case 0xd:                               cia2.w(addr & 0x000f, data);    return;
-            case 0xe: E::do_op(s.expansion_type, E::Op::io1_w, addr, const_cast<u8&>(data), s.exp_ram); return;
-            case 0xf: E::do_op(s.expansion_type, E::Op::io2_w, addr, const_cast<u8&>(data), s.exp_ram); return;
+            case 0xe: E::do_op(s.expansion_type, E::Op::io1_w, addr, const_cast<u8&>(data), s); return;
+            case 0xf: E::do_op(s.expansion_type, E::Op::io2_w, addr, const_cast<u8&>(data), s); return;
         }
     }
 
-    void update_state() { // output bits set from 'pd', input bits unchanged
+    void update_io_port_state() { // output bits set from 'pd', input bits unchanged
         auto& b{s.banking};
         b.io_port_state = (b.io_port_pd & b.io_port_dd) | (b.io_port_state & ~b.io_port_dd);
-        set_pla();
-    }
-
-    void set_pla() {
-        auto& b{s.banking};
-        const u8 lhc = (b.io_port_state | ~b.io_port_dd) & loram_hiram_charen_bits; // inputs -> pulled up
-        const u8 mode = b.exrom_game | lhc;
-        b.pla_line = PLA::Mode_to_line[mode];
+        set_pla(s);
     }
 
     State::System& s;
