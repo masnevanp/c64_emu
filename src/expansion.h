@@ -24,8 +24,12 @@ enum Type : u16 {
 };
 
 
+namespace CRT {
+
 int load_static_chips(const Files::CRT& crt, u8* exp_ram);
 int load_chips(const Files::CRT& crt, u8* exp_ram);
+
+} // namespace CRT
 
 
 struct Null {
@@ -43,25 +47,78 @@ struct Null {
     void io1_w(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
     void io2_r(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
     void io2_w(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
+
+    bool attach(const Files::CRT& crt) { UNUSED(crt); return false; }
+    void reset() {}
+    void tick() {}
+
+protected:
+    void set_exrom_game(const Files::CRT& crt) {
+        System::set_exrom_game(crt.header().exrom, crt.header().game, s);
+    }
 };
 
 
-struct T0 : public Null {
+struct T0 : public Null { // T0 Generic
     T0(State::System& s) : Null(s) {}
 
     void roml_r(const u16& a, u8& d) { d = s.exp_ram[a]; }
     void romh_r(const u16& a, u8& d) { d = s.exp_ram[0x2000 + a]; }
 
-    bool load(const Files::CRT& crt) {
-        return (load_static_chips(crt, s.exp_ram) > 0) ;
+    bool attach(const Files::CRT& crt) {
+        if (CRT::load_static_chips(crt, s.exp_ram) == 0) return false;
+        set_exrom_game(crt);
+        return true;
     }
 };
 
 
-bool load_crt(const Files::CRT& crt, State::System& s);
+struct T10 : public Null { // T10_Epyx_Fastload
+    T10(State::System& s) : Null(s) {}
+
+    struct status {
+        bool inactive() const { return s.vic.cycle >= _inact_at(); }
+        void activate()       { _inact_at() = s.vic.cycle + 512; }
+
+        State::System& s;
+        u64& _inact_at() const { return *(u64*)&s.exp_ram[0x2000]; }
+    };
+
+    void roml_r(const u16& a, u8& d) {
+        if (status{s}.inactive()) {
+            d = s.ram[0x8000 + a];
+        } else {
+            d = s.exp_ram[a];
+            status{s}.activate();
+        }
+    }
+
+    void io1_r(const u16& a, u8& d) { UNUSED(a); UNUSED(d);
+        status{s}.activate();
+    };
+
+    void io2_r(const u16& a, u8& d) { UNUSED(a); UNUSED(d);
+        d = s.exp_ram[0x1f00 | (a & 0x00ff)];
+    };
+
+    bool attach(const Files::CRT& crt) {
+        if (CRT::load_static_chips(crt, s.exp_ram) != 1) return false;
+        System::set_exrom_game(false, crt.header().game, s);
+        return true;
+    }
+
+    void reset() { status{s}.activate(); }
+};
 
 
-enum Op : u8 {
+bool attach(State::System& s, const Files::CRT& crt);
+void detach(State::System& s);
+
+void reset(State::System& s);
+void tick(State::System& s);
+
+
+enum Bus_op : u8 {
     roml_r = 0,  roml_w = 1,
     romh_r = 2,  romh_w = 3,
     io1_r  = 4,  io2_r  = 5,
@@ -71,23 +128,22 @@ enum Op : u8 {
 };
 
 
-inline void do_op(u16 exp_type, Op op, const u16& a, u8& d, State::System& s) {
-    #define CASE(t) case (t * Op::_cnt) + Op::roml_r: T##t{s}.roml_r(a, d); return; \
-                    case (t * Op::_cnt) + Op::roml_w: T##t{s}.roml_w(a, d); return; \
-                    case (t * Op::_cnt) + Op::romh_r: T##t{s}.romh_r(a, d); return; \
-                    case (t * Op::_cnt) + Op::romh_w: T##t{s}.romh_w(a, d); return; \
-                    case (t * Op::_cnt) + Op::io1_r: T##t{s}.io1_r(a, d); return; \
-                    case (t * Op::_cnt) + Op::io2_r: T##t{s}.io2_r(a, d); return; \
-                    case (t * Op::_cnt) + Op::io1_w: T##t{s}.io1_w(a, d); return; \
-                    case (t * Op::_cnt) + Op::io2_w: T##t{s}.io2_w(a, d); return; \
+inline void bus_op(u16 exp_type, Bus_op op, const u16& a, u8& d, State::System& s) {
+    #define T(t) case (t * Bus_op::_cnt) + Bus_op::roml_r: T##t{s}.roml_r(a, d); return; \
+                 case (t * Bus_op::_cnt) + Bus_op::roml_w: T##t{s}.roml_w(a, d); return; \
+                 case (t * Bus_op::_cnt) + Bus_op::romh_r: T##t{s}.romh_r(a, d); return; \
+                 case (t * Bus_op::_cnt) + Bus_op::romh_w: T##t{s}.romh_w(a, d); return; \
+                 case (t * Bus_op::_cnt) + Bus_op::io1_r: T##t{s}.io1_r(a, d); return; \
+                 case (t * Bus_op::_cnt) + Bus_op::io2_r: T##t{s}.io2_r(a, d); return; \
+                 case (t * Bus_op::_cnt) + Bus_op::io1_w: T##t{s}.io1_w(a, d); return; \
+                 case (t * Bus_op::_cnt) + Bus_op::io2_w: T##t{s}.io2_w(a, d); return; \
 
-    switch ((exp_type * Op::_cnt) + op) {
-        CASE(0)
+    switch ((exp_type * Bus_op::_cnt) + op) {
+        T(0) T(10)
     }
 
-    #undef CASE
+    #undef T
 }
-
 
 } // namespace Expansion
 

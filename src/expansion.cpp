@@ -15,7 +15,7 @@ using namespace Expansion;
 
 
 // for the basic 'no fancy dynamic banking' carts
-int Expansion::load_static_chips(const Files::CRT& crt, u8* exp_ram) {
+int Expansion::CRT::load_static_chips(const Files::CRT& crt, u8* exp_ram) {
     int count = 0;
 
     for (auto cp : crt.chip_packets()) {
@@ -37,7 +37,7 @@ int Expansion::load_static_chips(const Files::CRT& crt, u8* exp_ram) {
 }
 
 // just load all the chips in the order found (TODO: ever need to check the order?)
-int Expansion::load_chips(const Files::CRT& crt, u8* exp_ram) {
+int Expansion::CRT::load_chips(const Files::CRT& crt, u8* exp_ram) {
     int count = 0;
 
     u8* tgt = exp_ram;
@@ -51,23 +51,64 @@ int Expansion::load_chips(const Files::CRT& crt, u8* exp_ram) {
 }
 
 
-bool Expansion::load_crt(const Files::CRT& crt, State::System& s) {
+bool Expansion::attach(State::System& s, const Files::CRT& crt) {
     if (!crt.header().valid()) {
         Log::error("CRT: invalid img header");
         return false;
     }
 
+    bool success;
     const auto type = crt.header().hw_type;
     switch (type) {
-        case 0: return T0{s}.load(crt);
+        #define T(t) case t: success = T##t{s}.attach(crt); break;
+
+        T(0) T(10)
+
         default:
             Log::error("CRT: unsupported HW type: %d", (int)type);
+            success = false;
             break;
+
+        #undef T
     }
 
-    return false;
+    if (success) {
+        s.expansion_type = type;
+        Log::info("CRT: attached type: %d", type);
+        return true;
+    } else {
+        Log::error("CRT: failed to attach");
+        return false;
+    }
 }
 
+
+void Expansion::detach(State::System& s) {
+    s.expansion_type = Expansion::Type::None;
+    System::set_exrom_game(true, true, s);
+}
+
+
+void Expansion::reset(State::System& s) {
+    switch (s.expansion_type) {
+        #define T(t) case t: T##t{s}.reset(); break;
+
+        T(0) T(10)
+
+        #undef T
+    }
+}
+
+
+void Expansion::tick(State::System& s) {
+    switch (s.expansion_type) {
+        #define T(t) case t: T##t{s}.tick(); break;
+
+        T(0)
+
+        #undef T
+    }
+}
 /*
 bool Cartridge::attach(const Files::CRT& crt, Ctx& exp_ctx) {
     if (!crt.header().valid()) {

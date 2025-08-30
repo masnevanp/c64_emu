@@ -280,14 +280,14 @@ inline void set_pla(State::System& s) { // TODO: non-inlined? (definition to .cp
     b.pla_line = Mode_to_line[mode];
 }
 
-inline void set_exrom_game(const Expansion::exrom_game& eg, State::System& s) { // TODO: non-inlined? (definition to .cpp)
-    s.banking.exrom_game = (eg.exrom << 4) | (eg.game << 3);
+inline void set_exrom_game(bool e, bool g, State::System& s) {
+    s.banking.exrom_game = (e << 4) | (g << 3);
     set_pla(s);
 
-    s.vic_banking.ultimax = (eg.exrom && !eg.game);
+    s.vic_banking.ultimax = (e && !g);
 }
 
-}
+} // namespace System
 
 
 #endif // STATE_H_INCLUDED

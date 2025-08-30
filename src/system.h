@@ -82,10 +82,7 @@ public:
         const State::System::ROM& rom_,
         CIA& cia1_, CIA& cia2_, TheSID& sid_, VIC& vic_)
       :
-        s(s_), rom(rom_), cia1(cia1_), cia2(cia2_), sid(sid_), vic(vic_)
-    {
-        detach_expansion();
-    }
+        s(s_), rom(rom_), cia1(cia1_), cia2(cia2_), sid(sid_), vic(vic_) {}
 
     void reset() {
         s.ba_low = false;
@@ -93,6 +90,8 @@ public:
 
         s.banking.io_port_pd = s.banking.io_port_state = 0x00;
         w_dd(0x00); // all inputs
+
+        Expansion::reset(s);
     }
 
     void access(const u16& addr, u8& data, const u8 rw) {
@@ -115,8 +114,8 @@ public:
             case m::kern_r:  data = rom.kernal[addr & 0x1fff]; return;
             case m::charr_r: data = rom.charr[addr & 0x0fff];  return; // 4 KB
             case m::roml_r: case m::roml_w: case m::romh_r: case m::romh_w: { // 8 KB
-                const auto op = E::Op::roml_r + (mapping - m::roml_r); // translate mapping to op
-                E::do_op(s.expansion_type, E::Op(op), addr & 0x1fff, data, s);
+                const auto op = E::Bus_op::roml_r + (mapping - m::roml_r); // translate mapping to op
+                E::bus_op(s.expansion_type, E::Bus_op(op), addr & 0x1fff, data, s);
                 return;
             }
             case m::io_r:    r_io(addr & 0x0fff, data);        return; // 4 KB
@@ -141,7 +140,7 @@ public:
             case m::romh: {
                 u8 data = 0x00;
                 //romh_r(addr & 0x01fff, data); // TODO
-                Expansion::do_op(s.expansion_type, Expansion::Op::romh_r, addr & 0x1fff, data, s);
+                Expansion::bus_op(s.expansion_type, Expansion::Bus_op::romh_r, addr & 0x1fff, data, s);
                 return data;
             }
         }
@@ -154,25 +153,6 @@ public:
     // TODO: combine .ultimax & .bank to a single index (0..7)
     //       (--> make vic_layouts an array of 8 entries...)
     void set_vic_bank(u8 va14_va15) { s.vic_banking.bank = va14_va15; }
-
-    bool attach_crt(const Files::CRT& crt) {
-        // need to 'detach' something first?
-        if (Expansion::load_crt(crt, s)) {
-            set_exrom_game(crt.get_exrom_game(), s);
-            s.expansion_type = crt.header().hw_type;
-            Log::info("CRT: attached HW type: %d", (u16)crt.header().hw_type);
-            return true;
-        } else {
-            Log::error("CRT: failed to attach");
-            return false;
-        }
-    }
-    bool attach_REU() { Log::error("TODO: attach REU"); return false; }
-
-    void detach_expansion() {
-        s.expansion_type = Expansion::Type::None;
-        set_exrom_game({true, true}, s);
-    }
 
 private:
     enum IO_bits : u8 {
@@ -202,8 +182,8 @@ private:
             case 0x8: case 0x9: case 0xa: case 0xb: col_ram_r(addr & 0x03ff, data); return;
             case 0xc:                               cia1.r(addr & 0x000f, data);    return;
             case 0xd:                               cia2.r(addr & 0x000f, data);    return;
-            case 0xe: E::do_op(s.expansion_type, E::Op::io1_r, addr, data, s); return;
-            case 0xf: E::do_op(s.expansion_type, E::Op::io2_r, addr, data, s); return;
+            case 0xe: E::bus_op(s.expansion_type, E::Bus_op::io1_r, addr, data, s); return;
+            case 0xf: E::bus_op(s.expansion_type, E::Bus_op::io2_r, addr, data, s); return;
         }
     }
 
@@ -215,15 +195,15 @@ private:
             case 0x8: case 0x9: case 0xa: case 0xb: col_ram_w(addr & 0x03ff, data); return;
             case 0xc:                               cia1.w(addr & 0x000f, data);    return;
             case 0xd:                               cia2.w(addr & 0x000f, data);    return;
-            case 0xe: E::do_op(s.expansion_type, E::Op::io1_w, addr, const_cast<u8&>(data), s); return;
-            case 0xf: E::do_op(s.expansion_type, E::Op::io2_w, addr, const_cast<u8&>(data), s); return;
+            case 0xe: E::bus_op(s.expansion_type, E::Bus_op::io1_w, addr, const_cast<u8&>(data), s); return;
+            case 0xf: E::bus_op(s.expansion_type, E::Bus_op::io2_w, addr, const_cast<u8&>(data), s); return;
         }
     }
 
     void update_io_port_state() { // output bits set from 'pd', input bits unchanged
         auto& b{s.banking};
         b.io_port_state = (b.io_port_pd & b.io_port_dd) | (b.io_port_state & ~b.io_port_dd);
-        set_pla(s);
+        System::set_pla(s);
     }
 
     State::System& s;
@@ -459,6 +439,8 @@ public:
     {
         // intercept load/save for tape device
         install_kernal_tape_traps(const_cast<u8*>(rom.kernal), Trap_OPC::tape_routine);
+
+        Expansion::detach(s);
     }
 
     void run(Mode init_mode = Mode::clocked);
@@ -652,8 +634,8 @@ private:
 
     std::vector<::Menu::Action> cart_menu_actions{
         // TODO
-        {"DETACH ?", [&](){ bus.detach_expansion(); reset_cold(); }},
-        {"ATTACH REU ?", [&]() { if (bus.attach_REU()) reset_cold(); }},
+        {"DETACH ?", [&](){ Expansion::detach(s); reset_cold(); }},
+        {"ATTACH REU ?", [&]() { Log::error("TODO: attach REU"); reset_cold(); }},
     };
 
     std::vector<::Menu::Knob> perf_menu_items{

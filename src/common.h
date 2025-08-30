@@ -319,16 +319,6 @@ private:
 } // namespace IO
 
 
-namespace Expansion {
-
-struct exrom_game {
-    bool exrom;
-    bool game;
-};
-
-} // namespace Expansion
-
-
 namespace C1541 {
 
 enum : u8 { first_sector = 0, first_track = 1, last_track = 35, dir_track = 18 };
