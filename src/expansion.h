@@ -32,10 +32,10 @@ int load_chips(const Files::CRT& crt, u8* exp_ram);
 } // namespace CRT
 
 
-struct Null {
+struct Base {
     State::System& s;
 
-    Null(State::System& s_) : s(s_) {}
+    Base(State::System& s_) : s(s_) {}
 
     // TODO: reading unconnected areas should return whatever is 'floating' on the bus
     void roml_r(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
@@ -56,11 +56,14 @@ protected:
     void set_exrom_game(const Files::CRT& crt) {
         System::set_exrom_game(crt.header().exrom, crt.header().game, s);
     }
+
+    void set_int(IO::Int_sig::Src src) { IO::Int_sig{s.int_hub.state}.set(src); }
+    void clr_int(IO::Int_sig::Src src) { IO::Int_sig{s.int_hub.state}.clr(src); }
 };
 
 
-struct T0 : public Null { // T0 Generic
-    T0(State::System& s) : Null(s) {}
+struct T0 : public Base { // T0 Generic
+    T0(State::System& s) : Base(s) {}
 
     void roml_r(const u16& a, u8& d) { d = s.exp_ram[a]; }
     void romh_r(const u16& a, u8& d) { d = s.exp_ram[0x2000 + a]; }
@@ -73,8 +76,8 @@ struct T0 : public Null { // T0 Generic
 };
 
 
-struct T10 : public Null { // T10_Epyx_Fastload
-    T10(State::System& s) : Null(s) {}
+struct T10 : public Base { // T10_Epyx_Fastload
+    T10(State::System& s) : Base(s) {}
 
     struct status {
         bool inactive() const { return s.vic.cycle >= _inact_at(); }
@@ -147,66 +150,5 @@ inline void bus_op(u16 exp_type, Bus_op op, const u16& a, u8& d, State::System& 
 
 } // namespace Expansion
 
-
-/*
-// gather everything required by an expansion (e.g. cart)
-struct Expansion_ctx {
-    struct IO {
-        IO(const u16& ba_low_,
-            std::function<void (const u16&, u8&, const u8 rw)> sys_addr_space_,
-            std::function<void (bool e, bool g)> exrom_game_,
-            ::IO::Int_sig& int_sig_,
-            u16& dma_low_)
-          : ba_low(ba_low_), sys_addr_space(sys_addr_space_), exrom_game(exrom_game_),
-            int_sig(int_sig_), dma_low(dma_low_) {}
-
-        using r = std::function<void (const u16& a, u8& d)>;
-        using w = std::function<void (const u16& addr, const u8& data)>;
-
-        // sys -> exp
-        r roml_r;
-        w roml_w;
-        r romh_r;
-        w romh_w;
-
-        r io1_r;
-        w io1_w;
-        r io2_r;
-        w io2_w;
-
-        const u16& ba_low; // low == active
-
-        // exp -> sys
-        const std::function<void (const u16&, u8&, const u8 rw)> sys_addr_space;
-        const std::function<void (bool e, bool g)> exrom_game;
-
-        ::IO::Int_sig& int_sig;
-
-        u16& dma_low; // low == active
-    };
-
-    IO& io;
-
-    ::IO::Bus& sys_bus;
-
-    u8* sys_ram;
-    u64& sys_cycle;
-
-    u8* ram;
-
-    std::function<void ()> tick;
-    std::function<void ()> reset;
-};
-
-
-namespace Cartridge {
-
-bool attach(const Files::CRT& crt, Expansion_ctx& exp_ctx);
-void detach(Expansion_ctx& exp_ctx);
-
-bool attach_REU(Expansion_ctx& exp_ctx);
-
-}
-*/
 
 #endif // EXPANSION_H_INCLUDED

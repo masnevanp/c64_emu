@@ -223,11 +223,11 @@ private:
 
     State& s;
 public:
-    Int_hub(State& s_) : s(s_), int_sig(s_.state) {}
+    Int_hub(State& s_) : s(s_) {}
 
     void reset() { s.state = s.old_state = 0x00; s.nmi_act = s.irq_act = false; }
 
-    IO::Int_sig int_sig;
+    IO::Int_sig int_sig{s.state};
 
     void tick(CPU& cpu) {
         if (s.state != s.old_state) {
