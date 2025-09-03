@@ -17,6 +17,7 @@
 
 
 #define UNUSED(x) (void)(x)
+#define UNUSED2(x, y) (void)(x); (void)(y)
 
 
 class Timer {

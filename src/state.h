@@ -194,19 +194,17 @@ struct System {
         const u8* c1541;
     };
 
-    struct Banking {
-        int pla_line; // the active PLA line (set based on mode)
+    struct PLA {
+        int active; // the active PLA array (set based on mode)
 
         u8 io_port_dd;
         u8 io_port_pd;
         u8 io_port_state;
 
         u8 exrom_game;
-    };
 
-    struct VIC_II_Banking {
         u8 ultimax = false;
-        u8 bank = 0b11;
+        u8 vic_bank = 0b11;
     };
 
     struct Int_hub {
@@ -238,8 +236,7 @@ struct System {
     u16 ba_low;
     u16 dma_low;
 
-    Banking banking;
-    VIC_II_Banking vic_banking;
+    PLA pla;
 
     u16 expansion_type;
 
@@ -267,24 +264,23 @@ struct System {
 
 namespace System {
 
-inline void set_pla(State::System& s) { // TODO: non-inlined? (definition to .cpp)
-    static constexpr u8 Mode_to_line[32] = {
+inline void update_pla(State::System& s) { // TODO: non-inlined? (definition to .cpp)
+    static constexpr u8 Mode_to_array[32] = {
         0,  0,  1,  2,  0, 11,  3,  4, 0,  8,  9,  5,  0, 11, 12,  6,
         7,  7,  7,  7,  7,  7,  7,  7, 0,  8,  9, 10,  0, 11, 12, 13,
     };
     static constexpr u8 loram_hiram_charen_bits = 0x07;
 
-    auto& b{s.banking};
-    const u8 lhc = (b.io_port_state | ~b.io_port_dd) & loram_hiram_charen_bits; // inputs -> pulled up
-    const u8 mode = b.exrom_game | lhc;
-    b.pla_line = Mode_to_line[mode];
+    const u8 lhc = (s.pla.io_port_state | ~s.pla.io_port_dd) & loram_hiram_charen_bits; // inputs -> pulled up
+    const u8 mode = s.pla.exrom_game | lhc;
+    s.pla.active = Mode_to_array[mode];
 }
 
 inline void set_exrom_game(bool e, bool g, State::System& s) {
-    s.banking.exrom_game = (e << 4) | (g << 3);
-    set_pla(s);
+    s.pla.exrom_game = (e << 4) | (g << 3);
+    update_pla(s);
 
-    s.vic_banking.ultimax = (e && !g);
+    s.pla.ultimax = (e && !g);
 }
 
 } // namespace System

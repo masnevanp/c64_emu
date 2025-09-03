@@ -38,15 +38,15 @@ struct Base {
     Base(State::System& s_) : s(s_) {}
 
     // TODO: reading unconnected areas should return whatever is 'floating' on the bus
-    void roml_r(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
-    void roml_w(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
-    void romh_r(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
-    void romh_w(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
+    void roml_r(const u16& a, u8& d) { UNUSED2(a, d); }
+    void roml_w(const u16& a, u8& d) { UNUSED2(a, d); }
+    void romh_r(const u16& a, u8& d) { UNUSED2(a, d); }
+    void romh_w(const u16& a, u8& d) { UNUSED2(a, d); }
 
-    void io1_r(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
-    void io1_w(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
-    void io2_r(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
-    void io2_w(const u16& a, u8& d) { UNUSED(a); UNUSED(d); }
+    void io1_r(const u16& a, u8& d) { UNUSED2(a, d); }
+    void io1_w(const u16& a, u8& d) { UNUSED2(a, d); }
+    void io2_r(const u16& a, u8& d) { UNUSED2(a, d); }
+    void io2_w(const u16& a, u8& d) { UNUSED2(a, d); }
 
     bool attach(const Files::CRT& crt) { UNUSED(crt); return false; }
     void reset() {}
@@ -96,11 +96,11 @@ struct T10 : public Base { // T10_Epyx_Fastload
         }
     }
 
-    void io1_r(const u16& a, u8& d) { UNUSED(a); UNUSED(d);
+    void io1_r(const u16& a, u8& d) { UNUSED2(a, d);
         status{s}.activate();
     };
 
-    void io2_r(const u16& a, u8& d) { UNUSED(a); UNUSED(d);
+    void io2_r(const u16& a, u8& d) { UNUSED2(a, d);
         d = s.exp_ram[0x1f00 | (a & 0x00ff)];
     };
 

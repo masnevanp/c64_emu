@@ -32,7 +32,7 @@ void run_c64() {
 
 
 int main(int argv, char** args) {
-    UNUSED(argv); UNUSED(args);
+    UNUSED2(argv, args);
     //Test::run_6502_func_test();
     //Test::run_test_suite();
     run_c64();

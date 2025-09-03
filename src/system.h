@@ -43,13 +43,12 @@ namespace PLA {
         none_r,  none_w,
     };
 
-    // There is a PLA Line for each mode, and for each mode there are separate r/w configs
-    struct Line {
+    // There is an array for each mode, and for each mode there are separate r/w configs
+    struct Array {
         const Mapping pl[2][16]; // [w/r][bank]
     };
 
-    extern const Line line[14];       // 14 unique configs
-    extern const u8 Mode_to_line[32]; // map: mode --> line idx (in line[])
+    extern const Array array[14];       // 14 unique configs
 
 
     enum VIC_mapping : u8 {
@@ -88,7 +87,7 @@ public:
         s.ba_low = false;
         s.dma_low = false;
 
-        s.banking.io_port_pd = s.banking.io_port_state = 0x00;
+        s.pla.io_port_pd = s.pla.io_port_state = 0x00;
         w_dd(0x00); // all inputs
 
         Expansion::reset(s);
@@ -98,7 +97,7 @@ public:
         using m = PLA::Mapping;
         namespace E = Expansion;
 
-        switch (auto mapping = PLA::line[s.banking.pla_line].pl[rw][addr >> 12]; mapping) {
+        switch (auto mapping = PLA::array[s.pla.active].pl[rw][addr >> 12]; mapping) {
             case m::ram0_r:
                 data = (addr > 0x0001)
                             ? s.ram[addr]
@@ -131,7 +130,7 @@ public:
         #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wreturn-type"
 
-        switch (PLA::vic_layouts[s.vic_banking.ultimax][s.vic_banking.bank][addr >> 12]) {
+        switch (PLA::vic_layouts[s.pla.ultimax][s.pla.vic_bank][addr >> 12]) {
             case m::ram_0: return s.ram[0x0000 | addr];
             case m::ram_1: return s.ram[0x4000 | addr];
             case m::ram_2: return s.ram[0x8000 | addr];
@@ -152,7 +151,7 @@ public:
 
     // TODO: combine .ultimax & .bank to a single index (0..7)
     //       (--> make vic_layouts an array of 8 entries...)
-    void set_vic_bank(u8 va14_va15) { s.vic_banking.bank = va14_va15; }
+    void set_vic_bank(u8 va14_va15) { s.pla.vic_bank = va14_va15; }
 
 private:
     enum IO_bits : u8 {
@@ -161,16 +160,16 @@ private:
         cassette_motor_control = 0x20,
     };
 
-    u8 r_dd() const { return s.banking.io_port_dd; }
+    u8 r_dd() const { return s.pla.io_port_dd; }
     u8 r_pd() const {
         static constexpr u8 pull_up = IO_bits::loram_hiram_charen_bits | IO_bits::cassette_switch_sense;
-        const u8 pulled_up = ~s.banking.io_port_dd & pull_up;
-        const u8 cmc = ~cassette_motor_control | s.banking.io_port_dd; // dd input -> 0
-        return (s.banking.io_port_state | pulled_up) & cmc;
+        const u8 pulled_up = ~s.pla.io_port_dd & pull_up;
+        const u8 cmc = ~cassette_motor_control | s.pla.io_port_dd; // dd input -> 0
+        return (s.pla.io_port_state | pulled_up) & cmc;
     }
 
-    void w_dd(const u8& dd) { s.banking.io_port_dd = dd; update_io_port_state(); }
-    void w_pd(const u8& pd) { s.banking.io_port_pd = pd; update_io_port_state(); }
+    void w_dd(const u8& dd) { s.pla.io_port_dd = dd; update_io_port_state(); }
+    void w_pd(const u8& pd) { s.pla.io_port_pd = pd; update_io_port_state(); }
 
     void col_ram_w(const u16& addr, const u8& data) { s.color_ram[addr] = data & 0xf; } // masking the write is enough
 
@@ -201,9 +200,9 @@ private:
     }
 
     void update_io_port_state() { // output bits set from 'pd', input bits unchanged
-        auto& b{s.banking};
-        b.io_port_state = (b.io_port_pd & b.io_port_dd) | (b.io_port_state & ~b.io_port_dd);
-        System::set_pla(s);
+        s.pla.io_port_state = (s.pla.io_port_pd & s.pla.io_port_dd)
+                                | (s.pla.io_port_state & ~s.pla.io_port_dd);
+        System::update_pla(s);
     }
 
     State::System& s;
