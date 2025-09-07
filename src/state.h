@@ -194,6 +194,14 @@ struct System {
         const u8* c1541;
     };
 
+    struct Bus {
+        using RW = NMOS6502::MC::RW;
+
+        u16 addr;
+        u8 data;
+        RW rw;
+    };
+
     struct PLA {
         int active; // the active PLA array (set based on mode)
 
@@ -235,6 +243,8 @@ struct System {
 
     u16 ba_low;
     u16 dma_low;
+
+    Bus bus;
 
     PLA pla;
 

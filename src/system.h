@@ -51,6 +51,8 @@ namespace PLA {
     extern const Array array[14];       // 14 unique configs
 
 
+    // TODO: combine .ultimax & .bank to a single index (0..7)
+    //       (--> make vic_layouts an array of 8 entries...)
     enum VIC_mapping : u8 {
         ram_0, ram_1, ram_2, ram_3,
         chr_r, romh,
@@ -93,7 +95,47 @@ public:
         Expansion::reset(s);
     }
 
-    void access(const u16& addr, u8& data, const u8 rw) {
+    void access(const u16& addr, u8& data, const State::System::Bus::RW rw) {
+        do_access(addr, data, rw);
+        // TODO: a better (a more efficient) way of maintaining bus state?
+        s.bus.addr = addr;
+        s.bus.data = data;
+        s.bus.rw = rw;
+    }
+
+    u8 vic_access(const u16& addr) const { // addr is 14bits
+        using m = PLA::VIC_mapping;
+        // silence compiler (we do handle all the cases)
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wreturn-type"
+
+        switch (PLA::vic_layouts[s.pla.ultimax][s.pla.vic_bank][addr >> 12]) {
+            case m::ram_0: return s.ram[0x0000 | addr];
+            case m::ram_1: return s.ram[0x4000 | addr];
+            case m::ram_2: return s.ram[0x8000 | addr];
+            case m::ram_3: return s.ram[0xc000 | addr];
+            case m::chr_r: return rom.charr[0x0fff & addr];
+            case m::romh: {
+                u8 data = 0x00;
+                //romh_r(addr & 0x01fff, data); // TODO
+                Expansion::bus_op(s.expansion_type, Expansion::Bus_op::romh_r, addr & 0x1fff, data, s);
+                return data;
+            }
+        }
+
+        #pragma GCC diagnostic push
+    }
+
+    void col_ram_r(const u16& addr, u8& data) const { data = s.color_ram[addr]; }
+
+private:
+    enum IO_bits : u8 {
+        loram_hiram_charen_bits = 0x07,
+        cassette_switch_sense = 0x10,
+        cassette_motor_control = 0x20,
+    };
+
+    void do_access(const u16& addr, u8& data, const State::System::Bus::RW rw) {
         using m = PLA::Mapping;
         namespace E = Expansion;
 
@@ -123,42 +165,6 @@ public:
             case m::none_w:                                    return;
         }
     }
-
-    u8 vic_access(const u16& addr) const { // addr is 14bits
-        using m = PLA::VIC_mapping;
-        // silence compiler (we do handle all the cases)
-        #pragma GCC diagnostic push
-        #pragma GCC diagnostic ignored "-Wreturn-type"
-
-        switch (PLA::vic_layouts[s.pla.ultimax][s.pla.vic_bank][addr >> 12]) {
-            case m::ram_0: return s.ram[0x0000 | addr];
-            case m::ram_1: return s.ram[0x4000 | addr];
-            case m::ram_2: return s.ram[0x8000 | addr];
-            case m::ram_3: return s.ram[0xc000 | addr];
-            case m::chr_r: return rom.charr[0x0fff & addr];
-            case m::romh: {
-                u8 data = 0x00;
-                //romh_r(addr & 0x01fff, data); // TODO
-                Expansion::bus_op(s.expansion_type, Expansion::Bus_op::romh_r, addr & 0x1fff, data, s);
-                return data;
-            }
-        }
-
-        #pragma GCC diagnostic push
-    }
-
-    void col_ram_r(const u16& addr, u8& data) const { data = s.color_ram[addr]; }
-
-    // TODO: combine .ultimax & .bank to a single index (0..7)
-    //       (--> make vic_layouts an array of 8 entries...)
-    void set_vic_bank(u8 va14_va15) { s.pla.vic_bank = va14_va15; }
-
-private:
-    enum IO_bits : u8 {
-        loram_hiram_charen_bits = 0x07,
-        cassette_switch_sense = 0x10,
-        cassette_motor_control = 0x20,
-    };
 
     u8 r_dd() const { return s.pla.io_port_dd; }
     u8 r_pd() const {
@@ -492,7 +498,7 @@ private:
     IO::Port::PD_out cia2_pa_out {
         [this](u8 state) {
             const u8 va14_va15 = state & 0b11;
-            bus.set_vic_bank(va14_va15);
+            s.pla.vic_bank = va14_va15;
 
             c1541.iec.cia2_pa_output(state);
             /*if (c1541.idle) {

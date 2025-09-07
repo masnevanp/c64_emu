@@ -67,7 +67,7 @@ public:
     */
     u16 mar() const { return s.r16(mcp->ar); }
     u8& mdr() const { return s.r8(mcp->dr); }
-    u8  mrw() const { return mcp->rw; }
+    NMOS6502::MC::RW mrw() const { return mcp->rw; }
 
     void set_nmi(bool act);
     void set_irq(bool act);
