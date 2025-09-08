@@ -100,15 +100,6 @@ void Expansion::reset(State::System& s) {
 }
 
 
-void Expansion::tick(State::System& s) {
-    switch (s.expansion_type) {
-        #define T(t) case t: T##t{s}.tick(); break;
-
-        T(0)
-
-        #undef T
-    }
-}
 /*
 bool Cartridge::attach(const Files::CRT& crt, Ctx& exp_ctx) {
     if (!crt.header().valid()) {

@@ -535,7 +535,7 @@ private:
                     case kc::step_instr:
                     case kc::step_line:
                     case kc::step_frame: if (s.mode == Mode::stepped) step_forward(code); break;
-                    case kc::menu_tgl:   /*menu.toggle(true);*/        break;
+                    case kc::menu_tgl:   menu.toggle(true);            break;
                     case kc::menu_ent:
                     case kc::menu_back:
                     case kc::menu_up:
@@ -640,7 +640,7 @@ private:
     std::vector<::Menu::Action> cart_menu_actions{
         // TODO
         {"DETACH ?", [&](){ Expansion::detach(s); reset_cold(); }},
-        {"ATTACH REU ?", [&]() { Log::error("TODO: attach REU"); reset_cold(); }},
+        {"ATTACH REU ?", [&]() { Expansion::attach_REU(s); reset_cold(); }},
     };
 
     std::vector<::Menu::Knob> perf_menu_items{
@@ -708,7 +708,7 @@ void C64::run_cycle() {
         if (rw == NMOS6502::MC::RW::r) c1541.tick();
     }
 
-    // if (exp_ctx.tick) exp_ctx.tick(); // TODO
+    Expansion::tick(s, bus);
 
     cia1.tick();
     cia2.tick();

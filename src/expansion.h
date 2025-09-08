@@ -50,7 +50,6 @@ struct Base {
 
     bool attach(const Files::CRT& crt) { UNUSED(crt); return false; }
     void reset() {}
-    void tick() {}
 
 protected:
     void set_exrom_game(const Files::CRT& crt) {
@@ -114,11 +113,48 @@ struct T10 : public Base { // T10_Epyx_Fastload
 };
 
 
+struct T65534 : public Base { // REU
+    T65534(State::System& s) : Base(s) {}
+
+    //void roml_r(const u16& a, u8& d) { d = s.exp_ram[a]; }
+    //void romh_r(const u16& a, u8& d) { d = s.exp_ram[0x2000 + a]; }
+
+};
+
+template<typename Bus>
+struct T65534_kludge : public T65534 { // REU
+    T65534_kludge(State::System& s) : T65534(s) {}
+
+    void tick(Bus& bus) {
+        u8 i = 1;
+        bus.access(53280, i, NMOS6502::MC::RW::w);
+    }
+};
+
+
 bool attach(State::System& s, const Files::CRT& crt);
+
+inline bool attach_REU(State::System& s) {
+    s.expansion_type = Type::REU;
+    System::set_exrom_game(true, true, s);
+    return true;
+}
+
 void detach(State::System& s);
 
 void reset(State::System& s);
-void tick(State::System& s);
+
+
+template<typename Bus>
+void tick(State::System& s, Bus& bus) {
+    switch (s.expansion_type) {
+        #define T(t) case t: T##t##_kludge<Bus>{s}.tick(bus); break;
+
+        T(65534)
+
+        #undef T
+    }
+}
 
 
 enum Bus_op : u8 {
