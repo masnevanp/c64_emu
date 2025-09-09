@@ -468,7 +468,6 @@ void System::C64::reset_cold() {
     cpu.reset();
     int_hub.reset();
     c1541.reset();
-    // exp_ctx.reset(); // TODO
 
     pre_run();
 }
