@@ -51,11 +51,20 @@ int Expansion::CRT::load_chips(const Files::CRT& crt, u8* exp_ram) {
 }
 
 
+void Expansion::detach(State::System& s) {
+    s.expansion_type = Expansion::Type::none;
+    s.expansion_ticker = Expansion::Ticker::idle;
+    System::set_exrom_game(true, true, s);
+}
+
+
 bool Expansion::attach(State::System& s, const Files::CRT& crt) {
     if (!crt.header().valid()) {
         Log::error("CRT: invalid img header");
         return false;
     }
+
+    detach(s);
 
     bool success;
     const auto type = crt.header().hw_type;
@@ -80,12 +89,6 @@ bool Expansion::attach(State::System& s, const Files::CRT& crt) {
         Log::error("CRT: failed to attach");
         return false;
     }
-}
-
-
-void Expansion::detach(State::System& s) {
-    s.expansion_type = Expansion::Type::None;
-    System::set_exrom_game(true, true, s);
 }
 
 

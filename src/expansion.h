@@ -20,7 +20,7 @@
 namespace Expansion {
 
 enum Type : u16 {
-    REU = 0xfffe, None = 0xffff,
+    REU = 0xfffe, none = 0xffff,
 };
 
 
@@ -30,6 +30,16 @@ int load_static_chips(const Files::CRT& crt, u8* exp_ram);
 int load_chips(const Files::CRT& crt, u8* exp_ram);
 
 } // namespace CRT
+
+
+enum Ticker : u16 {
+    idle = 0,
+    reu_sr_n, reu_sr_r, reu_sr_s, reu_sr_b,
+    reu_rs_n, reu_rs_r, reu_rs_s, reu_rs_b,
+    reu_sw_n, reu_sw_r, reu_sw_s, reu_sw_b,
+    reu_vr_n, reu_vr_r, reu_vr_s, reu_vr_b,
+    reu_wait_ff00, reu_dispatch_op,
+};
 
 
 struct Base {
@@ -214,9 +224,9 @@ struct T65534 : public Base { // REU 1764
             case R::status:    return; // read-only
             case R::cmd:
                 r.cmd = d;
-                /*exp_ctx.tick = (r.cmd & R_cmd::exec)
-                    ? (r.cmd & R_cmd::no_ff00_trig) ? tick_dispatch_op : tick_wait_ff00
-                    : nullptr;*/
+                s.expansion_ticker = (r.cmd & R_cmd::exec)
+                    ? (r.cmd & R_cmd::no_ff00_trig) ? Ticker::reu_dispatch_op : Ticker::reu_wait_ff00
+                    : Ticker::idle;
                 return;
             case R::saddr_l:   r.a.saddr = r._a.saddr = (r._a.saddr & 0xff00) | d;        return;
             case R::saddr_h:   r.a.saddr = r._a.saddr = (r._a.saddr & 0x00ff) | (d << 8); return;
@@ -245,8 +255,26 @@ struct T65534 : public Base { // REU 1764
         r.swap_cycle = false;
     }
 
+    void tick_wait_ff00() {
+        const bool ff00_written = (
+            (s.bus.addr == 0xff00) && (s.bus.rw == State::System::Bus::RW::w)
+        );
+        if (ff00_written) tick_dispatch_op();
+    }
+
+    void tick_dispatch_op() {
+        // resolve ticker from cmd & addr_ctrl regs
+        const auto t = (((r.cmd & R_cmd::xfer) << 2) | ((r.addr_ctrl & R_addr_ctrl::fix) >> 6)) + 1;
+        s.expansion_ticker = t;
+        s.dma_low = true;
+    }
+
 protected:
+    bool ba() const { return !s.ba_low; }
+
     bool irq_on() const { return r.status & R_status::int_pend; }
+
+    void do_tlen() { if (r.a.tlen == 1) done(); else r.a.tlen -= 1; }
 
     void check_irq() {
         if (r.int_mask & R_int_mask::int_ena) {
@@ -257,26 +285,50 @@ protected:
             }
         }
     }
+
+    void done() {
+        s.expansion_ticker = Expansion::Ticker::idle;
+        s.dma_low = false;
+        if (r.a.tlen == 1) r.status |= R_status::eob;
+        r.cmd = r.cmd & ~R_cmd::exec;
+        r.cmd = r.cmd | R_cmd::no_ff00_trig;
+        if (r.cmd & R_cmd::autoload) r.a = r._a;
+        check_irq();
+    }
 };
 
 template<typename Bus>
 struct T65534_kludge : public T65534 { // REU
     T65534_kludge(State::System& s, Bus& bus_) : T65534(s), bus(bus_) {}
 
-    void tick() {
-        u8 i = 1;
-        bus.access(53280, i, NMOS6502::MC::RW::w);
-    }
+    // 4 operations: sys -> REU, REU -> sys, swap, verify
+    // 4 addr. types for each op.: fix none, fix reu, fix sys, fix both
+    // sys -> REU
+    void tick_sr_n() { if (ba()) { do_sr(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); } }
+    void tick_sr_r() { if (ba()) { do_sr(); r.a.inc_saddr(); do_tlen(); } }
+    void tick_sr_s() { if (ba()) { do_sr(); r.a.inc_raddr(); do_tlen(); } }
+    void tick_sr_b() { if (ba()) { do_sr(); do_tlen(); } }
+    // REU -> sys
+    void tick_rs_n() { if (ba()) { do_rs(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); } }
+    void tick_rs_r() { if (ba()) { do_rs(); r.a.inc_saddr(); do_tlen(); } }
+    void tick_rs_s() { if (ba()) { do_rs(); r.a.inc_raddr(); do_tlen(); } }
+    void tick_rs_b() { if (ba()) { do_rs(); do_tlen(); } }
+    // swap
+    void tick_sw_n() { if (do_swap()) { r.a.inc_raddr(); r.a.inc_saddr();  do_tlen(); } }
+    void tick_sw_r() { if (do_swap()) { r.a.inc_saddr(); do_tlen(); } }
+    void tick_sw_s() { if (do_swap()) { r.a.inc_raddr(); do_tlen(); } }
+    void tick_sw_b() { if (do_swap()) { do_tlen(); } }
+    // verify
+    void tick_vr_n() { if (ba()) { do_ver(); r.a.inc_raddr(); r.a.inc_saddr(); } }
+    void tick_vr_r() { if (ba()) { do_ver(); r.a.inc_saddr(); } }
+    void tick_vr_s() { if (ba()) { do_ver(); r.a.inc_raddr(); } }
+    void tick_vr_b() { if (ba()) { do_ver(); } }
 
 private:
     Bus& bus;
 
-    bool ba() const { return !s.ba_low; }
-
     void do_sr() { bus.access(r.a.saddr, s.exp_ram[r.a.raddr], State::System::Bus::RW::r); }
     void do_rs() { bus.access(r.a.saddr, s.exp_ram[r.a.raddr], State::System::Bus::RW::w); }
-
-    void do_tlen() { if (r.a.tlen == 1) done(); else r.a.tlen -= 1; }
 
     bool do_swap() {
         if (ba()) {
@@ -305,7 +357,11 @@ private:
             * set, but only if the last byte compares equal
     */
     void do_ver() {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
         u8 ds;
+        #pragma GCC diagnostic push
+
         bus.access(r.a.saddr, ds, State::System::Bus::RW::r);
         const u8 dr = s.exp_ram[r.a.raddr];
 
@@ -316,40 +372,45 @@ private:
             done(); // might be an extra 'done()' (if tlen was 1), but meh...
         }
     }
-
-    void done() {
-        //exp_ctx.tick = nullptr;
-        s.dma_low = false;
-        if (r.a.tlen == 1) r.status |= R_status::eob;
-        r.cmd = r.cmd & ~R_cmd::exec;
-        r.cmd = r.cmd | R_cmd::no_ff00_trig;
-        if (r.cmd & R_cmd::autoload) r.a = r._a;
-        check_irq();
-    }
 };
 
+
+void detach(State::System& s);
 
 bool attach(State::System& s, const Files::CRT& crt);
 
 inline bool attach_REU(State::System& s) {
+    detach(s);
     s.expansion_type = Type::REU;
-    System::set_exrom_game(true, true, s);
     return true;
 }
-
-void detach(State::System& s);
 
 void reset(State::System& s);
 
 
 template<typename Bus>
 void tick(State::System& s, Bus& bus) {
-    switch (s.expansion_type) {
-        #define T(t) case t: T##t##_kludge<Bus>{s, bus}.tick(); break;
-
-        T(65534)
-
-        #undef T
+    //#define T(t) case t: T##t##_kludge<Bus>{s, bus}.tick(); break;
+    switch (s.expansion_ticker) {
+        case Ticker::idle: return;
+        case Ticker::reu_sr_n: T65534_kludge<Bus>{s, bus}.tick_sr_n(); break;
+        case Ticker::reu_sr_r: T65534_kludge<Bus>{s, bus}.tick_sr_r(); break;
+        case Ticker::reu_sr_s: T65534_kludge<Bus>{s, bus}.tick_sr_s(); break;
+        case Ticker::reu_sr_b: T65534_kludge<Bus>{s, bus}.tick_sr_b(); break;
+        case Ticker::reu_rs_n: T65534_kludge<Bus>{s, bus}.tick_rs_n(); break;
+        case Ticker::reu_rs_r: T65534_kludge<Bus>{s, bus}.tick_rs_r(); break;
+        case Ticker::reu_rs_s: T65534_kludge<Bus>{s, bus}.tick_rs_s(); break;
+        case Ticker::reu_rs_b: T65534_kludge<Bus>{s, bus}.tick_rs_b(); break;
+        case Ticker::reu_sw_n: T65534_kludge<Bus>{s, bus}.tick_sw_n(); break;
+        case Ticker::reu_sw_r: T65534_kludge<Bus>{s, bus}.tick_sw_r(); break;
+        case Ticker::reu_sw_s: T65534_kludge<Bus>{s, bus}.tick_sw_s(); break;
+        case Ticker::reu_sw_b: T65534_kludge<Bus>{s, bus}.tick_sw_b(); break;
+        case Ticker::reu_vr_n: T65534_kludge<Bus>{s, bus}.tick_vr_n(); break;
+        case Ticker::reu_vr_r: T65534_kludge<Bus>{s, bus}.tick_vr_r(); break;
+        case Ticker::reu_vr_s: T65534_kludge<Bus>{s, bus}.tick_vr_s(); break;
+        case Ticker::reu_vr_b: T65534_kludge<Bus>{s, bus}.tick_vr_b(); break;
+        case Ticker::reu_wait_ff00:   T65534_kludge<Bus>{s, bus}.tick_wait_ff00();   break;
+        case Ticker::reu_dispatch_op: T65534_kludge<Bus>{s, bus}.tick_dispatch_op(); break;
     }
 }
 
@@ -375,7 +436,7 @@ inline void bus_op(u16 exp_type, Bus_op op, const u16& a, u8& d, State::System& 
                  case (t * Bus_op::_cnt) + Bus_op::io2_w: T##t{s}.io2_w(a, d); return; \
 
     switch ((exp_type * Bus_op::_cnt) + op) {
-        T(0) T(10)
+        T(0) T(10) T(65534)
     }
 
     #undef T

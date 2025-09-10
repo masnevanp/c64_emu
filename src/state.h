@@ -249,6 +249,7 @@ struct System {
     PLA pla;
 
     u16 expansion_type;
+    u16 expansion_ticker;
 
     Int_hub int_hub;
 
