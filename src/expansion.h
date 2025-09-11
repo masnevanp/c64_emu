@@ -124,7 +124,7 @@ struct T10 : public Base { // T10_Epyx_Fastload
 
 
 struct T65534 : public Base { // REU 1764
-    static constexpr u32 ram_size = 256 * 1024;
+    static constexpr u32 ram_size = 512 * 1024;
 
     struct REU_state {
         // register data
@@ -150,8 +150,7 @@ struct T65534 : public Base { // REU 1764
         u8 swap_cycle;
     };
 
-    // First 256k of ss.exp_ram acts as REU-ram. The 'State' follows REU-ram.
-    // TODO: MUST prevent access beyond 256k (it will mess up the state)
+    // First 512k of ss.exp_ram acts as REU-ram. The 'State' follows REU-ram.
     T65534(::State::System& s)
         : Base(s),
           r(*((REU_state*)(s.exp_ram + ram_size))) { }
@@ -255,26 +254,8 @@ struct T65534 : public Base { // REU 1764
         r.swap_cycle = false;
     }
 
-    void tick_wait_ff00() {
-        const bool ff00_written = (
-            (s.bus.addr == 0xff00) && (s.bus.rw == State::System::Bus::RW::w)
-        );
-        if (ff00_written) tick_dispatch_op();
-    }
-
-    void tick_dispatch_op() {
-        // resolve ticker from cmd & addr_ctrl regs
-        const auto t = (((r.cmd & R_cmd::xfer) << 2) | ((r.addr_ctrl & R_addr_ctrl::fix) >> 6)) + 1;
-        s.expansion_ticker = t;
-        s.dma_low = true;
-    }
-
 protected:
-    bool ba() const { return !s.ba_low; }
-
     bool irq_on() const { return r.status & R_status::int_pend; }
-
-    void do_tlen() { if (r.a.tlen == 1) done(); else r.a.tlen -= 1; }
 
     void check_irq() {
         if (r.int_mask & R_int_mask::int_ena) {
@@ -285,16 +266,6 @@ protected:
             }
         }
     }
-
-    void done() {
-        s.expansion_ticker = Expansion::Ticker::idle;
-        s.dma_low = false;
-        if (r.a.tlen == 1) r.status |= R_status::eob;
-        r.cmd = r.cmd & ~R_cmd::exec;
-        r.cmd = r.cmd | R_cmd::no_ff00_trig;
-        if (r.cmd & R_cmd::autoload) r.a = r._a;
-        check_irq();
-    }
 };
 
 template<typename Bus>
@@ -302,7 +273,8 @@ struct T65534_kludge : public T65534 { // REU
     T65534_kludge(State::System& s, Bus& bus_) : T65534(s), bus(bus_) {}
 
     // 4 operations: sys -> REU, REU -> sys, swap, verify
-    // 4 addr. types for each op.: fix none, fix reu, fix sys, fix both
+    // 4 addr. modes for each op.: fix none, fix reu addr, fix sys addr, fix both
+
     // sys -> REU
     void tick_sr_n() { if (ba()) { do_sr(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); } }
     void tick_sr_r() { if (ba()) { do_sr(); r.a.inc_saddr(); do_tlen(); } }
@@ -324,8 +296,36 @@ struct T65534_kludge : public T65534 { // REU
     void tick_vr_s() { if (ba()) { do_ver(); r.a.inc_raddr(); } }
     void tick_vr_b() { if (ba()) { do_ver(); } }
 
+    void tick_wait_ff00() {
+        const bool ff00_written = (
+            (s.bus.addr == 0xff00) && (s.bus.rw == State::System::Bus::RW::w)
+        );
+        if (ff00_written) tick_dispatch_op();
+    }
+
+    void tick_dispatch_op() {
+        // resolve ticker from cmd & addr_ctrl regs
+        const auto t = (((r.cmd & R_cmd::xfer) << 2) | ((r.addr_ctrl & R_addr_ctrl::fix) >> 6)) + 1;
+        s.expansion_ticker = t;
+        s.dma_low = true;
+    }
+
 private:
     Bus& bus;
+
+    bool ba() const { return !s.ba_low; }
+
+    void do_tlen() { if (r.a.tlen == 1) done(); else r.a.tlen -= 1; }
+
+    void done() {
+        s.expansion_ticker = Expansion::Ticker::idle;
+        s.dma_low = false;
+        if (r.a.tlen == 1) r.status |= R_status::eob;
+        r.cmd = r.cmd & ~R_cmd::exec;
+        r.cmd = r.cmd | R_cmd::no_ff00_trig;
+        if (r.cmd & R_cmd::autoload) r.a = r._a;
+        check_irq();
+    }
 
     void do_sr() { bus.access(r.a.saddr, s.exp_ram[r.a.raddr], State::System::Bus::RW::r); }
     void do_rs() { bus.access(r.a.saddr, s.exp_ram[r.a.raddr], State::System::Bus::RW::w); }
