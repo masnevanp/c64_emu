@@ -473,20 +473,6 @@ private:
 
     Input_matrix input_matrix{s.input_matrix, cia1.port_a.ext_in, cia1.port_b.ext_in, vic};
 
-    /*Expansion_ctx::IO exp_io{
-        s.ba_low,
-        //std::bind(&Address_space::access, addr_space, std::placeholders::_1),
-        [this](const u16& a, u8& d, const u8 rw) { bus.access(a, d, rw); },
-        [this](bool e, bool g) { bus.set_exrom_game(e, g); },
-        int_hub.int_sig,
-        s.dma_low
-    };
-    IO::Bus _bus{cpu}; // TODO: get rid of this hacky kludge...
-    Expansion_ctx exp_ctx{
-        exp_io, _bus, s.ram, s.vic.cycle, s.exp_ram, nullptr, nullptr
-    };
-    */
-
     C1541::System c1541{cia2.port_a.ext_in, rom.c1541};
 
     IO::Port::PD_out cia1_pa_out {
@@ -637,8 +623,7 @@ private:
         s.mode = Mode::none;
     }
 
-    std::vector<::Menu::Action> cart_menu_actions{
-        // TODO
+    std::vector<::Menu::Action> exp_menu_actions{
         {"DETACH ?", [&](){ Expansion::detach(s); reset_cold(); }},
         {"ATTACH REU ?", [&]() { Expansion::attach_REU(s); reset_cold(); }},
     };
@@ -681,7 +666,7 @@ private:
             vid_out.settings_menu(),
             sid.settings_menu(),
             c1541.menu(),
-            {"CARTRIDGE / ", cart_menu_actions},
+            {"EXPANSION / ", exp_menu_actions},
             {"PERFORMANCE / ", perf_menu_items},
         },
         rom.charr

@@ -264,8 +264,8 @@ struct System {
 
     // holds all the memory that an expansion (e.g. a cart) requires: ROM, RAM,
     // emulation control data, ...
-    // TODO: dynamic, or meh..? (although 640k is enough for everyone...except easyflash..)
-    //       (nasty, if state saving is implemented)
+    // TODO: dynamic... (maybe move this somewhere else, and write it to a separate file
+    //                   when state is saved, but only if 'expansion_type != none')
     u8 exp_ram[640 * 1024];
 };
 
