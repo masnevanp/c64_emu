@@ -225,64 +225,17 @@ void System::Input_matrix::output() {
 }
 
 
-void System::Video_overlay::draw_chr(u16 chr, u16 cx, u16 cy, Color fg, Color bg) {
-    const u8* src = &charrom[chr * 8];
-    for (int px_row = 0; px_row < 8; ++px_row, ++src) {
-        u8* tgt = &pixels[(px_row + cy) * w + cx];
-        for (u8 px = 0b10000000; px; px >>= 1) *tgt++ = (*src & px) ? fg : bg;
-    }
-}
-
-
 void System::Menu::handle_key(u8 code) {
     using kc = Key_code::System;
 
-    if (video_overlay.visible) {
+    if (active) { // TODO: redundant check...?
         switch (code) {
             case kc::menu_ent:  root.enter(); break;
             case kc::menu_back: root.back();  break;
             case kc::menu_up:   root.up();    break;
             case kc::menu_down: root.down();  break;
         }
-    } else {
-        video_overlay.visible = true;
     }
-
-    update();
-}
-
-
-void System::Menu::toggle(bool on)  {
-    video_overlay.visible = on;
-    if (on) update();
-}
-
-
-void System::Menu::update() {
-    video_overlay.clear(col_bg);
-
-    const std::string text = root.text();
-    auto x = 4;
-    for (u8 ci = 0; ci < text.length(); ++ci, x += 8) {
-        const auto c = (text[ci] % 64) + 256; // map ascii code to petscii (using the 'lower case' half)
-        video_overlay.draw_chr(c, x, 0, col_fg, col_bg);
-    }
-}
-
-
-void System::C1541_status_panel::update(const C1541::Disk_ctrl::Status& c1541_status) {
-    static const u16 ch_led_wp = 0x0051;
-    static const u16 ch_led    = 0x0057;
-
-    const auto led_ch = c1541_status.wp_off() ? ch_led : ch_led_wp;
-    const auto led_col = c1541_status.led_on() ? col_led_on : col_led_off;
-    video_overlay.draw_chr(led_ch, 0, 0, led_col, col_bg);
-
-    /*static constexpr u16 ch_zero   = 0x0030;
-    const auto track_n = (status.head.track_n / 2) + 1;
-    const auto tn_col = status.head.active() ? Color::green : Color::gray_2;
-    draw_char(ch_zero + track_n / 10, x + 8 + 2,  y, tn_col, col_bg);
-    draw_char(ch_zero + track_n % 10, x + 16 + 2, y, tn_col, col_bg);*/
 }
 
 
@@ -416,25 +369,86 @@ void System::C64::step_forward(u8 key_code) {
 }
 
 
-void System::C64::output_frame() {
-    auto output_overlay = [&](Video_overlay& ol) {
-        const u8* src = ol.pixels;
-        for (int y = 0; y < ol.h; ++y) {
-            u8* tgt = &s.vic.frame[((ol.y + y) * VIC_II::FRAME_WIDTH) + ol.x];
-            for (int x = 0; x < ol.w; ++x, ++src) {
-                const auto col = *(src);
-                /*if (col != Video_overlay::transparent)*/ tgt[x] = col;
-            }
+struct PETSCII_Draw { // user is trusted, no checks...
+    const u8* charrom;
+    u8* tgt;
+    const u16 tgt_w = VIC_II::FRAME_WIDTH;
+
+    //void clear(u8 col) { for (int p = 0; p < tgt_w * tgt_h; ++p) tgt[p] = col; }
+
+    void chr(u16 chr, u16 cx, u16 cy, Color fg, Color bg) {
+        const u8* src = &charrom[chr * 8];
+        for (int px_row = 0; px_row < 8; ++px_row, ++src) {
+            u8* t = &tgt[(px_row + cy) * tgt_w + cx];
+            for (u8 px = 0b10000000; px; px >>= 1) *t++ = (*src & px) ? fg : bg;
         }
+    }
+
+    void txt(const std::string& txt, u16 tx, u16 ty, Color fg, Color bg) {
+        for (u8 ci = 0; ci < txt.length(); ++ci, tx += 8) {
+            const auto c = (txt[ci] % 64) + 256; // map ascii code to petscii (using the 'lower case' half)
+            chr(c, tx, ty, fg, bg);
+        }
+    }
+};
+
+
+void System::C64::output_frame() {
+    auto draw_menu = [&]() {
+        static const int pos_x = VIC_II::BORDER_SZ_V + 4;
+        static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 12;
+        static const int width_chr = 36;
+        static const int pad_px = 4;
+        static const Color col_fg = Color::light_green;
+        static const Color col_bg = Color::gray_1;
+
+        PETSCII_Draw pd{rom.charr, s.vic.frame};
+
+        pd.txt(std::string(width_chr, ' '), pos_x, pos_y, col_fg, col_bg);
+        pd.txt(menu.text(), pos_x + pad_px, pos_y, col_fg, col_bg);
     };
 
-    if (menu.video_overlay.visible) {
-        output_overlay(menu.video_overlay);
-        c1541_status_panel.update(c1541.dc.status);
-        output_overlay(c1541_status_panel.video_overlay);
+    auto draw_c1541_status = [&]() {
+        static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 22;
+        static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 12;
+        static const Color col_bg = Color::black;
+        static const Color col_led_on = Color::light_green;
+        static const Color col_led_off = Color::gray_1;
+
+        static const u16 ch_led_wp = 0x0051;
+        static const u16 ch_led    = 0x0057;
+
+        const auto led_ch = c1541.dc.status.wp_off() ? ch_led : ch_led_wp;
+        const auto led_col = c1541.dc.status.led_on() ? col_led_on : col_led_off;
+
+        PETSCII_Draw{rom.charr, s.vic.frame}.chr(led_ch, pos_x, pos_y, led_col, col_bg);
+
+        /*static constexpr u16 ch_zero   = 0x0030;
+        const auto track_n = (status.head.track_n / 2) + 1;
+        const auto tn_col = status.head.active() ? Color::green : Color::gray_2;
+        draw_char(ch_zero + track_n / 10, x + 8 + 2,  y, tn_col, col_bg);
+        draw_char(ch_zero + track_n % 10, x + 16 + 2, y, tn_col, col_bg);*/
+    };
+
+    auto draw_expansion_status = [&]() {
+        static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 12;
+        static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 12;
+        static const Color col_bg = Color::black;
+        static const Color col_attached = Color::yellow;
+        static const Color col_detached = Color::gray_1;
+        static const u16 ch = 0x118;
+
+        const auto col = (s.expansion_type == Expansion::Type::none) ? col_detached : col_attached;
+
+        PETSCII_Draw{rom.charr, s.vic.frame}.chr(ch, pos_x, pos_y, col, col_bg);
+    };
+
+    if (menu.active) {
+        draw_menu();
+        draw_c1541_status();
+        draw_expansion_status();
     } else if (c1541.dc.status.head.active()) {
-        c1541_status_panel.update(c1541.dc.status);
-        output_overlay(c1541_status_panel.video_overlay);
+        draw_c1541_status();
     }
 
     vid_out.put(s.vic.frame);

@@ -349,45 +349,19 @@ private:
 };
 
 
-struct Video_overlay {
-    Video_overlay(u16 x_, u16 y_, u16 w_, u16 h_, const u8* charrom_)
-        : x(x_), y(y_), w(w_), h(h_), pixels(new u8[w * h]), charrom(charrom_) {}
-    ~Video_overlay() { delete[] pixels; }
-
-    // static constexpr u8 transparent = 0xff;
-
-    const u16 x; const u16 y; const u16 w; const u16 h;
-
-    void clear(u8 col) { for (int p = 0; p < w * h; ++p) pixels[p] = col; }
-    void draw_chr(u16 chr, u16 cx, u16 cy, Color fg, Color bg);
-
-    bool visible = false;
-    u8* pixels;
-    const u8* charrom;
-};
-
-
 class Menu {
 public:
-    static const int pos_x = VIC_II::BORDER_SZ_V + 1 * 8;
-    static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 12;
-
-    static const Color col_fg = Color::light_green;
-    static const Color col_bg = Color::gray_1;
-
     Menu(std::initializer_list<::Menu::Immediate_action> imm_actions_,
         std::initializer_list<::Menu::Action> actions_,
-        std::initializer_list<::Menu::Group> subs_,
-        const u8* charrom)
+        std::initializer_list<::Menu::Group> subs_)
       :
-        video_overlay(pos_x, pos_y, 36 * 8, 8, charrom),
         imm_actions(imm_actions_), actions(actions_), subs(subs_),
         root("", imm_actions, actions, subs) {}
 
     void handle_key(u8 code);
-    void toggle(bool on);
+    std::string text() const { return root.text(); }
 
-    Video_overlay video_overlay;
+    bool active = false;
 
 private:
     std::vector<::Menu::Immediate_action> imm_actions;
@@ -395,24 +369,6 @@ private:
     std::vector<::Menu::Group> subs;
 
     ::Menu::Group root;
-
-    void update();
-};
-
-
-struct C1541_status_panel {
-    static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 16;
-    static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 12;
-
-    static const Color col_bg = Color::black;
-    static const Color col_led_on = Color::light_green;
-    static const Color col_led_off = Color::gray_1;
-
-    Video_overlay video_overlay;
-
-    C1541_status_panel(const u8* charrom) : video_overlay(pos_x, pos_y, 8, 8, charrom) {}
-
-    void update(const C1541::Disk_ctrl::Status& c1541_status);
 };
 
 /*
@@ -521,7 +477,7 @@ private:
                     case kc::step_instr:
                     case kc::step_line:
                     case kc::step_frame: if (s.mode == Mode::stepped) step_forward(code); break;
-                    case kc::menu_tgl:   menu.toggle(true);            break;
+                    case kc::menu_tgl:   menu.active = true;           break;
                     case kc::menu_ent:
                     case kc::menu_back:
                     case kc::menu_up:
@@ -530,7 +486,7 @@ private:
                     case kc::shutdown:   request_shutdown();           break;
                 }
             } else {
-                if (code == kc::menu_tgl) menu.toggle(false);
+                if (code == kc::menu_tgl) menu.active = false;
             }
         },
 
@@ -668,11 +624,8 @@ private:
             c1541.menu(),
             {"EXPANSION / ", exp_menu_actions},
             {"PERFORMANCE / ", perf_menu_items},
-        },
-        rom.charr
+        }
     };
-
-    C1541_status_panel c1541_status_panel{rom.charr};
 
     static void install_kernal_tape_traps(u8* kernal, u8 trap_opc);
 };
