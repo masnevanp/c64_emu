@@ -24,7 +24,7 @@ int Expansion::CRT::load_static_chips(const Files::CRT& crt, u8* exp_ram) {
         if (cp->load_addr == 0x8000) tgt_addr = 0x0000;
         else if (cp->load_addr == 0xa000 || cp->load_addr == 0xe000) tgt_addr = 0x2000;
         else {
-            Log::error("CRT: invalid CHIP packet address - %d", (int)cp->load_addr);
+            Log::error("Expansion: invalid CRT CHIP packet address - %d", (int)cp->load_addr);
             continue;
         }
 
@@ -60,21 +60,21 @@ void Expansion::detach(State::System& s) {
 
 bool Expansion::attach(State::System& s, const Files::CRT& crt) {
     if (!crt.header().valid()) {
-        Log::error("CRT: invalid img header");
+        Log::error("Expansion: invalid CRT img header");
         return false;
     }
 
     detach(s);
 
     bool success;
-    const auto type = crt.header().hw_type;
+    const auto type = crt.header().hw_type + Type::generic; // apply the offset
     switch (type) {
         #define T(t) case t: success = T##t{s}.attach(crt); break;
 
-        T(0) T(10)
+        T(2) T(12)
 
         default:
-            Log::error("CRT: unsupported HW type: %d", (int)type);
+            Log::error("Expansion: unsupported CRT HW type: %d", (int)type);
             success = false;
             break;
 
@@ -83,12 +83,20 @@ bool Expansion::attach(State::System& s, const Files::CRT& crt) {
 
     if (success) {
         s.expansion_type = type;
-        Log::info("CRT: attached type: %d", type);
+        Log::info("Expansion: attached CRT, type: %d", type);
         return true;
     } else {
-        Log::error("CRT: failed to attach");
+        Log::error("Expansion: failed to attach CRT");
         return false;
     }
+}
+
+
+bool Expansion::attach_REU(State::System& s) {
+    detach(s);
+    s.expansion_type = Type::REU;
+    Log::info("Expansion: REU attached");
+    return true;
 }
 
 
@@ -96,7 +104,7 @@ void Expansion::reset(State::System& s) {
     switch (s.expansion_type) {
         #define T(t) case t: T##t{s}.reset(); break;
 
-        T(0) T(10)
+        T(0) T(1) T(2) T(12)
 
         #undef T
     }

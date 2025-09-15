@@ -394,9 +394,10 @@ struct PETSCII_Draw { // user is trusted, no checks...
 
 
 void System::C64::output_frame() {
+    static const int menu_pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 12;
+
     auto draw_menu = [&]() {
         static const int pos_x = VIC_II::BORDER_SZ_V + 4;
-        static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 12;
         static const int width_chr = 36;
         static const int pad_px = 4;
         static const Color col_fg = Color::light_green;
@@ -404,13 +405,13 @@ void System::C64::output_frame() {
 
         PETSCII_Draw pd{rom.charr, s.vic.frame};
 
-        pd.txt(std::string(width_chr, ' '), pos_x, pos_y, col_fg, col_bg);
-        pd.txt(menu.text(), pos_x + pad_px, pos_y, col_fg, col_bg);
+        pd.txt(std::string(width_chr, ' '), pos_x, menu_pos_y, col_fg, col_bg);
+        pd.txt(menu.text(), pos_x + pad_px, menu_pos_y, col_fg, col_bg);
     };
 
     auto draw_c1541_status = [&]() {
         static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 22;
-        static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 12;
+        static const int pos_y = menu_pos_y;
         static const Color col_bg = Color::black;
         static const Color col_led_on = Color::light_green;
         static const Color col_led_off = Color::gray_1;
@@ -432,9 +433,9 @@ void System::C64::output_frame() {
 
     auto draw_expansion_status = [&]() {
         static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 12;
-        static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 12;
+        static const int pos_y = menu_pos_y;
         static const Color col_bg = Color::black;
-        static const Color col_attached = Color::yellow;
+        static const Color col_attached = Color::green;
         static const Color col_detached = Color::gray_1;
         static const u16 ch = 0x118;
 

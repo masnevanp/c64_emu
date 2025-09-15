@@ -20,7 +20,8 @@
 namespace Expansion {
 
 enum Type : u16 {
-    REU = 0xfffe, none = 0xffff,
+    // NOTE: CRT IDs are offset by 2 (generic: 0 --> 2, action replay: 1 --> 3, etc..)
+    none = 0, REU = 1, generic = 2,
 };
 
 
@@ -71,59 +72,12 @@ protected:
 };
 
 
-struct T0 : public Base { // T0 Generic
+struct T0 : public Base { // T0 None
     T0(State::System& s) : Base(s) {}
-
-    void roml_r(const u16& a, u8& d) { d = s.exp_ram[a]; }
-    void romh_r(const u16& a, u8& d) { d = s.exp_ram[0x2000 + a]; }
-
-    bool attach(const Files::CRT& crt) {
-        if (CRT::load_static_chips(crt, s.exp_ram) == 0) return false;
-        set_exrom_game(crt);
-        return true;
-    }
 };
 
 
-struct T10 : public Base { // T10_Epyx_Fastload
-    T10(State::System& s) : Base(s) {}
-
-    struct status {
-        bool inactive() const { return s.vic.cycle >= _inact_at(); }
-        void activate()       { _inact_at() = s.vic.cycle + 512; }
-
-        State::System& s;
-        u64& _inact_at() const { return *(u64*)&s.exp_ram[0x2000]; }
-    };
-
-    void roml_r(const u16& a, u8& d) {
-        if (status{s}.inactive()) {
-            d = s.ram[0x8000 + a];
-        } else {
-            d = s.exp_ram[a];
-            status{s}.activate();
-        }
-    }
-
-    void io1_r(const u16& a, u8& d) { UNUSED2(a, d);
-        status{s}.activate();
-    };
-
-    void io2_r(const u16& a, u8& d) { UNUSED2(a, d);
-        d = s.exp_ram[0x1f00 | (a & 0x00ff)];
-    };
-
-    bool attach(const Files::CRT& crt) {
-        if (CRT::load_static_chips(crt, s.exp_ram) != 1) return false;
-        System::set_exrom_game(false, crt.header().game, s);
-        return true;
-    }
-
-    void reset() { status{s}.activate(); }
-};
-
-
-struct T65534 : public Base { // REU 1764
+struct T1 : public Base { // T1: REU
     static constexpr u32 ram_size = 512 * 1024;
 
     struct REU_state {
@@ -151,7 +105,7 @@ struct T65534 : public Base { // REU 1764
     };
 
     // First 512k of ss.exp_ram acts as REU-ram. The 'State' follows REU-ram.
-    T65534(::State::System& s)
+    T1(::State::System& s)
         : Base(s),
           r(*((REU_state*)(s.exp_ram + ram_size))) { }
 
@@ -269,8 +223,8 @@ protected:
 };
 
 template<typename Bus>
-struct T65534_kludge : public T65534 { // REU
-    T65534_kludge(State::System& s, Bus& bus_) : T65534(s), bus(bus_) {}
+struct T1_kludge : public T1 { // REU kludge
+    T1_kludge(State::System& s, Bus& bus_) : T1(s), bus(bus_) {}
 
     // 4 operations: sys -> REU, REU -> sys, swap, verify
     // 4 addr. modes for each op.: fix none, fix reu addr, fix sys addr, fix both
@@ -375,42 +329,89 @@ private:
 };
 
 
+struct T2 : public Base { // T2 Generic
+    T2(State::System& s) : Base(s) {}
+
+    void roml_r(const u16& a, u8& d) { d = s.exp_ram[a]; }
+    void romh_r(const u16& a, u8& d) { d = s.exp_ram[0x2000 + a]; }
+
+    bool attach(const Files::CRT& crt) {
+        if (CRT::load_static_chips(crt, s.exp_ram) == 0) return false;
+        set_exrom_game(crt);
+        return true;
+    }
+};
+
+
+struct T12 : public Base { // T12 Epyx Fastload
+    T12(State::System& s) : Base(s) {}
+
+    struct status {
+        bool inactive() const { return s.vic.cycle >= _inact_at(); }
+        void activate()       { _inact_at() = s.vic.cycle + 512; }
+
+        State::System& s;
+        u64& _inact_at() const { return *(u64*)&s.exp_ram[0x2000]; }
+    };
+
+    void roml_r(const u16& a, u8& d) {
+        if (status{s}.inactive()) {
+            d = s.ram[0x8000 + a];
+        } else {
+            d = s.exp_ram[a];
+            status{s}.activate();
+        }
+    }
+
+    void io1_r(const u16& a, u8& d) { UNUSED2(a, d);
+        status{s}.activate();
+    };
+
+    void io2_r(const u16& a, u8& d) { UNUSED2(a, d);
+        d = s.exp_ram[0x1f00 | (a & 0x00ff)];
+    };
+
+    bool attach(const Files::CRT& crt) {
+        if (CRT::load_static_chips(crt, s.exp_ram) != 1) return false;
+        System::set_exrom_game(false, crt.header().game, s);
+        return true;
+    }
+
+    void reset() { status{s}.activate(); }
+};
+
+
 void detach(State::System& s);
-
 bool attach(State::System& s, const Files::CRT& crt);
-
-inline bool attach_REU(State::System& s) {
-    detach(s);
-    s.expansion_type = Type::REU;
-    return true;
-}
-
+bool attach_REU(State::System& s);
 void reset(State::System& s);
 
 
 template<typename Bus>
 void tick(State::System& s, Bus& bus) {
     //#define T(t) case t: T##t##_kludge<Bus>{s, bus}.tick(); break;
+    using REU = T1_kludge<Bus>;
+
     switch (s.expansion_ticker) {
         case Ticker::idle: return;
-        case Ticker::reu_sr_n: T65534_kludge<Bus>{s, bus}.tick_sr_n(); break;
-        case Ticker::reu_sr_r: T65534_kludge<Bus>{s, bus}.tick_sr_r(); break;
-        case Ticker::reu_sr_s: T65534_kludge<Bus>{s, bus}.tick_sr_s(); break;
-        case Ticker::reu_sr_b: T65534_kludge<Bus>{s, bus}.tick_sr_b(); break;
-        case Ticker::reu_rs_n: T65534_kludge<Bus>{s, bus}.tick_rs_n(); break;
-        case Ticker::reu_rs_r: T65534_kludge<Bus>{s, bus}.tick_rs_r(); break;
-        case Ticker::reu_rs_s: T65534_kludge<Bus>{s, bus}.tick_rs_s(); break;
-        case Ticker::reu_rs_b: T65534_kludge<Bus>{s, bus}.tick_rs_b(); break;
-        case Ticker::reu_sw_n: T65534_kludge<Bus>{s, bus}.tick_sw_n(); break;
-        case Ticker::reu_sw_r: T65534_kludge<Bus>{s, bus}.tick_sw_r(); break;
-        case Ticker::reu_sw_s: T65534_kludge<Bus>{s, bus}.tick_sw_s(); break;
-        case Ticker::reu_sw_b: T65534_kludge<Bus>{s, bus}.tick_sw_b(); break;
-        case Ticker::reu_vr_n: T65534_kludge<Bus>{s, bus}.tick_vr_n(); break;
-        case Ticker::reu_vr_r: T65534_kludge<Bus>{s, bus}.tick_vr_r(); break;
-        case Ticker::reu_vr_s: T65534_kludge<Bus>{s, bus}.tick_vr_s(); break;
-        case Ticker::reu_vr_b: T65534_kludge<Bus>{s, bus}.tick_vr_b(); break;
-        case Ticker::reu_wait_ff00:   T65534_kludge<Bus>{s, bus}.tick_wait_ff00();   break;
-        case Ticker::reu_dispatch_op: T65534_kludge<Bus>{s, bus}.tick_dispatch_op(); break;
+        case Ticker::reu_sr_n: REU{s, bus}.tick_sr_n(); break;
+        case Ticker::reu_sr_r: REU{s, bus}.tick_sr_r(); break;
+        case Ticker::reu_sr_s: REU{s, bus}.tick_sr_s(); break;
+        case Ticker::reu_sr_b: REU{s, bus}.tick_sr_b(); break;
+        case Ticker::reu_rs_n: REU{s, bus}.tick_rs_n(); break;
+        case Ticker::reu_rs_r: REU{s, bus}.tick_rs_r(); break;
+        case Ticker::reu_rs_s: REU{s, bus}.tick_rs_s(); break;
+        case Ticker::reu_rs_b: REU{s, bus}.tick_rs_b(); break;
+        case Ticker::reu_sw_n: REU{s, bus}.tick_sw_n(); break;
+        case Ticker::reu_sw_r: REU{s, bus}.tick_sw_r(); break;
+        case Ticker::reu_sw_s: REU{s, bus}.tick_sw_s(); break;
+        case Ticker::reu_sw_b: REU{s, bus}.tick_sw_b(); break;
+        case Ticker::reu_vr_n: REU{s, bus}.tick_vr_n(); break;
+        case Ticker::reu_vr_r: REU{s, bus}.tick_vr_r(); break;
+        case Ticker::reu_vr_s: REU{s, bus}.tick_vr_s(); break;
+        case Ticker::reu_vr_b: REU{s, bus}.tick_vr_b(); break;
+        case Ticker::reu_wait_ff00:   REU{s, bus}.tick_wait_ff00();   break;
+        case Ticker::reu_dispatch_op: REU{s, bus}.tick_dispatch_op(); break;
     }
 }
 
@@ -436,7 +437,7 @@ inline void bus_op(u16 exp_type, Bus_op op, const u16& a, u8& d, State::System& 
                  case (t * Bus_op::_cnt) + Bus_op::io2_w: T##t{s}.io2_w(a, d); return; \
 
     switch ((exp_type * Bus_op::_cnt) + op) {
-        T(0) T(10) T(65534)
+        T(0) T(1) T(2) T(12)
     }
 
     #undef T
