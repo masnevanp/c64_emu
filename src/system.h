@@ -86,9 +86,6 @@ public:
         s(s_), rom(rom_), cia1(cia1_), cia2(cia2_), sid(sid_), vic(vic_) {}
 
     void reset() {
-        s.ba_low = false;
-        s.dma_low = false;
-
         s.pla.io_port_pd = s.pla.io_port_state = 0x00;
         w_dd(0x00); // all inputs
 
@@ -421,7 +418,7 @@ private:
 
     TheSID sid{int(FRAME_RATE_MIN), Performance::min_sync_points, s.vic.cycle};
 
-    VIC vic{s.vic, bus, s.ba_low, int_hub.int_sig};
+    VIC vic{s.vic, bus, s.ba, int_hub.int_sig};
 
     Bus bus{s, rom, cia1, cia2, sid, vic};
 
@@ -635,8 +632,8 @@ void C64::run_cycle() {
     vic.tick();
 
     const auto rw = cpu.mrw();
-    const auto rdy_low = s.ba_low || s.dma_low;
-    if (rdy_low && rw == NMOS6502::MC::RW::r) {
+    const auto rdy = s.ba || s.dma;
+    if (rdy && rw == NMOS6502::MC::RW::r) {
         c1541.tick();
     } else {
         // 'Slip in' the C1541 cycle

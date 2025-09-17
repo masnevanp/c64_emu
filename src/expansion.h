@@ -148,7 +148,7 @@ struct T1 : public Base { // T1: REU
     };
 
     void io2_r(const u16& a, u8& d) {
-        if (s.dma_low) return; // switched out during dma
+        if (s.dma) return; // switched out during dma
 
         switch (a & 0b11111) {
             case R::status:
@@ -171,7 +171,7 @@ struct T1 : public Base { // T1: REU
     }
 
     void io2_w(const u16& a, const u8& d) {
-        if (s.dma_low) return; // switched out during dma
+        if (s.dma) return; // switched out during dma
 
         switch (a & 0b11111) {
             case R::status:    return; // read-only
@@ -230,25 +230,25 @@ struct T1_kludge : public T1 { // REU kludge
     // 4 addr. modes for each op.: fix none, fix reu addr, fix sys addr, fix both
 
     // sys -> REU
-    void tick_sr_n() { if (ba()) { do_sr(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); } }
-    void tick_sr_r() { if (ba()) { do_sr(); r.a.inc_saddr(); do_tlen(); } }
-    void tick_sr_s() { if (ba()) { do_sr(); r.a.inc_raddr(); do_tlen(); } }
-    void tick_sr_b() { if (ba()) { do_sr(); do_tlen(); } }
+    void tick_sr_n() { if (bus_available()) { do_sr(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); } }
+    void tick_sr_r() { if (bus_available()) { do_sr(); r.a.inc_saddr(); do_tlen(); } }
+    void tick_sr_s() { if (bus_available()) { do_sr(); r.a.inc_raddr(); do_tlen(); } }
+    void tick_sr_b() { if (bus_available()) { do_sr(); do_tlen(); } }
     // REU -> sys
-    void tick_rs_n() { if (ba()) { do_rs(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); } }
-    void tick_rs_r() { if (ba()) { do_rs(); r.a.inc_saddr(); do_tlen(); } }
-    void tick_rs_s() { if (ba()) { do_rs(); r.a.inc_raddr(); do_tlen(); } }
-    void tick_rs_b() { if (ba()) { do_rs(); do_tlen(); } }
+    void tick_rs_n() { if (bus_available()) { do_rs(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); } }
+    void tick_rs_r() { if (bus_available()) { do_rs(); r.a.inc_saddr(); do_tlen(); } }
+    void tick_rs_s() { if (bus_available()) { do_rs(); r.a.inc_raddr(); do_tlen(); } }
+    void tick_rs_b() { if (bus_available()) { do_rs(); do_tlen(); } }
     // swap
     void tick_sw_n() { if (do_swap()) { r.a.inc_raddr(); r.a.inc_saddr();  do_tlen(); } }
     void tick_sw_r() { if (do_swap()) { r.a.inc_saddr(); do_tlen(); } }
     void tick_sw_s() { if (do_swap()) { r.a.inc_raddr(); do_tlen(); } }
     void tick_sw_b() { if (do_swap()) { do_tlen(); } }
     // verify
-    void tick_vr_n() { if (ba()) { do_ver(); r.a.inc_raddr(); r.a.inc_saddr(); } }
-    void tick_vr_r() { if (ba()) { do_ver(); r.a.inc_saddr(); } }
-    void tick_vr_s() { if (ba()) { do_ver(); r.a.inc_raddr(); } }
-    void tick_vr_b() { if (ba()) { do_ver(); } }
+    void tick_vr_n() { if (bus_available()) { do_ver(); r.a.inc_raddr(); r.a.inc_saddr(); } }
+    void tick_vr_r() { if (bus_available()) { do_ver(); r.a.inc_saddr(); } }
+    void tick_vr_s() { if (bus_available()) { do_ver(); r.a.inc_raddr(); } }
+    void tick_vr_b() { if (bus_available()) { do_ver(); } }
 
     void tick_wait_ff00() {
         const bool ff00_written = (
@@ -261,19 +261,19 @@ struct T1_kludge : public T1 { // REU kludge
         // resolve ticker from cmd & addr_ctrl regs
         const auto t = (((r.cmd & R_cmd::xfer) << 2) | ((r.addr_ctrl & R_addr_ctrl::fix) >> 6)) + 1;
         s.expansion_ticker = t;
-        s.dma_low = true;
+        s.dma = true;
     }
 
 private:
     Bus& bus;
 
-    bool ba() const { return !s.ba_low; }
+    bool bus_available() const { return !s.ba; }
 
     void do_tlen() { if (r.a.tlen == 1) done(); else r.a.tlen -= 1; }
 
     void done() {
         s.expansion_ticker = Expansion::Ticker::idle;
-        s.dma_low = false;
+        s.dma = false;
         if (r.a.tlen == 1) r.status |= R_status::eob;
         r.cmd = r.cmd & ~R_cmd::exec;
         r.cmd = r.cmd | R_cmd::no_ff00_trig;
@@ -285,7 +285,7 @@ private:
     void do_rs() { bus.access(r.a.saddr, s.exp_ram[r.a.raddr], State::System::Bus::RW::w); }
 
     bool do_swap() {
-        if (ba()) {
+        if (bus_available()) {
             r.swap_cycle = !r.swap_cycle;
 
             if (!r.swap_cycle) {

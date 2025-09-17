@@ -46,9 +46,9 @@ public:
 
     Core(
           VS& s_, const Bus& bus_,
-          u16& ba_low, IO::Int_sig& int_sig)
+          u16& ba_, IO::Int_sig& int_sig)
         : s(s_),
-          bus(bus_), irq(s, int_sig), ba(ba_low), lp(s, irq),
+          bus(bus_), irq(s, int_sig), ba(ba_), lp(s, irq),
           mobs(s, bus, ba, irq), gfx(s, bus, ba), border(s) {}
 
     void reset();
@@ -148,22 +148,22 @@ private:
 
     class BA_phi2 {
     public:
-        void mob_start(u8 mn) { ba_low |=  (0x100 << mn); }
-        void mob_done(u8 mn)  { ba_low &= ~(0x100 << mn); }
+        void mob_start(u8 mn) { ba |=  (0x100 << mn); }
+        void mob_done(u8 mn)  { ba &= ~(0x100 << mn); }
 
         void gfx_start(u8 aec_low_cycle) {
-            if ((ba_low & 0x00ff) == 0) ba_low = (ba_low & 0xff00) | aec_low_cycle;
+            if ((ba & 0x00ff) == 0) ba = (ba & 0xff00) | aec_low_cycle;
         }
-        void gfx_done() { ba_low &= 0xff00; }
+        void gfx_done() { ba &= 0xff00; }
 
         bool phi2_aec_high(u8 current_cycle) const {
-            return current_cycle < (ba_low & 0x00ff); // called only on ba lines (so it is correct in those cases)
+            return current_cycle < (ba & 0x00ff); // called only on ba lines (so it is correct in those cases)
         }
 
-        BA_phi2(u16& ba_low_) : ba_low(ba_low_) {}
+        BA_phi2(u16& ba_) : ba(ba_) {}
     private:
         // 8 MSBs for MOBs, 8 LSBs for GFX (stores the 'PHI2 AEC stays low' cycle),
-        u16& ba_low; // any bit set ==> ba low
+        u16& ba; // any bit set ==> ba low (active)
     };
 
 

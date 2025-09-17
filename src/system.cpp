@@ -474,6 +474,10 @@ void System::C64::reset_cold() {
     };
 
     init_ram();
+
+    s.ba = false;
+    s.dma = false;
+
     cia1.reset_cold();
     cia2.reset_cold();
     sid.reset();

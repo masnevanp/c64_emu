@@ -241,8 +241,8 @@ struct System {
     u8 ram[RAM_SIZE];
     u8 color_ram[COLOR_RAM_SIZE] = {};
 
-    u16 ba_low;
-    u16 dma_low;
+    u16 ba;
+    u16 dma;
 
     Bus bus;
 
