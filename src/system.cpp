@@ -504,7 +504,8 @@ void System::C64::save_state_req() {
         // TODO: hadle exceptions?
         if (auto f = std::ofstream(filepath, std::ios::binary)) {
             f.write((const char*)&sys_snap, sizeof(sys_snap));
-            if (!f) Log::error("save state failed");
+            if (f) Log::info("State saved: %s", filepath.c_str());
+            else Log::error("save state failed");
         }
     };
 };
@@ -558,7 +559,7 @@ bool System::C64::handle_file(Files::File& file) {
             deferred = [&, d = std::move(file.data)]() {
                 Files::System_snapshot& iss = *((Files::System_snapshot*)d.data()); // brutal...
                 sys_snap.sys_state = iss.sys_state;
-                sid.core.write_state(sys_snap.sid);
+                sid.core.write_state(iss.sid);
                 cpu.mcp = &NMOS6502::MC::code[0] + iss.cpu_mcp;
                 pre_run(); // NOTE: required for now (see 'sid.h' for more info)
             };
