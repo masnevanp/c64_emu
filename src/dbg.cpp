@@ -78,9 +78,9 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     std::cout << " d: " << print_u8(cpu.s.d);
     std::cout << " ir: " << print_u8(cpu.s.ir);
     std::cout << "\n";
-    std::cout << "\n==> mar: " << print_u16(cpu.mar()) << " (" << Ri16_str[cpu.mcp->ar] << ")";
+    std::cout << "\n==> mar: " << print_u16(cpu.mar()) << " (" << Ri16_str[cpu.mop().ar] << ")";
     std::cout << "   mdr: " << (cpu.mrw() == MC::RW::w ? print_u8(cpu.mdr()) : "??");
-    std::cout << " (" << Ri8_str[cpu.mcp->dr] << ")";
+    std::cout << " (" << Ri8_str[cpu.mop().dr] << ")";
     std::cout << "   r/w: " << MC::RW_str[cpu.mrw()];
     std::cout << std::endl;
     /*
@@ -129,7 +129,7 @@ void Dbg::step(System& sys, u16 until_pc)
         } else std::cout << "----------------------------------------------------------";
 
         //getchar();
-        std::cout << std::dec << "C" << (int)sys.cn << " T" << (int)sys.tn << ": " << std::string(*sys.cpu.mcp);
+        std::cout << std::dec << "C" << (int)sys.cn << " T" << (int)sys.tn << ": " << std::string(sys.cpu.mop());
 
         sys.exec_cycle();
         reg_diff(sys.cpu);

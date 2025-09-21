@@ -9,7 +9,7 @@ void NMOS6502::Core::reset() {
     s.brk_srcs = 0x00;
     s.nmi_timer = s.irq_timer = 0x00;
     s.nmi_act = s.irq_act = false;
-    mcp = MC::opc_mc_start(OPC::reset);
+    s.mcc = MC::opc_addr[OPC::reset];
     s.r16(Ri16::a1) = s.sp; s.dec_sp();
     s.a2 = s.sp; s.dec_sp();
     s.a3 = s.sp; s.dec_sp();
@@ -269,7 +269,6 @@ void NMOS6502::Core::exec(const u8 mopc) {
 
     static constexpr u8 nmi_timer_handled = 0b10000000;
 
-    //const auto a1 = [&]() -> Reg16& { return *((Reg16*)&s.a1l); };
     const auto a1 = [&]() -> Reg16& { return s.r16(Ri16::a1); };
 
     switch (mopc) {
@@ -280,11 +279,11 @@ void NMOS6502::Core::exec(const u8 mopc) {
         case rm_zp_y: s.zp += s.y; return;
         case rm_x:
             s.a1l += s.x;
-            if (s.a1l < s.x) { s.a2 = a1() + 0x0100; mcp += 2; }
+            if (s.a1l < s.x) { s.a2 = a1() + 0x0100; s.mcc += 2; }
             return;
         case rm_y:
             s.a1l += s.y;
-            if (s.a1l < s.y) { s.a2 = a1() + 0x0100; mcp += 2; }
+            if (s.a1l < s.y) { s.a2 = a1() + 0x0100; s.mcc += 2; }
             return;
         case rm_idx_ind: s.zp += s.x; s.a2 = (u8)(s.zp + 0x01); return;
         case a_nz: Do{s}.set_nz(s.a); return;
@@ -302,11 +301,11 @@ void NMOS6502::Core::exec(const u8 mopc) {
             const bool no_bra = ((s.p >> cc_flag_pos[cc]) ^ cc) & 0b1;
 
             if (!no_bra) {
-                mcp += 1; // T2 (no page cross)
+                s.mcc += 1; // T2 (no page cross)
                 s.a2 = s.pc;
                 s.pc += (i8)s.d;
                 if ((s.a2 ^ s.pc) & 0xff00) {
-                    mcp += 2; // T2 (page cross)
+                    s.mcc += 2; // T2 (page cross)
                     a1() = s.a2;
                     s.a1l += s.d;
                 }
@@ -371,14 +370,15 @@ void NMOS6502::Core::exec(const u8 mopc) {
                 s.a4 = s.sp; s.dec_sp();
             }
 
-            mcp = opc_mc_start(s.ir);
+            s.mcc = MC::opc_addr[s.ir];
 
             return;
         case sig_hlt: sig_halt(); return;
-        case hlt: --mcp; return; // stuck
+        case hlt: --s.mcc; return; // stuck
         case MOPC::reset:
             a1() = Vec::rst + 0x0001;
             s.set(Flag::I);
+        case nmop: // fall through
             return;
     }
 }

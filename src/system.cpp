@@ -355,7 +355,7 @@ void System::C64::step_forward(u8 key_code) {
             run_cycle();
             break;
         case kc::step_instr:
-            do run_cycle(); while (cpu.mcp->dr != NMOS6502::Ri8::ir);
+            do run_cycle(); while (cpu.mop().dr != NMOS6502::Ri8::ir);
             break;
         case kc::step_line:
             do run_cycle(); while (s.vic.line_cycle() < (LINE_CYCLE_COUNT - 1));
@@ -498,7 +498,6 @@ void System::C64::save_state_req() {
     // TODO: spawn thread (a copy of sys_snap required though...)?
     deferred = [&]() {
         sys_snap.sid = sid.core.read_state();
-        sys_snap.cpu_mcp = cpu.mcp - &NMOS6502::MC::code[0];
 
         const std::string filepath = as_lower(dir + "/emu.state"); // TODO...
         // TODO: hadle exceptions?
@@ -560,7 +559,6 @@ bool System::C64::handle_file(Files::File& file) {
                 Files::System_snapshot& iss = *((Files::System_snapshot*)d.data()); // brutal...
                 sys_snap.sys_state = iss.sys_state;
                 sid.core.write_state(iss.sid);
-                cpu.mcp = &NMOS6502::MC::code[0] + iss.cpu_mcp;
                 pre_run(); // NOTE: required for now (see 'sid.h' for more info)
             };
             return true;

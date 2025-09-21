@@ -49,8 +49,6 @@ public:
     State::System sys_state;
 
     reSID_Wrapper::Core::State sid;
-
-    u8 cpu_mcp;
 };
 
 

@@ -179,9 +179,9 @@ void C1541::System::install_idle_trap() {
     std::cout << " a4: " << print_u16(cpu.a4);
     std::cout << " d: " << print_u8(cpu.d);
     std::cout << " ir: " << print_u8(cpu.ir);
-    std::cout << "\n==> mar: " << print_u16(cpu.mar()) << " (" << R16_str[cpu.mcp->ar] << ")";
+    std::cout << "\n==> mar: " << print_u16(cpu.mar()) << " (" << R16_str[cpu.mop().ar] << ")";
     std::cout << "   mdr: " << (cpu.mrw() == MC::RW::w ? print_u8(cpu.mdr()) : "??");
-    std::cout << " (" << R8_str[cpu.mcp->dr] << ")";
+    std::cout << " (" << R8_str[cpu.mop().dr] << ")";
     std::cout << "   r/w: " << MC::RW_str[cpu.mrw()];
     
 

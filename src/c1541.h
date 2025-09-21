@@ -909,7 +909,7 @@ private:
     /*NMOS6502::Sig cpu_trap {
         [this]() {
             cpu.pc = 0xebff; // start of idle loop
-            ++cpu.mcp; // bump to recover from halt
+            cpu.resume();
             if ((!dc.status.head.active()) && (!(ram[0x26c] | ram[0x7c]))) {
                 run_cfg_change = idle = true;
             }

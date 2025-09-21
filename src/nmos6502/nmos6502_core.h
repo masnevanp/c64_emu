@@ -28,6 +28,8 @@ public:
         Reg16 a3;
         Reg16 a4;
 
+        u8 mcc; // micro-code counter
+
         u8 nmi_act;
         u8 nmi_timer;
         u8 irq_act;
@@ -51,12 +53,9 @@ public:
 
     Core(State& s_, Sig& sig_halt_);
 
-    const MC::MOP* mcp; // micro-code pointer ('mc pc')
-
     void reset();
 
-    bool halted() const { return mcp->mopc == MC::hlt; }
-    void resume() { if (halted()) ++mcp; }
+    const MC::MOP& mop() const { return MC::code[s.mcc]; }
 
     /* Address space access params (addr, data, r/w).
        The read/write is expected to happen between ticks, e.g.:
@@ -65,9 +64,11 @@ public:
                core.tick();
            }
     */
-    u16 mar() const { return s.r16(mcp->ar); }
-    u8& mdr() const { return s.r8(mcp->dr); }
-    NMOS6502::MC::RW mrw() const { return mcp->rw; }
+    using RW = NMOS6502::MC::RW;
+
+    u16 mar() const { return s.r16(mop().ar); } // memory address reg
+    u8& mdr() const { return s.r8(mop().dr); }  // memory data reg
+    RW  mrw() const { return mop().rw; }        // memory read/write
 
     void set_nmi(bool act);
     void set_irq(bool act);
@@ -84,11 +85,15 @@ public:
             s.irq_timer <<= 1;
         }
 
-        s.pc += mcp->pc_inc;
+        s.pc += mop().pc_inc;
 
-        const auto mopc = (mcp++)->mopc;
-        if(mopc != NMOS6502::MC::nmop) exec(mopc);
+        const auto mopc = mop().mopc;
+        ++s.mcc;
+        exec(mopc);
     }
+
+    bool halted() const { return mop().mopc == MC::hlt; }
+    void resume() { if (halted()) ++s.mcc; }
 
 private:
     void exec(const u8 mop);
