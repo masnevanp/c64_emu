@@ -26,7 +26,7 @@ static constexpr int extra_cycle_freq = 67;
 static constexpr double motor_rpm = 300.0;
 
 // zone == (clock_sel_b << 1) | clock_sel_a == (VIA.pb6 << 1) | VIA.pb5
-constexpr double coder_freq(u8 zone) { return 1000000 * (16.0 / (16 - (zone & 0b11))); }
+constexpr double coder_clock_freq(u8 zone) { return 1000000 * (16.0 / (16 - (zone & 0b11))); }
 
 static constexpr double gcr_len(int non_enc_len) { return 5 * (non_enc_len / 4.0); }
 
@@ -111,19 +111,34 @@ struct Disk_format {
     static constexpr int data_block_len       = sync_mark_len + gcr_len(data_block_data_len);
     static constexpr int sector_len           = header_block_len + data_block_len; // NOTE: sector gap excluded
 
-    constexpr double total_bits_per_track(u8 track) { // theoretical max
-        const auto zone = speed_zone(track);
+    static constexpr double total_bits_per_track(u8 track) { // an ideal value for a 'standard' disk
         const auto bit_cell_len = 4; // in coder clocks
-        const auto rps = motor_rpm / 60;
-        return (coder_freq(zone) / bit_cell_len) / rps;
+        const auto rotations_per_sec = motor_rpm / 60;
+
+        const auto coder_freq = coder_clock_freq(zone(track));
+        const auto bits_per_sec = coder_freq / bit_cell_len;
+        const auto bits_per_rotation = bits_per_sec / rotations_per_sec;
+
+        return bits_per_rotation;
     }
 
-    constexpr double used_bits_per_track(u8 track) {
+    static constexpr double used_bits_per_track(u8 track) {
         return (sector_count(track) * sector_len) * 8;
     }
 
-    constexpr double unused_bits_per_track(u8 track) {
+    static constexpr double unused_bits_per_track(u8 track) {
         return total_bits_per_track(track) - used_bits_per_track(track);
+    }
+
+    static constexpr std::pair<int, int> sector_gap_len(u8 track) {
+        const int unused_bits = int(unused_bits_per_track(track));
+        const int total_gap_bits = ((unused_bits % 8) == 0)
+            ? unused_bits
+            : unused_bits + (8 - (unused_bits % 8));
+        const int total_gap_bytes = total_gap_bits / 8;
+        const int sector_gap_bytes = total_gap_bytes / sector_count(track);
+        const int leftover_bytes = total_gap_bytes % sector_count(track);
+        return {sector_gap_bytes, leftover_bytes};
     }
 
     /*static constexpr std::pair<int, int> sector_gap_len(u8 track) {
@@ -260,18 +275,18 @@ private:
         };
 
         auto write_track = [&](const u8 track) {
-            auto track_start = gcr_out.pos();
+            const auto track_start = gcr_out.pos();
 
+            const auto [sec_gap_len, leftover_gap_bytes] = DF::sector_gap_len(track);
+    
             const u8 sector_cnt = sector_count(track);
             for (u8 sector = 0; sector < sector_cnt; ++sector) {
                 write_sector(track, sector, src.block({ track, sector }));
-                DF::output_gap(gcr_out, 8); // TODO: proper length (it varies by zone)
+                DF::output_gap(gcr_out, sec_gap_len);
             }
 
-            // a longer gap after the last sector (TODO: proper lengths)
-            static constexpr int speed_zone_gap_len[4] = { 96, 150, 264, 90 };
-            const int gap_len = speed_zone_gap_len[speed_zone(track)];
-            DF::output_gap(gcr_out, gap_len);
+            // append the leftovers...
+            DF::output_gap(gcr_out, leftover_gap_bytes);
 
             const std::size_t len = gcr_out.pos() - track_start;
             tracks.emplace_back(len, track_start, const_cast<u8*>(track_start)); // allows also saving (to same array of data)

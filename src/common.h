@@ -299,14 +299,15 @@ enum : u8 { first_sector = 0, first_track = 1, last_track = 35, dir_track = 18 }
 
 constexpr int sector_count(u8 track_n) {
     constexpr int cnt[35] = {
-        21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21,
-        21, 19, 19, 19, 19, 19, 19, 19, 18, 18, 18, 18, 18, 18, 17, 17,
-        17, 17, 17
+        21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21,
+        19, 19, 19, 19, 19, 19, 19,
+        18, 18, 18, 18, 18, 18,
+        17, 17, 17, 17, 17
     };
     return (track_n < first_track || track_n > last_track) ? 0 : cnt[track_n - 1];
 }
 
-constexpr int speed_zone(u8 track_n) {
+constexpr int zone(u8 track_n) { // for 'standard' 35 tracks 
     switch (sector_count(track_n)) {
         case 17: return 0;    case 18: return 1;
         case 19: return 2;    case 21: return 3;
