@@ -10,6 +10,51 @@ TODO:
 */
 
 
+void C1541::Disk_format::GCR_output::enc(const u8 byte) {
+    const u8 gcr_nyb_1 = gcr_enc[byte >> 4];
+    const u8 gcr_nyb_2 = gcr_enc[byte & 0b1111];
+
+    switch (phase++) {
+        case 0:
+            *out = gcr_nyb_1 << 3;
+            *out |= (gcr_nyb_2 >> 2);
+            ++out;
+            *out = gcr_nyb_2 << 6;
+            return;
+        case 1:
+            *out |= (gcr_nyb_1 << 1);
+            *out |= (gcr_nyb_2 >> 4);
+            ++out;
+            *out = gcr_nyb_2 << 4;
+            return;
+        case 2:
+            *out |= (gcr_nyb_1 >> 1);
+            ++out;
+            *out = (gcr_nyb_1 << 7);
+            *out |= (gcr_nyb_2 << 2);
+            return;
+        case 3:
+            phase = 0;
+            *out |= (gcr_nyb_1 >> 3);
+            ++out;
+            *out = (gcr_nyb_1 << 5);
+            *out |= gcr_nyb_2;
+            ++out;
+            return;
+    }
+}
+
+void C1541::Disk_format::GCR_output::raw(const u8 byte) {
+    if (phase == 0) *out++ = byte;
+    else {
+        const auto shift = 2 * phase;
+        *out |= (byte >> shift);
+        ++out;
+        *out = (byte << (8 - shift));
+    }
+}
+
+
 void C1541::IEC::reset() {
     irq.reset();
 

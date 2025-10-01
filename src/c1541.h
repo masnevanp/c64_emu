@@ -32,70 +32,6 @@ static constexpr double gcr_len(int non_enc_len) { return 5 * (non_enc_len / 4.0
 
 
 struct Disk_format {
-    class GCR_output {
-    public:
-        static constexpr u8 gcr_enc[16] = { // nybble GCR encoding
-            0b01010, 0b01011, 0b10010, 0b10011, 0b01110, 0b01111, 0b10110, 0b10111,
-            0b01001, 0b11001, 0b11010, 0b11011, 0b01101, 0b11101, 0b11110, 0b10101
-        };
-
-        GCR_output(u8* out_buf, u8 start_phase = 0)
-            : start(out_buf), out(out_buf), phase(start_phase) {}
-
-        void enc(const u8 byte) {
-            const u8 gcr_nyb_1 = gcr_enc[byte >> 4];
-            const u8 gcr_nyb_2 = gcr_enc[byte & 0b1111];
-
-            switch (phase++) {
-                case 0:
-                    *out = gcr_nyb_1 << 3;
-                    *out |= (gcr_nyb_2 >> 2);
-                    ++out;
-                    *out = gcr_nyb_2 << 6;
-                    return;
-                case 1:
-                    *out |= (gcr_nyb_1 << 1);
-                    *out |= (gcr_nyb_2 >> 4);
-                    ++out;
-                    *out = gcr_nyb_2 << 4;
-                    return;
-                case 2:
-                    *out |= (gcr_nyb_1 >> 1);
-                    ++out;
-                    *out = (gcr_nyb_1 << 7);
-                    *out |= (gcr_nyb_2 << 2);
-                    return;
-                case 3:
-                    phase = 0;
-                    *out |= (gcr_nyb_1 >> 3);
-                    ++out;
-                    *out = (gcr_nyb_1 << 5);
-                    *out |= gcr_nyb_2;
-                    ++out;
-                    return;
-            }
-        }
-
-        void raw(const u8 byte) {
-            if (phase == 0) *out++ = byte;
-            else {
-                const auto shift = 2 * phase;
-                *out |= (byte >> shift);
-                ++out;
-                *out = (byte << (8 - shift));
-            }
-        }
-
-        const u8* pos() const { return out; }
-
-        u32 len() const { return (phase == 0) ? out - start : (out - start) + 1; }
-
-    private:
-        const u8* start;
-        u8* out;
-        u8 phase;
-    };
-
     static constexpr u8 header_block_id       = 0x08;
     static constexpr u8 data_block_id         = 0x07;
     static constexpr u8 header_block_off_byte = 0x0f;
@@ -110,6 +46,29 @@ struct Disk_format {
     static constexpr int header_block_len     = sync_mark_len + gcr_len(header_data_len) + header_gap_len;
     static constexpr int data_block_len       = sync_mark_len + gcr_len(data_block_data_len);
     static constexpr int sector_len           = header_block_len + data_block_len; // NOTE: sector gap excluded
+
+    class GCR_output {
+    public:
+        static constexpr u8 gcr_enc[16] = { // nybble GCR encoding
+            0b01010, 0b01011, 0b10010, 0b10011, 0b01110, 0b01111, 0b10110, 0b10111,
+            0b01001, 0b11001, 0b11010, 0b11011, 0b01101, 0b11101, 0b11110, 0b10101
+        };
+
+        GCR_output(u8* out_buf, u8 start_phase = 0)
+            : start(out_buf), out(out_buf), phase(start_phase) {}
+
+        void enc(const u8 byte);
+        void raw(const u8 byte);
+
+        const u8* pos() const { return out; }
+
+        u32 len() const { return (phase == 0) ? out - start : (out - start) + 1; }
+
+    private:
+        const u8* start;
+        u8* out;
+        u8 phase;
+    };
 
     static constexpr double total_bits_per_track(u8 track) { // an ideal value for a 'standard' disk
         const auto bit_cell_len = 4; // in coder clocks
@@ -141,13 +100,6 @@ struct Disk_format {
         return {sector_gap_bytes, leftover_bytes};
     }
 
-    /*static constexpr std::pair<int, int> sector_gap_len(u8 track) {
-        const int total_bytes = unused_bits_per_track(track) / 8;
-        const int sector_gap = total_bytes / sector_count(track);
-        const int left_over = total_bytes % sector_count(track);
-        return {sector_gap, left_over};
-    }*/
-
     static void output_sync_mark(GCR_output& output) {
         u8 len = 5;
         while (len--) output.raw(sync_byte);
@@ -161,6 +113,7 @@ struct Disk_format {
         const u8 checksum = sec_n ^ tr_n ^ id2 ^ id1;
 
         output_sync_mark(output);
+
         output.enc(header_block_id);
         output.enc(checksum);
         output.enc(sec_n);
@@ -169,19 +122,22 @@ struct Disk_format {
         output.enc(id1);
         output.enc(header_block_off_byte);
         output.enc(header_block_off_byte);
+
         output_gap(output, header_gap_len);
     }
 
     static void output_data_block(GCR_output& output, const u8* block) { // sans gap
-        u8 checksum = 0x00;
-
         output_sync_mark(output);
+
         output.enc(data_block_id);
+
+        u8 checksum = 0x00;
         for (int b = 0; b < 256; ++b) {
             output.enc(block[b]);
             checksum ^= block[b];
         }
         output.enc(checksum);
+
         output.enc(data_block_off_byte);
         output.enc(data_block_off_byte);
     }
@@ -228,10 +184,10 @@ public:
   TODO:
     - handle modified disks
 */
-class G64_disk : public Disk {
+class G64 : public Disk {
 public:
-    G64_disk(std::vector<u8>&& data) : g64{std::move(data)} {}
-    virtual ~G64_disk() {}
+    G64(std::vector<u8>&& data) : g64{std::move(data)} {}
+    virtual ~G64() {}
     /* TODO:
         - validate image (here?), just return null tracks if invalid
     */
@@ -246,10 +202,10 @@ public:
 };
 
 
-class D64_disk : public Disk {
+class D64 : public Disk {
 public:
-    D64_disk(const Files::D64& d64) { generate_disk(d64); }
-    virtual ~D64_disk() {}
+    D64(const Files::D64& d64) { generate_disk(d64); }
+    virtual ~D64() {}
 
     virtual Track track(u8 half_track_num) const {
         if (half_track_num & 0x1) return null_track(); // or just return the 'main' track?
@@ -934,7 +890,7 @@ private:
     void insert_blank() {
         // TODO: generate a truly blank disk
         const std::vector<u8> d64_data(std::size_t{Files::D64::size});
-        Disk* blank_disk = new C1541::D64_disk(Files::D64{d64_data}); // not truly blank...
+        Disk* blank_disk = new C1541::D64(Files::D64{d64_data}); // not truly blank...
         disk_carousel.insert(0, blank_disk, "blank"); // TODO: handle 0 free slots case
     }
 

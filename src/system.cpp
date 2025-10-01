@@ -545,11 +545,11 @@ bool System::C64::handle_file(Files::File& file) {
             // auto slot = s.ram[0xb9]; // secondary address
             // slot=0 --> first free slot
             c1541.disk_carousel.insert(0,
-                    new C1541::D64_disk(Files::D64{file.data}), file.name);
+                    new C1541::D64(Files::D64{file.data}), file.name);
             return true;
         case Type::g64:
             c1541.disk_carousel.insert(0,
-                    new C1541::G64_disk(std::move(file.data)), file.name);
+                    new C1541::G64(std::move(file.data)), file.name);
             return true;
         case Type::c64_bin:
             inject(file.data);
