@@ -119,20 +119,38 @@ void C1541::Disk_ctrl::output_pb() {
 }
 
 
+void C1541::Disk_ctrl::load_disk(const Disk_image* disk) {
+    for (int tn = 0; tn < track_count; ++tn) {
+        if (disk->track(tn).len > max_track_len) Log::error("Disk image track too long: %d", disk->track(tn).len);
+
+        const auto& src_track = disk->track(tn).len <= max_track_len
+            ? disk->track(tn)
+            : Disk_image::null_track();
+
+        // TODO: fill the remaining track data with gap byte?
+        std::copy(&src_track.data[0], &src_track.data[src_track.len], &track_data[tn][0]);
+
+        track_len[tn] = src_track.len;
+    }
+
+    head.rotation = 0; // TODO: maintain relative position
+}
+
+
 void C1541::Disk_ctrl::step_head(const u8 via_pb_out_now) {
     auto should_step = [&](const int step) -> bool {
         return (via_pb_out_now & PB::head_step) == ((via_pb_out + step) & 0b11);
     };
 
     if (should_step(+1)) {
-        if (head.track_n < last_track) change_track(head.track_n + 1);
+        if (head.track_num < Disk_ctrl::last_track) change_track(head.track_num + 1);
     } else if (should_step(-1)) {
-        if (head.track_n > first_track) change_track(head.track_n - 1);
+        if (head.track_num > Disk_ctrl::first_track) change_track(head.track_num - 1);
     }
 }
 
 
-void C1541::Disk_carousel::insert(int in_slot, const Disk* disk, const std::string& name) {
+void C1541::Disk_carousel::insert(int in_slot, const Disk_image* disk, const std::string& name) {
     if (in_slot == 0) {
         in_slot = find_free_slot();
         if (in_slot == 0) {

@@ -13,7 +13,7 @@
 /* TODO:
     - VIA:
       - timer 2: ever needed?
-    - ...
+    - howto handle modified disks? (should not be a hassle for the user...)
 */
 
 namespace C1541 {
@@ -146,45 +146,25 @@ struct Disk_format {
 using DF = Disk_format;
 
 
-class Disk {
+class Disk_image {
 public:
     struct Track {
-        Track(const std::size_t len = 0, const u8* data_r = nullptr, u8* data_w = nullptr)
-          : r{len, data_r}, w{len, data_w} {}
-
-        /*
-            TODO: allow different lengths? (tricky to maintain head_pos when switching between r/w...?)
-        */
-        struct Read {
-            std::size_t len = 0;
-            const u8* data = nullptr;
-        };
-        struct Write {
-            std::size_t len = 0;
-            u8* data = nullptr;
-        };
-
-        Read r;
-        Write w;
+        const std::size_t len = 0;
+        const u8* data = nullptr;
     };
 
     virtual Track track(u8 half_track_num) const = 0;
 
     static Track null_track() {
-        static constexpr u8 data_r[2] = {DF::gap_byte, DF::gap_byte ^ 0b11111111};
-        static u8 data_w[2] = {}; // written data is 'lost' here
-        return Track{2, data_r, data_w};
+        static constexpr u8 data[2] = {DF::gap_byte, DF::gap_byte ^ 0b11111111};
+        return Track{2, data};
     };
 
-    virtual ~Disk() {}
+    virtual ~Disk_image() {}
 };
 
 
-/*
-  TODO:
-    - handle modified disks
-*/
-class G64 : public Disk {
+class G64 : public Disk_image {
 public:
     G64(std::vector<u8>&& data) : g64{std::move(data)} {}
     virtual ~G64() {}
@@ -195,14 +175,12 @@ public:
 
     virtual Track track(u8 half_track_num) const {
         auto [len, data] = g64.track(half_track_num);
-        return (len && data) // allows also saving (to same array of data).. at least for now...
-                    ? Track{len, data, const_cast<u8*>(data)}
-                    : null_track();
+        return (len && data) ? Track{len, data} : null_track();
     }
 };
 
 
-class D64 : public Disk {
+class D64 : public Disk_image {
 public:
     D64(const Files::D64& d64) { generate_disk(d64); }
     virtual ~D64() {}
@@ -245,7 +223,7 @@ private:
             DF::output_gap(gcr_out, leftover_gap_bytes);
 
             const std::size_t len = gcr_out.pos() - track_start;
-            tracks.emplace_back(len, track_start, const_cast<u8*>(track_start)); // allows also saving (to same array of data)
+            tracks.emplace_back(Track{len, track_start});
         };
 
         auto write_disk = [&]() {
@@ -264,7 +242,7 @@ private:
 };
 
 
-class Null_disk : public Disk {
+class Null_disk : public Disk_image {
 public:
     virtual Track track(u8 half_track_num) const { UNUSED(half_track_num);
          return null_track();
@@ -511,8 +489,10 @@ private:
 
 class Disk_ctrl {
 public:
-    static constexpr int first_track =  0;
-    static constexpr int last_track  = 83;
+    static constexpr int track_count   = 84;
+    static constexpr int first_track   = 0;
+    static constexpr int last_track    = track_count - 1;
+    static constexpr int max_track_len = 8000; // TODO: waist less memory...? (and is 8000 always enough..)
 
     enum PB : u8 {
         head_step = 0b00000011, motor    = 0b00000100, led  = 0b00001000,
@@ -526,8 +506,8 @@ public:
         };
 
         Mode mode;
-        u16 pos = 0; // rotation within current track --> index to data of current track
-        u8 track_n = first_track;
+        u16 rotation = 0; // distance travelled in bytes
+        u8 track_num = 0;
         u8 next_byte_timer;
 
         u8   active()  const { return mode & PB::motor; }
@@ -628,10 +608,7 @@ public:
         }
     }
 
-    void load_disk(const Disk* disk_) {
-        disk = disk_;
-        change_track(head.track_n);
-    }
+    void load_disk(const Disk_image* disk);
 
     void set_write_prot(bool wp_on) {
         via_pb_in = wp_on ? (via_pb_in & ~PB::w_prot) : (via_pb_in | PB::w_prot);
@@ -672,14 +649,17 @@ private:
 
     void step_head(const u8 via_pb_out_now);
 
+    void rotate_disk() { head.rotation = (head.rotation + 1) % track_len[head.track_num]; }
+
     void read() {
         // TODO: work on bit level, e.g handle SYNC that is not byte aligned
         //       (and not a multiple of 8 bits), i.e. 're-align' the actual data (if needed)
         if (--head.next_byte_timer == 0) {
             head.next_byte_timer = cycles_per_byte();
 
-            const u8 next_byte = track.r.data[head.pos];
-            head.pos = (head.pos + 1) % track.r.len;
+            const u8 next_byte = track_data[head.track_num][head.rotation];
+
+            rotate_disk();
 
             if (via_pa_in == DF::sync_byte) {
                 if (next_byte == DF::sync_byte) set_sync();
@@ -697,22 +677,25 @@ private:
             - handle modified disks: set a 'dirty' flag here & save (auto/ask) when ejected?
                 + restore disk (i.e. discard changes)
                 + wipe disk (or is 'insert blank' enough?)
-            - changing between read/write:
-                - head_pos needs to stay valid (it does now, since r/w data is the same array...)
         */
         if (--head.next_byte_timer == 0) {
             head.next_byte_timer = cycles_per_byte();
-            if (write_prot_off()) track.w.data[head.pos] = via_pa_out;
-            head.pos = (head.pos + 1) % track.w.len;
+
+            if (write_prot_off()) track_data[head.track_num][head.rotation] = via_pa_out;
+
+            rotate_disk();
+
             if (byte_ready_enabled()) signal_byte_ready();
         }
     }
 
-    void change_track(const u8 to_half_track_n) {
-        head.track_n = to_half_track_n;
-        track = disk->track(head.track_n);
-        head.pos = 0; // TODO: keep the relative position (does it ever matter?)
+    void change_track(const u8 to_track_n) {
+        head.track_num = to_track_n;
+        head.rotation = 0; // TODO: keep the relative position (does it ever matter?)
     }
+
+    u16 track_len[track_count];
+    u8 track_data[track_count][max_track_len];
 
     u8 r_orb;
     u8 r_ora;
@@ -734,9 +717,6 @@ private:
     Head_status head;
 
     CPU& cpu;
-
-    const Disk* disk;
-    Disk::Track track;
 };
 
 
@@ -749,7 +729,7 @@ public:
     static constexpr int slot_count = 0x100;
 
     struct Slot {
-        const Disk* disk = nullptr;
+        const Disk_image* disk = nullptr;
         std::string disk_name;
         bool write_prot;
     };
@@ -762,7 +742,7 @@ public:
 
     void reset() { load(); }
 
-    void insert(int in_slot, const Disk* disk, const std::string& name);
+    void insert(int in_slot, const Disk_image* disk, const std::string& name);
 
     void rotate();
 
@@ -890,7 +870,7 @@ private:
     void insert_blank() {
         // TODO: generate a truly blank disk
         const std::vector<u8> d64_data(std::size_t{Files::D64::size});
-        Disk* blank_disk = new C1541::D64(Files::D64{d64_data}); // not truly blank...
+        Disk_image* blank_disk = new C1541::D64(Files::D64{d64_data}); // not truly blank...
         disk_carousel.insert(0, blank_disk, "blank"); // TODO: handle 0 free slots case
     }
 

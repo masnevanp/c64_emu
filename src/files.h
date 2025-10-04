@@ -84,6 +84,7 @@ struct T64 {
 };
 
 
+// TODO: handle tracks beyond 35 (upto and including 42)
 struct D64 {
     const Bytes& data;
 
@@ -195,7 +196,7 @@ struct G64 {
 
     std::pair<std::size_t, const u8*> track(u8 half_track_num) const {
         if (const u32 tdo = track_data_offset(half_track_num)) {
-            u16 len = *(U16l*)(&data[tdo]);
+            const u16 len = *(U16l*)(&data[tdo]);
             return {len, &data[tdo + 2]};
         }
         return {0, nullptr};

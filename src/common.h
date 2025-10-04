@@ -297,6 +297,7 @@ namespace C1541 {
 
 enum : u8 { first_sector = 0, first_track = 1, last_track = 35, dir_track = 18 };
 
+// TODO: handle tracks beyond 35 (upto and including 42)
 constexpr int sector_count(u8 track_n) {
     constexpr int cnt[35] = {
         21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21,
