@@ -690,8 +690,9 @@ private:
     }
 
     void change_track(const u8 to_track_n) {
+        const auto old_rotation = double(head.rotation) / track_len[head.track_num];
         head.track_num = to_track_n;
-        head.rotation = 0; // TODO: keep the relative position (does it ever matter?)
+        head.rotation = old_rotation * track_len[head.track_num];
     }
 
     u16 track_len[track_count];

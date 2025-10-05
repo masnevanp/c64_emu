@@ -133,7 +133,7 @@ void C1541::Disk_ctrl::load_disk(const Disk_image* disk) {
         track_len[tn] = src_track.len;
     }
 
-    head.rotation = 0; // TODO: maintain relative position
+    head.rotation = head.rotation % track_len[head.track_num]; // sort of random...
 }
 
 
