@@ -3,6 +3,7 @@
 
 #include <vector>
 #include "common.h"
+#include "state.h"
 #include "utils.h"
 #include "files.h"
 #include "nmos6502/nmos6502_core.h"
@@ -297,6 +298,8 @@ namespace VIA {
 
     class IRQ {
     public:
+        using State = State::C1541::IRQ;
+
         enum Src : u8 {
             ca2 = 0b00000001, ca1 = 0b00000010, sr = 0b00000100, cb2 = 0b00001000,
             cb1 = 0b00010000, t2  = 0b00100000, t1 = 0b01000000, any = 0b10000000,
@@ -306,45 +309,52 @@ namespace VIA {
             bit = 0b10000000, sc_set = 0b10000000, sc_clr = 0b00000000,
         };
 
-        void reset() { ifr = ier = 0x00; }
+        IRQ(State& s_) : s(s_) {}
 
-        void set(Src s) { ifr |= s; check(); }
-        void clr(Src s) { ifr &= ~s; check(); }
+        void reset() { s.ifr = s.ier = 0x00; }
+
+        void set(Src src) { s.ifr |= src; check(); }
+        void clr(Src src) { s.ifr &= ~src; check(); }
 
         void w_ifr(u8 data) {
             data &= 0b01111111; // keep ifr7 untouched
-            ifr &= ~data;
+            s.ifr &= ~data;
             check();
         }
-        u8 r_ifr() const { return ifr; }
+        u8 r_ifr() const { return s.ifr; }
 
         void w_ier(u8 data) {
-            ier = (data & SC::bit) == SC::sc_set
-                ? ((ier | data) & ~SC::bit) // set
-                : (ier & ~data); // clr
+            s.ier = (data & SC::bit) == SC::sc_set
+                ? ((s.ier | data) & ~SC::bit) // set
+                : (s.ier & ~data); // clr
             check();
         }
-        u8 r_ier() const { return ier | SC::bit; }
+        u8 r_ier() const { return s.ier | SC::bit; }
 
     private:
         void check() {
-            ifr = (ifr & ier)
-                ? (ifr | Src::any)
-                : (ifr & ~Src::any);
+            s.ifr = (s.ifr & s.ier)
+                ? (s.ifr | Src::any)
+                : (s.ifr & ~Src::any);
         }
 
-        u8 ifr;
-        u8 ier;
+        State& s;
     };
 
 } // namespace VIA
 
 
 class IEC {
+private:
+    using State = State::C1541::IEC;
+
+    State& s;
+
 public:
+
     static constexpr u8 dev_num = 8; // 8..11
 
-    IEC(IO::Port::PD_in& cia2_pa_in_) : cia2_pa_in(cia2_pa_in_) {}
+    IEC(State& s_, IO::Port::PD_in& cia2_pa_in_) : s(s_), irq(s.irq), cia2_pa_in(cia2_pa_in_) {}
 
     void reset();
 
@@ -446,7 +456,8 @@ public:
 
 private:
     enum { low = 0b0, high = 0b1 };
-    using state = u8;
+
+    using pin_state = u8;
 
     void output_pb() {
         via_pb_out = (r_orb & r_ddrb) | ~r_ddrb;
@@ -475,19 +486,24 @@ private:
     u8 via_pb_out;
     u8 via_pb_in;
 
-    state atn = high; // ok..?
+    pin_state atn = high; // ok..?
 
     IO::Port::PD_in& cia2_pa_in;
 
-    state cia2_pa(int pin) const { return pin_state(cia2_pa_out, pin); }
-    state via_pb(int pin) const  { return pin_state(via_pb_out, pin); }
+    pin_state cia2_pa(int pin) const { return read_pin(cia2_pa_out, pin); }
+    pin_state via_pb(int pin) const  { return read_pin(via_pb_out, pin); }
 
-    static constexpr state pin_state(u8 pins, int pin) { return (pins >> pin) & 0b1; }
-    static constexpr state invert(state s)             { return s ^ 0b1; }
+    static constexpr pin_state read_pin(u8 pins, int pin) { return (pins >> pin) & 0b1; }
+    static constexpr pin_state invert(pin_state s)        { return s ^ 0b1; }
 };
 
 
 class Disk_ctrl {
+private:
+    using State = State::C1541::Disk_ctrl;
+
+    State& s;
+
 public:
     static constexpr int track_count   = 84;
     static constexpr int first_track   = 0;
@@ -524,7 +540,7 @@ public:
     };
     const Status status{head, via_pb_out, via_pb_in};
 
-    Disk_ctrl(CPU& cpu_) : cpu(cpu_) { load_disk(&null_disk); }
+    Disk_ctrl(State& s_, CPU& cpu_) : s(s_), irq(s.irq), cpu(cpu_) { load_disk(&null_disk); }
 
     void reset();
 
@@ -778,11 +794,16 @@ private:
 
 
 class System {
+private:
+    using State = State::C1541;
+
+    State::System& s;
+
 public:
     static constexpr u16 dos_wp_change_flag_addr = 0x1c;
 
-    System(IO::Port::PD_in& cia2_pa_in, const u8* rom_/*, bool& run_cfg_change_*/)
-      : iec(cia2_pa_in), dc(cpu), rom(rom_), disk_carousel(dc, ram[dos_wp_change_flag_addr]) /*, run_cfg_change(run_cfg_change_)*/
+    System(State& s_, IO::Port::PD_in& cia2_pa_in, const u8* rom_/*, bool& run_cfg_change_*/)
+      : s(s_.system), iec(s_.iec, cia2_pa_in), dc(s_.disk_ctrl, cpu), rom(rom_), disk_carousel(dc, ram[dos_wp_change_flag_addr]) /*, run_cfg_change(run_cfg_change_)*/
     {
         //install_idle_trap();
     }

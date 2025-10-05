@@ -71,23 +71,23 @@ void C1541::IEC::update_iec_lines() {
         - Commodore 64 Programmers Reference Guide, Chapter 8 - Schematics
         - Commodore 1541 Troubleshooting and Repair Guide, Fig. 7-30 (p. 170..171)
     */
-    const state clk = invert(cia2_pa(4)) & cia2_pa(6) & invert(via_pb(3));
+    const pin_state clk = invert(cia2_pa(4)) & cia2_pa(6) & invert(via_pb(3));
 
-    const state atn_now = cia2_pa(3) & via_pb(7); // pa3 inverted twice --> taken as such
+    const pin_state atn_now = cia2_pa(3) & via_pb(7); // pa3 inverted twice --> taken as such
     if (atn != atn_now) {
         atn = atn_now;
         ca1_edge(atn);
     }
 
-    const state ud3a_out = via_pb(4) ^ atn;
-    const state data = invert(cia2_pa(5)) & cia2_pa(7) & invert(via_pb(1)) & invert(ud3a_out);
+    const pin_state ud3a_out = via_pb(4) ^ atn;
+    const pin_state data = invert(cia2_pa(5)) & cia2_pa(7) & invert(via_pb(1)) & invert(ud3a_out);
 
-    const u8 cia2_pa7_pa6 = (data << 7) | (clk << 6);
+    const pin_state cia2_pa7_pa6 = (data << 7) | (clk << 6);
     cia2_pa_in(0b11000000, cia2_pa7_pa6);
 
-    const u8 via_pb720_in = (atn << 7) | (invert(clk) << 2) | (invert(data) << 0);
-    const u8 via_pb65_in = (dev_num - 8) << 5;
-    const u8 pb_in = via_pb720_in | via_pb65_in | 0b00011010;
+    const pin_state via_pb720_in = (atn << 7) | (invert(clk) << 2) | (invert(data) << 0);
+    const pin_state via_pb65_in = (dev_num - 8) << 5;
+    const pin_state pb_in = via_pb720_in | via_pb65_in | 0b00011010;
     via_pb_in = via_pb_out & pb_in;
 }
 

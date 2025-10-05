@@ -180,6 +180,30 @@ struct CIA {
 };
 
 
+struct C1541 {
+    struct IRQ {
+        u8 ifr;
+        u8 ier;
+    };
+
+    struct IEC {
+        IRQ irq;
+    };
+
+    struct Disk_ctrl {
+        IRQ irq;
+    };
+
+    struct System {
+
+    };
+
+    IEC iec;
+    Disk_ctrl disk_ctrl;
+    System system;
+};
+
+
 struct System {
     enum class Mode {
         none, clocked, stepped, // warp, debug...? 
@@ -267,6 +291,8 @@ struct System {
     // TODO: dynamic... (maybe move this somewhere else, and write it to a separate file
     //                   when state is saved, but only if 'expansion_type != none')
     u8 exp_ram[640 * 1024];
+
+    C1541 c1541;
 };
 
 
