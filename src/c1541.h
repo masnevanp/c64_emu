@@ -362,35 +362,35 @@ public:
         switch (ri) {
             case VIA::R::rb:
                 irq.clr(VIA::IRQ::Src::cb1_cb2);
-                data = (r_orb & r_ddrb) | (via_pb_in & ~r_ddrb);
+                data = (s.r_orb & s.r_ddrb) | (s.via_pb_in & ~s.r_ddrb);
                 return;
             case VIA::R::ra:
                 irq.clr(VIA::IRQ::Src::ca1_ca2);
-                data = (r_ora & r_ddra) | ~r_ddra; // not connected
+                data = (s.r_ora & s.r_ddra) | ~s.r_ddra; // not connected
                 return;
-            case VIA::R::ddrb:  data = r_ddrb; return;
-            case VIA::R::ddra:  data = r_ddra; return;
+            case VIA::R::ddrb:  data = s.r_ddrb; return;
+            case VIA::R::ddra:  data = s.r_ddra; return;
             case VIA::R::t1c_l:
                 irq.clr(VIA::IRQ::Src::t1);
-                data = r_t1c;
+                data = s.r_t1c;
                 return;
-            case VIA::R::t1c_h: data = r_t1c >> 8; return;
-            case VIA::R::t1l_l: data = r_t1l;      return;
-            case VIA::R::t1l_h: data = r_t1l >> 8; return;
+            case VIA::R::t1c_h: data = s.r_t1c >> 8; return;
+            case VIA::R::t1l_l: data = s.r_t1l;      return;
+            case VIA::R::t1l_h: data = s.r_t1l >> 8; return;
             case VIA::R::t2c_l:
                 irq.clr(VIA::IRQ::Src::t2);
                 return;
             case VIA::R::t2c_h: return;
             case VIA::R::sr:
                 irq.clr(VIA::IRQ::Src::sr);
-                data = r_sr;
+                data = s.r_sr;
                 return;
-            case VIA::R::acr:   data = r_acr;       return;
-            case VIA::R::pcr:   data = r_pcr;       return;
+            case VIA::R::acr:   data = s.r_acr;       return;
+            case VIA::R::pcr:   data = s.r_pcr;       return;
             case VIA::R::ifr:   data = irq.r_ifr(); return;
             case VIA::R::ier:   data = irq.r_ier(); return;
             case VIA::R::ra_nh:
-                data = (r_ora & r_ddra) | ~r_ddra; // not connected
+                data = (s.r_ora & s.r_ddra) | ~s.r_ddra; // not connected
                 return;
         }
     }
@@ -399,29 +399,29 @@ public:
         switch (ri) {
             case VIA::R::rb:
                 irq.clr(VIA::IRQ::Src::cb1_cb2);
-                r_orb = data;
+                s.r_orb = data;
                 output_pb();
                 return;
             case VIA::R::ra:
                 irq.clr(VIA::IRQ::Src::ca1_ca2);
-                r_ora = data;
+                s.r_ora = data;
                 return;
-            case VIA::R::ddrb:  r_ddrb = data; output_pb(); return;
-            case VIA::R::ddra:  r_ddra = data; return;
-            case VIA::R::t1c_l: r_t1l = (r_t1l & 0xff00) | data; return;
+            case VIA::R::ddrb:  s.r_ddrb = data; output_pb(); return;
+            case VIA::R::ddra:  s.r_ddra = data; return;
+            case VIA::R::t1c_l: s.r_t1l = (s.r_t1l & 0xff00) | data; return;
             case VIA::R::t1c_h:
                 irq.clr(VIA::IRQ::Src::t1);
-                r_t1l = (r_t1l & 0x00ff) | (data << 8);
-                r_t1c = r_t1l;
-                t1_irq = VIA::IRQ::Src::t1; // 'starts' t1
+                s.r_t1l = (s.r_t1l & 0x00ff) | (data << 8);
+                s.r_t1c = s.r_t1l;
+                s.t1_irq = VIA::IRQ::Src::t1; // 'starts' t1
                 return;
             case VIA::R::t1l_l:
                 // irq.clr(IRQ::Src::t1); // NOTE: mixed info on this one
-                r_t1l = (r_t1l & 0xff00) | data;
+                s.r_t1l = (s.r_t1l & 0xff00) | data;
                 return;
             case VIA::R::t1l_h:
                 irq.clr(VIA::IRQ::Src::t1); // NOTE: mixed info on this one
-                r_t1l = (r_t1l & 0x00ff) | (data << 8);
+                s.r_t1l = (s.r_t1l & 0x00ff) | (data << 8);
                 return;
             case VIA::R::t2c_l: return;
             case VIA::R::t2c_h:
@@ -429,26 +429,26 @@ public:
                 return;
             case VIA::R::sr:
                 irq.clr(VIA::IRQ::Src::sr);
-                r_sr = data;
+                s.r_sr = data;
                 return;
-            case VIA::R::acr:   r_acr = data;    return;
-            case VIA::R::pcr:   r_pcr = data;    return;
+            case VIA::R::acr:   s.r_acr = data;  return;
+            case VIA::R::pcr:   s.r_pcr = data;  return;
             case VIA::R::ifr:   irq.w_ifr(data); return;
             case VIA::R::ier:   irq.w_ier(data); return;
-            case VIA::R::ra_nh: r_ora = data;    return;
+            case VIA::R::ra_nh: s.r_ora = data;  return;
         }
     }
 
     void cia2_pa_output(u8 state) {
-        cia2_pa_out = state;
+        s.cia2_pa_out = state;
         update_iec_lines();
     }
 
     void tick() { // TODO: extract T1 (+ T2 if ever needed) functionality
-        if (--r_t1c == 0xffff) {
-            r_t1c = r_t1l;
-            irq.set(t1_irq);
-            t1_irq = VIA::IRQ::Src(r_acr & VIA::ACR::t1_cont_int); // no more IRQs if one-shot
+        if (--s.r_t1c == 0xffff) {
+            s.r_t1c = s.r_t1l;
+            irq.set(VIA::IRQ::Src(s.t1_irq));
+            s.t1_irq = VIA::IRQ::Src(s.r_acr & VIA::ACR::t1_cont_int); // no more IRQs if one-shot
         }
     }
 
@@ -460,38 +460,20 @@ private:
     using pin_state = u8;
 
     void output_pb() {
-        via_pb_out = (r_orb & r_ddrb) | ~r_ddrb;
+        s.via_pb_out = (s.r_orb & s.r_ddrb) | ~s.r_ddrb;
         update_iec_lines();
     }
 
     void update_iec_lines();
 
     void ca1_edge(u8 edge) {
-        if (edge == (r_pcr & VIA::PCR::ca1)) irq.set(VIA::IRQ::Src::ca1);
+        if (edge == (s.r_pcr & VIA::PCR::ca1)) irq.set(VIA::IRQ::Src::ca1);
     }
-
-    u8 r_orb;
-    u8 r_ora;
-    u8 r_ddrb;
-    u8 r_ddra;
-    u16 r_t1c;
-    u16 r_t1l;
-    u8 r_sr;
-    u8 r_acr;
-    u8 r_pcr;
-
-    VIA::IRQ::Src t1_irq;
-
-    u8 cia2_pa_out;
-    u8 via_pb_out;
-    u8 via_pb_in;
-
-    pin_state atn = high; // ok..?
 
     IO::Port::PD_in& cia2_pa_in;
 
-    pin_state cia2_pa(int pin) const { return read_pin(cia2_pa_out, pin); }
-    pin_state via_pb(int pin) const  { return read_pin(via_pb_out, pin); }
+    pin_state cia2_pa(int pin) const { return read_pin(s.cia2_pa_out, pin); }
+    pin_state via_pb(int pin) const  { return read_pin(s.via_pb_out, pin); }
 
     static constexpr pin_state read_pin(u8 pins, int pin) { return (pins >> pin) & 0b1; }
     static constexpr pin_state invert(pin_state s)        { return s ^ 0b1; }

@@ -188,6 +188,24 @@ struct C1541 {
 
     struct IEC {
         IRQ irq;
+
+        u8 r_orb;
+        u8 r_ora;
+        u8 r_ddrb;
+        u8 r_ddra;
+        u16 r_t1c;
+        u16 r_t1l;
+        u8 r_sr;
+        u8 r_acr;
+        u8 r_pcr;
+
+        u8 t1_irq;
+
+        u8 cia2_pa_out;
+        u8 via_pb_out;
+        u8 via_pb_in;
+
+        u8 atn;
     };
 
     struct Disk_ctrl {

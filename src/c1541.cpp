@@ -58,11 +58,13 @@ void C1541::Disk_format::GCR_output::raw(const u8 byte) {
 void C1541::IEC::reset() {
     irq.reset();
 
-    r_orb = r_ora = r_ddrb = r_ddra = r_acr = r_pcr = 0x00;
-    r_t1c = r_t1l = 0xffff;
+    s.r_orb = s.r_ora = s.r_ddrb = s.r_ddra = s.r_acr = s.r_pcr = 0x00;
+    s.r_t1c = s.r_t1l = 0xffff;
 
-    t1_irq = VIA::IRQ::Src::none;
-    via_pb_in = 0b11111111;
+    s.t1_irq = VIA::IRQ::Src::none;
+    s.via_pb_in = 0b11111111;
+
+    s.atn = high;
 }
 
 
@@ -74,21 +76,21 @@ void C1541::IEC::update_iec_lines() {
     const pin_state clk = invert(cia2_pa(4)) & cia2_pa(6) & invert(via_pb(3));
 
     const pin_state atn_now = cia2_pa(3) & via_pb(7); // pa3 inverted twice --> taken as such
-    if (atn != atn_now) {
-        atn = atn_now;
-        ca1_edge(atn);
+    if (s.atn != atn_now) {
+        s.atn = atn_now;
+        ca1_edge(s.atn);
     }
 
-    const pin_state ud3a_out = via_pb(4) ^ atn;
+    const pin_state ud3a_out = via_pb(4) ^ s.atn;
     const pin_state data = invert(cia2_pa(5)) & cia2_pa(7) & invert(via_pb(1)) & invert(ud3a_out);
 
     const pin_state cia2_pa7_pa6 = (data << 7) | (clk << 6);
     cia2_pa_in(0b11000000, cia2_pa7_pa6);
 
-    const pin_state via_pb720_in = (atn << 7) | (invert(clk) << 2) | (invert(data) << 0);
+    const pin_state via_pb720_in = (s.atn << 7) | (invert(clk) << 2) | (invert(data) << 0);
     const pin_state via_pb65_in = (dev_num - 8) << 5;
     const pin_state pb_in = via_pb720_in | via_pb65_in | 0b00011010;
-    via_pb_in = via_pb_out & pb_in;
+    s.via_pb_in = s.via_pb_out & pb_in;
 }
 
 
