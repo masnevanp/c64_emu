@@ -97,57 +97,58 @@ void C1541::IEC::update_iec_lines() {
 void C1541::Disk_ctrl::reset() {
     irq.reset();
 
-    r_orb = r_ora = r_ddrb = r_ddra = r_acr = r_pcr = 0x00;
-    r_t1c = r_t1l = 0xffff;
+    s.r_orb = s.r_ora = s.r_ddrb = s.r_ddra = s.r_acr = s.r_pcr = 0x00;
+    s.r_t1c = s.r_t1l = 0xffff;
 
-    t1_irq = VIA::IRQ::Src::none;
+    s.t1_irq = VIA::IRQ::Src::none;
 
-    via_pb_in = via_pa_in = 0b11111111;
-    via_pb_out = 0xff;
+    s.via_pb_in = s.via_pa_in = 0b11111111;
+    s.via_pb_out = 0xff;
 
-    head.mode = Head_status::Mode::uninit;
+    s.head.mode = State::Head::Mode::uninit;
+
     change_track((dir_track - 1) * 2);
 }
 
 
 void C1541::Disk_ctrl::output_pb() {
-    const u8 via_pb_out_now = (r_orb & r_ddrb) | ~r_ddrb;
+    const u8 via_pb_out_now = (s.r_orb & s.r_ddrb) | ~s.r_ddrb;
 
-    head.mode = Head_status::Mode((via_pb_out_now & PB::motor) | (head.mode & ~PB::motor));
+    s.head.mode = State::Head::Mode((via_pb_out_now & PB::motor) | (s.head.mode & ~PB::motor));
 
     if (via_pb_out_now & PB::motor) step_head(via_pb_out_now);
 
-    via_pb_out = via_pb_out_now;
+    s.via_pb_out = via_pb_out_now;
 }
 
 
 void C1541::Disk_ctrl::load_disk(const Disk_image* disk) {
-    for (int tn = 0; tn < track_count; ++tn) {
-        if (disk->track(tn).len > max_track_len) Log::error("Disk image track too long: %d", disk->track(tn).len);
+    for (int tn = 0; tn < s.track_count; ++tn) {
+        if (disk->track(tn).len > State::max_track_len) Log::error("Disk image track too long: %d", disk->track(tn).len);
 
-        const auto& src_track = disk->track(tn).len <= max_track_len
+        const auto& src_track = disk->track(tn).len <= State::max_track_len
             ? disk->track(tn)
             : Disk_image::null_track();
 
-        // TODO: fill the remaining track data with gap byte?
-        std::copy(&src_track.data[0], &src_track.data[src_track.len], &track_data[tn][0]);
+        // TODO: fill the remaining track data with gap bytes?
+        std::copy(&src_track.data[0], &src_track.data[src_track.len], &s.track_data[tn][0]);
 
-        track_len[tn] = src_track.len;
+        s.track_len[tn] = src_track.len;
     }
 
-    head.rotation = head.rotation % track_len[head.track_num]; // sort of random...
+   s.head.rotation = s.head.rotation % s.track_len[s.head.track_num]; // sort of random...
 }
 
 
 void C1541::Disk_ctrl::step_head(const u8 via_pb_out_now) {
     auto should_step = [&](const int step) -> bool {
-        return (via_pb_out_now & PB::head_step) == ((via_pb_out + step) & 0b11);
+        return (via_pb_out_now & PB::head_step) == ((s.via_pb_out + step) & 0b11);
     };
 
     if (should_step(+1)) {
-        if (head.track_num < Disk_ctrl::last_track) change_track(head.track_num + 1);
+        if (s.head.track_num < Disk_ctrl::last_track) change_track(s.head.track_num + 1);
     } else if (should_step(-1)) {
-        if (head.track_num > Disk_ctrl::first_track) change_track(head.track_num - 1);
+        if (s.head.track_num > Disk_ctrl::first_track) change_track(s.head.track_num - 1);
     }
 }
 

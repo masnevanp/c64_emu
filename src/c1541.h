@@ -368,8 +368,8 @@ public:
                 irq.clr(VIA::IRQ::Src::ca1_ca2);
                 data = (s.r_ora & s.r_ddra) | ~s.r_ddra; // not connected
                 return;
-            case VIA::R::ddrb:  data = s.r_ddrb; return;
-            case VIA::R::ddra:  data = s.r_ddra; return;
+            case VIA::R::ddrb: data = s.r_ddrb; return;
+            case VIA::R::ddra: data = s.r_ddra; return;
             case VIA::R::t1c_l:
                 irq.clr(VIA::IRQ::Src::t1);
                 data = s.r_t1c;
@@ -385,10 +385,10 @@ public:
                 irq.clr(VIA::IRQ::Src::sr);
                 data = s.r_sr;
                 return;
-            case VIA::R::acr:   data = s.r_acr;       return;
-            case VIA::R::pcr:   data = s.r_pcr;       return;
-            case VIA::R::ifr:   data = irq.r_ifr(); return;
-            case VIA::R::ier:   data = irq.r_ier(); return;
+            case VIA::R::acr: data = s.r_acr;     return;
+            case VIA::R::pcr: data = s.r_pcr;     return;
+            case VIA::R::ifr: data = irq.r_ifr(); return;
+            case VIA::R::ier: data = irq.r_ier(); return;
             case VIA::R::ra_nh:
                 data = (s.r_ora & s.r_ddra) | ~s.r_ddra; // not connected
                 return;
@@ -487,40 +487,32 @@ private:
     State& s;
 
 public:
-    static constexpr int track_count   = 84;
     static constexpr int first_track   = 0;
-    static constexpr int last_track    = track_count - 1;
-    static constexpr int max_track_len = 8000; // TODO: waist less memory...? (and is 8000 always enough..)
+    static constexpr int last_track    = State::track_count - 1;
 
     enum PB : u8 {
         head_step = 0b00000011, motor    = 0b00000100, led  = 0b00001000,
         w_prot    = 0b00010000, bit_rate = 0b01100000, sync = 0b10000000,
     };
 
-    struct Head_status {
-        enum Mode : u8 { // PB4 (motor) and PCR CB2 (r/w) bits put together
-            mode_r = 0b11100100, mode_w = 0b11000100, // anything else means 'off'
-            uninit = 0b00000000,
+    struct Status {
+        struct Head {
+            State::Head& s;
+
+            u8   active()  const { return s.mode & PB::motor; }
+            bool reading() const { return s.mode == State::Head::Mode::mode_r; }
+            bool writing() const { return s.mode == State::Head::Mode::mode_w; }
         };
 
-        Mode mode;
-        u16 rotation = 0; // distance travelled in bytes
-        u8 track_num = 0;
-        u8 next_byte_timer;
+        const Head head;
 
-        u8   active()  const { return mode & PB::motor; }
-        bool reading() const { return mode == Mode::mode_r; }
-        bool writing() const { return mode == Mode::mode_w; }
-    };
-
-    struct Status {
-        const Head_status& head;
         const u8& pb_out;
         const u8& pb_in;
+
         u8 led_on() const { return pb_out & PB::led; }
         u8 wp_off() const { return pb_in  & PB::w_prot; }
     };
-    const Status status{head, via_pb_out, via_pb_in};
+    const Status status{s.head, s.via_pb_out, s.via_pb_in};
 
     Disk_ctrl(State& s_, CPU& cpu_) : s(s_), irq(s.irq), cpu(cpu_) { load_disk(&null_disk); }
 
@@ -530,34 +522,34 @@ public:
         switch (ri) {
             case VIA::R::rb:
                 irq.clr(VIA::IRQ::Src::cb1_cb2);
-                data = (r_orb & r_ddrb) | (via_pb_in & ~r_ddrb);
+                data = (s.r_orb & s.r_ddrb) | (s.via_pb_in & ~s.r_ddrb);
                 return;
             case VIA::R::ra:
                 irq.clr(VIA::IRQ::Src::ca1_ca2);
-                data = via_pa_in;
+                data = s.via_pa_in;
                 return;
-            case VIA::R::ddrb:  data = r_ddrb; return;
-            case VIA::R::ddra:  data = r_ddra; return;
+            case VIA::R::ddrb: data = s.r_ddrb; return;
+            case VIA::R::ddra: data = s.r_ddra; return;
             case VIA::R::t1c_l:
                 irq.clr(VIA::IRQ::Src::t1);
-                data = r_t1c;
+                data = s.r_t1c;
                 return;
-            case VIA::R::t1c_h: data = r_t1c >> 8; return;
-            case VIA::R::t1l_l: data = r_t1l;      return;
-            case VIA::R::t1l_h: data = r_t1l >> 8; return;
+            case VIA::R::t1c_h: data = s.r_t1c >> 8; return;
+            case VIA::R::t1l_l: data = s.r_t1l;      return;
+            case VIA::R::t1l_h: data = s.r_t1l >> 8; return;
             case VIA::R::t2c_l:
                 irq.clr(VIA::IRQ::Src::t2);
                 return;
             case VIA::R::t2c_h: return;
             case VIA::R::sr:
                 irq.clr(VIA::IRQ::Src::sr);
-                data = r_sr;
+                data = s.r_sr;
                 return;
-            case VIA::R::acr:   data = r_acr;       return;
-            case VIA::R::pcr:   data = r_pcr;       return;
+            case VIA::R::acr:   data = s.r_acr;     return;
+            case VIA::R::pcr:   data = s.r_pcr;     return;
             case VIA::R::ifr:   data = irq.r_ifr(); return;
             case VIA::R::ier:   data = irq.r_ier(); return;
-            case VIA::R::ra_nh: data = via_pa_in;  return;
+            case VIA::R::ra_nh: data = s.via_pa_in; return;
         }
     }
 
@@ -565,30 +557,30 @@ public:
         switch (ri) {
             case VIA::R::rb:
                 irq.clr(VIA::IRQ::Src::cb1_cb2);
-                r_orb = data;
+                s.r_orb = data;
                 output_pb();
                 return;
             case VIA::R::ra:
                 irq.clr(VIA::IRQ::Src::ca1_ca2);
-                r_ora = data;
+                s.r_ora = data;
                 output_pa();
                 return;
-            case VIA::R::ddrb:  r_ddrb = data; output_pb(); return;
-            case VIA::R::ddra:  r_ddra = data; output_pa(); return;
-            case VIA::R::t1c_l: r_t1l = (r_t1l & 0xff00) | data; return;
+            case VIA::R::ddrb:  s.r_ddrb = data; output_pb(); return;
+            case VIA::R::ddra:  s.r_ddra = data; output_pa(); return;
+            case VIA::R::t1c_l: s.r_t1l = (s.r_t1l & 0xff00) | data; return;
             case VIA::R::t1c_h:
                 irq.clr(VIA::IRQ::Src::t1);
-                r_t1l = (r_t1l & 0x00ff) | (data << 8);
-                r_t1c = r_t1l;
-                t1_irq = VIA::IRQ::Src::t1; // 'starts' t1
+                s.r_t1l = (s.r_t1l & 0x00ff) | (data << 8);
+                s.r_t1c = s.r_t1l;
+                s.t1_irq = VIA::IRQ::Src::t1; // 'starts' t1
                 return;
             case VIA::R::t1l_l:
                 // irq.clr(VIA::IRQ::Src::t1); // NOTE: mixed info on this one
-                r_t1l = (r_t1l & 0xff00) | data;
+                s.r_t1l = (s.r_t1l & 0xff00) | data;
                 return;
             case VIA::R::t1l_h:
                 irq.clr(VIA::IRQ::Src::t1); // NOTE: mixed info on this one
-                r_t1l = (r_t1l & 0x00ff) | (data << 8);
+                s.r_t1l = (s.r_t1l & 0x00ff) | (data << 8);
                 return;
             case VIA::R::t2c_l: return;
             case VIA::R::t2c_h:
@@ -596,74 +588,74 @@ public:
                 return;
             case VIA::R::sr:
                 irq.clr(VIA::IRQ::Src::sr);
-                r_sr = data;
+                s.r_sr = data;
                 return;
-            case VIA::R::acr:   r_acr = data;    return;
-            case VIA::R::pcr:   r_pcr = data; pcr_update(); return;
+            case VIA::R::acr:   s.r_acr = data;    return;
+            case VIA::R::pcr:   s.r_pcr = data; pcr_update(); return;
             case VIA::R::ifr:   irq.w_ifr(data); return;
             case VIA::R::ier:   irq.w_ier(data); return;
-            case VIA::R::ra_nh: r_ora = data; output_pa(); return;
+            case VIA::R::ra_nh: s.r_ora = data; output_pa(); return;
         }
     }
 
     void load_disk(const Disk_image* disk);
 
     void set_write_prot(bool wp_on) {
-        via_pb_in = wp_on ? (via_pb_in & ~PB::w_prot) : (via_pb_in | PB::w_prot);
+        s.via_pb_in = wp_on ? (s.via_pb_in & ~PB::w_prot) : (s.via_pb_in | PB::w_prot);
     }
 
     void tick() {
-        if (--r_t1c == 0xffff) {
-            r_t1c = r_t1l;
-            irq.set(t1_irq);
-            t1_irq = VIA::IRQ::Src(r_acr & VIA::ACR::t1_cont_int); // no more IRQs if one-shot
+        if (--s.r_t1c == 0xffff) {
+            s.r_t1c = s.r_t1l;
+            irq.set(VIA::IRQ::Src(s.t1_irq));
+            s.t1_irq = VIA::IRQ::Src(s.r_acr & VIA::ACR::t1_cont_int); // no more IRQs if one-shot
         }
 
-        if (head.reading()) read();
-        else if (head.writing()) write();
+        if (status.head.reading()) read();
+        else if (status.head.writing()) write();
     }
 
     VIA::IRQ irq;
 
 private:
     void output_pb();
-    void output_pa() { via_pa_out = (r_ora & r_ddra) | ~r_ddra; }
+    void output_pa() { s.via_pa_out = (s.r_ora & s.r_ddra) | ~s.r_ddra; }
     void pcr_update() {
-        head.mode = Head_status::Mode((r_pcr & VIA::PCR::cb2) | (head.mode & ~VIA::PCR::cb2));
+        s.head.mode = State::Head::Mode((s.r_pcr & VIA::PCR::cb2) | (s.head.mode & ~VIA::PCR::cb2));
     }
     void ca1_edge(u8 edge) {
-        if (edge == (r_pcr & VIA::PCR::ca1)) irq.set(VIA::IRQ::Src::ca1);
+        if (edge == (s.r_pcr & VIA::PCR::ca1)) irq.set(VIA::IRQ::Src::ca1);
     }
-    bool write_prot_off()     const { return via_pb_in & PB::w_prot; }
-    bool byte_ready_enabled() const { return (r_pcr & VIA::PCR::ca2) != VIA::PCR::ca2_low_out; }
-    u8   cycles_per_byte()    const { return 32 - ((via_pb_out & PB::bit_rate) >> 4); }
-    void set_sync()                 { via_pb_in &= ~PB::sync; }
-    void clr_sync()                 { via_pb_in |= PB::sync; }
-    bool not_sync_set()       const { return via_pb_in & PB::sync; }
+    bool write_prot_off()     const { return s.via_pb_in & PB::w_prot; }
+    bool byte_ready_enabled() const { return (s.r_pcr & VIA::PCR::ca2) != VIA::PCR::ca2_low_out; }
+    u8   cycles_per_byte()    const { return 32 - ((s.via_pb_out & PB::bit_rate) >> 4); }
+    void set_sync()                 { s.via_pb_in &= ~PB::sync; }
+    void clr_sync()                 { s.via_pb_in |= PB::sync; }
+    bool not_sync_set()       const { return s.via_pb_in & PB::sync; }
     void signal_byte_ready() {
         ca1_edge(0b0);
-        cpu.s.set(NMOS6502::Flag::V); // NOTE: SO-detection delay (in the CPU) not happening..
+        cpu.s.set(NMOS6502::Flag::V); // TODO: SO-detection delay in the CPU (how many cycles?)
     }
 
     void step_head(const u8 via_pb_out_now);
 
-    void rotate_disk() { head.rotation = (head.rotation + 1) % track_len[head.track_num]; }
+    void rotate_disk() { s.head.rotation = (s.head.rotation + 1) % s.track_len[s.head.track_num]; }
 
     void read() {
         // TODO: work on bit level, e.g handle SYNC that is not byte aligned
         //       (and not a multiple of 8 bits), i.e. 're-align' the actual data (if needed)
-        if (--head.next_byte_timer == 0) {
-            head.next_byte_timer = cycles_per_byte();
+        if (--s.head.next_byte_timer == 0) {
+            s.head.next_byte_timer = cycles_per_byte();
 
-            const u8 next_byte = track_data[head.track_num][head.rotation];
+            const u8 next_byte = s.track_data[s.head.track_num][s.head.rotation];
 
             rotate_disk();
 
-            if (via_pa_in == DF::sync_byte) {
+            if (s.via_pa_in == DF::sync_byte) {
                 if (next_byte == DF::sync_byte) set_sync();
                 else clr_sync();
             }
-            via_pa_in = next_byte;
+            s.via_pa_in = next_byte;
 
             if (byte_ready_enabled() && not_sync_set()) signal_byte_ready();
         }
@@ -676,10 +668,10 @@ private:
                 + restore disk (i.e. discard changes)
                 + wipe disk (or is 'insert blank' enough?)
         */
-        if (--head.next_byte_timer == 0) {
-            head.next_byte_timer = cycles_per_byte();
+        if (--s.head.next_byte_timer == 0) {
+            s.head.next_byte_timer = cycles_per_byte();
 
-            if (write_prot_off()) track_data[head.track_num][head.rotation] = via_pa_out;
+            if (write_prot_off()) s.track_data[s.head.track_num][s.head.rotation] = s.via_pa_out;
 
             rotate_disk();
 
@@ -688,32 +680,10 @@ private:
     }
 
     void change_track(const u8 to_track_n) {
-        const auto old_rotation = double(head.rotation) / track_len[head.track_num];
-        head.track_num = to_track_n;
-        head.rotation = old_rotation * track_len[head.track_num];
+        const auto old_rotation = double(s.head.rotation) / s.track_len[s.head.track_num];
+        s.head.track_num = to_track_n;
+        s.head.rotation = old_rotation * s.track_len[s.head.track_num];
     }
-
-    u16 track_len[track_count];
-    u8 track_data[track_count][max_track_len];
-
-    u8 r_orb;
-    u8 r_ora;
-    u8 r_ddrb;
-    u8 r_ddra;
-    u16 r_t1c;
-    u16 r_t1l;
-    u8 r_sr;
-    u8 r_acr;
-    u8 r_pcr;
-
-    VIA::IRQ::Src t1_irq;
-
-    u8 via_pa_out;
-    u8 via_pb_out;
-    u8 via_pa_in;
-    u8 via_pb_in;
-
-    Head_status head;
 
     CPU& cpu;
 };
@@ -722,6 +692,7 @@ private:
 class Disk_carousel {
 /*
     TODO:
+    - move to 'System' (and add on-screen info... pop-ups..?)
     - 'toss disk' (removes disk from carousel & deletes it (?))
 */
 public:

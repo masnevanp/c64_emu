@@ -209,7 +209,46 @@ struct C1541 {
     };
 
     struct Disk_ctrl {
+        static constexpr int track_count   = 84;
+        static constexpr int max_track_len = 8000; // TODO: waist less memory...? (and is 8000 always enough..)
+
+        struct Head {
+            enum Mode : u8 { // PB4 (motor) and PCR CB2 (r/w) bits put together
+                mode_r = 0b11100100, mode_w = 0b11000100, // anything else means 'off'
+                uninit = 0b00000000,
+            };
+
+            u16 rotation = 0; // distance travelled in bytes
+            u8 track_num = 0;
+
+            Mode mode;
+
+            u8 next_byte_timer;
+        };
+
         IRQ irq;
+
+        Head head;
+
+        u8 r_orb;
+        u8 r_ora;
+        u8 r_ddrb;
+        u8 r_ddra;
+        u16 r_t1c;
+        u16 r_t1l;
+        u8 r_sr;
+        u8 r_acr;
+        u8 r_pcr;
+
+        u8 t1_irq;
+
+        u8 via_pa_out;
+        u8 via_pb_out;
+        u8 via_pa_in;
+        u8 via_pb_in;
+
+        u16 track_len[track_count];
+        u8 track_data[track_count][max_track_len];
     };
 
     struct System {
