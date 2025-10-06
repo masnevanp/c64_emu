@@ -193,8 +193,7 @@ void C1541::System::reset() {
     cpu.reset();
     iec.reset();
     dc.reset();
-    disk_carousel.reset();
-    irq_state = 0x00;
+    s.irq_state = 0x00;
     //idle = false;
 }
 

@@ -252,7 +252,9 @@ struct C1541 {
     };
 
     struct System {
-
+        u8 ram[0x0800];
+        NMOS6502::Core::State cpu;
+        u8 irq_state;
     };
 
     IEC iec;

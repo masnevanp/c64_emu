@@ -710,8 +710,6 @@ public:
         slots[0] = Slot{&null_disk, "none", false};
     }
 
-    void reset() { load(); }
-
     void insert(int in_slot, const Disk_image* disk, const std::string& name);
 
     void rotate();
@@ -756,7 +754,10 @@ public:
     static constexpr u16 dos_wp_change_flag_addr = 0x1c;
 
     System(State& s_, IO::Port::PD_in& cia2_pa_in, const u8* rom_/*, bool& run_cfg_change_*/)
-      : s(s_.system), iec(s_.iec, cia2_pa_in), dc(s_.disk_ctrl, cpu), rom(rom_), disk_carousel(dc, ram[dos_wp_change_flag_addr]) /*, run_cfg_change(run_cfg_change_)*/
+      : s(s_.system),
+        cpu(s.cpu, cpu_trap), iec(s_.iec, cia2_pa_in), dc(s_.disk_ctrl, cpu),
+        rom(rom_),
+        disk_carousel(dc, s.ram[dos_wp_change_flag_addr]) /*, run_cfg_change(run_cfg_change_)*/
     {
         //install_idle_trap();
     }
@@ -764,15 +765,13 @@ public:
     Menu::Group menu() { return {"DISK / ", menu_imm_actions, menu_actions}; }
 
     void reset();
-
     void tick();
 
     //bool idle;
-    NMOS6502::Core::State cpu_state; // TODO
-    CPU cpu{cpu_state, cpu_trap};
+    CPU cpu;
     IEC iec;
     Disk_ctrl dc;
-    u8 ram[0x0800];
+
     const u8* rom;
 
     Disk_carousel disk_carousel;
@@ -813,8 +812,8 @@ private:
     void address_space_op(const u16& addr, u8& data, const u8& rw) {
         switch (addr_map[u16(addr + 0x4000) >> 10][rw]) {
             case rom_r:  data = rom[addr & 0x3fff];   return;
-            case ram_w:  ram[addr & 0x07ff] = data;   return;
-            case ram_r:  data = ram[addr & 0x07ff];   return;
+            case ram_w:  s.ram[addr & 0x07ff] = data; return;
+            case ram_r:  data = s.ram[addr & 0x07ff]; return;
             case via1_w: iec.via_w(addr & 0xf, data); return;
             case via1_r: iec.via_r(addr & 0xf, data); return;
             case via2_w: dc.via_w(addr & 0xf, data);  return;
@@ -823,12 +822,11 @@ private:
         }
     }
 
-    u8 irq_state;
     void check_irq() {
         const u8 irq_state_now = (iec.irq.r_ifr() | dc.irq.r_ifr()) & VIA::IRQ::Src::any;
-        if (irq_state != irq_state_now) {
-            irq_state = irq_state_now;
-            cpu.set_irq(irq_state);
+        if (s.irq_state != irq_state_now) {
+            s.irq_state = irq_state_now;
+            cpu.set_irq(s.irq_state);
         }
     }
 
@@ -836,7 +834,7 @@ private:
         [this]() {
             cpu.pc = 0xebff; // start of idle loop
             cpu.resume();
-            if ((!dc.status.head.active()) && (!(ram[0x26c] | ram[0x7c]))) {
+            if ((!dc.status.head.active()) && (!(s.ram[0x26c] | s.ram[0x7c]))) {
                 run_cfg_change = idle = true;
             }
         }
@@ -852,7 +850,7 @@ private:
     NMOS6502::Sig cpu_trap {
         [this]() {
             Log::error("****** C1541 CPU halted! ******");
-            Dbg::print_status(cpu, ram);
+            Dbg::print_status(cpu, s.ram);
         }
     };
 
