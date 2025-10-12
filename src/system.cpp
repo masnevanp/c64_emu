@@ -419,7 +419,7 @@ void System::C64::output_frame() {
         static const u16 ch_led_wp = 0x0051;
         static const u16 ch_led    = 0x0057;
 
-        const auto led_ch = c1541.dc.status.wp_off() ? ch_led : ch_led_wp;
+        const auto led_ch = c1541.dc.status.write_prot_on() ? ch_led_wp : ch_led;
         const auto led_col = c1541.dc.status.led_on() ? col_led_on : col_led_off;
 
         PETSCII_Draw{rom.charr, s.vic.frame}.chr(led_ch, pos_x, pos_y, led_col, col_bg);

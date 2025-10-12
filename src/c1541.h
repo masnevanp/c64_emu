@@ -15,6 +15,8 @@
     - VIA:
       - timer 2: ever needed?
     - howto handle modified disks? (should not be a hassle for the user...)
+        - introduce a special disk image format (i.e. a Disk_image) for storing
+          the GCR-data as handled by Disk_ctrl...? But why... not go with g64?
 */
 
 namespace C1541 {
@@ -509,8 +511,8 @@ public:
         const u8& pb_out;
         const u8& pb_in;
 
-        u8 led_on() const { return pb_out & PB::led; }
-        u8 wp_off() const { return pb_in  & PB::w_prot; }
+        bool led_on() const        { return pb_out & PB::led; }
+        bool write_prot_on() const { return !(pb_in & PB::w_prot); }
     };
     const Status status{s.head, s.via_pb_out, s.via_pb_in};
 
@@ -694,6 +696,7 @@ class Disk_carousel {
     TODO:
     - move to 'System' (and add on-screen info... pop-ups..?)
     - 'toss disk' (removes disk from carousel & deletes it (?))
+    - make part of state-snap (make it optional, and use a seperate file)?
 */
 public:
     static constexpr int slot_count = 0x100;
@@ -722,8 +725,9 @@ public:
     Slot& selected() { return slots[selected_slot]; }
 
     void toggle_wp() {
-        selected().write_prot = !selected().write_prot;
-        disk_ctrl.set_write_prot(selected().write_prot);
+        const auto new_wp_state = !disk_ctrl.status.write_prot_on();
+        disk_ctrl.set_write_prot(new_wp_state);
+        selected().write_prot = new_wp_state;
     }
 
 private:
