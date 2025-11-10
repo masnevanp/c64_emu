@@ -17,6 +17,8 @@
     - howto handle modified disks? (should not be a hassle for the user...)
         - introduce a special disk image format (i.e. a Disk_image) for storing
           the GCR-data as handled by Disk_ctrl...? But why... not go with g64?
+    - 'normalize' GCR-data when disk-image (e.g. .g64) is loaded (i.e. byte align
+      SYNCs and data). Or are some custom loaders too sensitive for even small changes in timings?
 */
 
 namespace C1541 {
@@ -27,6 +29,7 @@ using CPU = NMOS6502::Core;
 static constexpr int extra_cycle_freq = 67;
 
 static constexpr double motor_rpm = 300.0;
+static constexpr double motor_rps = motor_rpm / 60;
 
 // zone == (clock_sel_b << 1) | clock_sel_a == (VIA.pb6 << 1) | VIA.pb5
 constexpr double coder_clock_freq(u8 zone) { return 1000000 * (16.0 / (16 - (zone & 0b11))); }
@@ -75,13 +78,12 @@ struct Disk_format {
 
     static constexpr double total_bits_per_track(u8 track) { // an ideal value for a 'standard' disk
         const auto bit_cell_len = 4; // in coder clocks
-        const auto rotations_per_sec = motor_rpm / 60;
 
         const auto coder_freq = coder_clock_freq(zone(track));
         const auto bits_per_sec = coder_freq / bit_cell_len;
-        const auto bits_per_rotation = bits_per_sec / rotations_per_sec;
+        const auto bits_per_revolution = bits_per_sec / motor_rps;
 
-        return bits_per_rotation;
+        return bits_per_revolution;
     }
 
     static constexpr double used_bits_per_track(u8 track) {
@@ -613,6 +615,8 @@ public:
             s.t1_irq = VIA::IRQ::Src(s.r_acr & VIA::ACR::t1_cont_int); // no more IRQs if one-shot
         }
 
+        // TODO: switch-case on head status (?), a combination of motor, head mode, and sync status
+        //       ==> [idle|read_sync|read_data|write]
         if (status.head.reading()) read();
         else if (status.head.writing()) write();
     }
@@ -646,6 +650,8 @@ private:
     void read() {
         // TODO: work on bit level, e.g handle SYNC that is not byte aligned
         //       (and not a multiple of 8 bits), i.e. 're-align' the actual data (if needed)
+        // NOTE: some custom loaders require very accurate timing,
+        //       (some kind of circuit level simulation is propably required)
         if (--s.head.next_byte_timer == 0) {
             s.head.next_byte_timer = cycles_per_byte();
 
@@ -682,6 +688,10 @@ private:
     }
 
     void change_track(const u8 to_track_n) {
+        // TOFIX: relative head.rotation gets lost because the null track is too short
+        //        (in current implementation)
+        //        --> make head.rotation independent of current track (and its length)?
+        //            ...or, derive from system cycle?
         const auto old_rotation = double(s.head.rotation) / s.track_len[s.head.track_num];
         s.head.track_num = to_track_n;
         s.head.rotation = old_rotation * s.track_len[s.head.track_num];
