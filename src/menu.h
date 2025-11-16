@@ -97,26 +97,26 @@ private:
 };
 
 
-class Action : public Item {
+class Confirmed_action : public Item {
 public:
-    Action(const std::string& name, std::function<void ()> a) : Item(name), act(a) {}
+    Confirmed_action(const std::string& name, std::function<void ()> a) : Item(name), act(a) {}
 
     virtual bool enter() {
-        if (accept) {
+        if (confirmed) {
             act();
-            accept = false;
+            confirmed = false;
         }
 
         return false;
     }
 
-    virtual void up()   { accept = !accept; }
-    virtual void down() { accept = !accept; }
+    virtual void up()   { confirmed = !confirmed; }
+    virtual void down() { confirmed = !confirmed; }
 
-    virtual std::string text() const { return name + (accept ? "  YES" : "  NO"); }
+    virtual std::string text() const { return name + (confirmed ? "  YES" : "  NO"); }
 
 private:
-    bool accept = false;
+    bool confirmed = false;
     std::function<void ()> act;
 };
 

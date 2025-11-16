@@ -349,11 +349,11 @@ private:
 class Menu {
 public:
     Menu(std::initializer_list<::Menu::Immediate_action> imm_actions_,
-        std::initializer_list<::Menu::Action> actions_,
+        std::initializer_list<::Menu::Confirmed_action> confirmed_actions_,
         std::initializer_list<::Menu::Group> subs_)
       :
-        imm_actions(imm_actions_), actions(actions_), subs(subs_),
-        root("", imm_actions, actions, subs) {}
+        imm_actions(imm_actions_), confirmed_actions(confirmed_actions_), subs(subs_),
+        root("", imm_actions, confirmed_actions, subs) {}
 
     void handle_key(u8 code);
     std::string text() const { return root.text(); }
@@ -362,7 +362,7 @@ public:
 
 private:
     std::vector<::Menu::Immediate_action> imm_actions;
-    std::vector<::Menu::Action> actions;
+    std::vector<::Menu::Confirmed_action> confirmed_actions;
     std::vector<::Menu::Group> subs;
 
     ::Menu::Group root;
@@ -576,7 +576,7 @@ private:
         s.mode = Mode::none;
     }
 
-    std::vector<::Menu::Action> exp_menu_actions{
+    std::vector<::Menu::Confirmed_action> exp_menu_actions{
         {"DETACH ?", [&](){ Expansion::detach(s); reset_cold(); }},
         {"ATTACH REU ?", [&]() { Expansion::attach_REU(s); reset_cold(); }},
     };
