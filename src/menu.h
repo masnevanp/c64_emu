@@ -208,32 +208,7 @@ private:
 };
 
 
-/*class Kludge : public Item {
-public:
-    Kludge(const std::string& name,
-        std::function<bool ()> select_=[](){ return true; },
-        std::function<bool ()> enter=[](){ return false; },
-        std::function<bool ()> back=[](){ return true; },
-        std::function<void ()> up=[](){},
-        std::function<void ()> down=[](){}
-    ) : Item(name), _select(select_), _enter(enter), _back(back), _up(up), _down(down) {}
-
-    virtual bool select() { return _select(); }
-    virtual bool enter()  { return _enter(); }
-    virtual bool back()   { return _back(); }
-    virtual void up()     { _up(); }
-    virtual void down()   { _down(); }
-
-private:
-    std::function<bool ()> _select;
-    std::function<bool ()> _enter;
-    std::function<bool ()> _back;
-    std::function<void ()> _up;
-    std::function<void ()> _down;
-};*/
-
-
-}
+} // namespace Menu
 
 
 #endif // MENU_H_INCLUDED
