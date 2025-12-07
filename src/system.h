@@ -114,7 +114,6 @@ public:
             case m::chr_r: return rom.charr[0x0fff & addr];
             case m::romh: {
                 u8 data = 0x00;
-                //romh_r(addr & 0x01fff, data); // TODO
                 Expansion::bus_op(s.expansion_type, Expansion::Bus_op::romh_r, addr & 0x1fff, data, s);
                 return data;
             }
@@ -134,7 +133,6 @@ private:
 
     void do_access(const u16& addr, u8& data, const State::System::Bus::RW rw) {
         using m = PLA::Mapping;
-        namespace E = Expansion;
 
         switch (auto mapping = PLA::array[s.pla.active].pl[rw][addr >> 12]; mapping) {
             case m::ram0_r:
@@ -152,6 +150,7 @@ private:
             case m::kern_r:  data = rom.kernal[addr & 0x1fff]; return;
             case m::charr_r: data = rom.charr[addr & 0x0fff];  return; // 4 KB
             case m::roml_r: case m::roml_w: case m::romh_r: case m::romh_w: { // 8 KB
+                namespace E = Expansion;
                 const auto op = E::Bus_op::roml_r + (mapping - m::roml_r); // translate mapping to op
                 E::bus_op(s.expansion_type, E::Bus_op(op), addr & 0x1fff, data, s);
                 return;
@@ -450,6 +449,7 @@ private:
 
     Host::Input::Handlers host_input_handlers{
         // TODO: just-in-time polling for keyboard/ctrl-ports? (i.e. when CIA1 regs are read)
+
         // client keyboard & controllers (including lightpen)
         input_matrix.keyboard,
         input_matrix.ctrl_port_1,
