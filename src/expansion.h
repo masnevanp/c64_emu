@@ -28,8 +28,8 @@ enum Type : u16 {
 
 namespace CRT {
 
-int load_static_chips(const Files::CRT& crt, u8* exp_ram);
-int load_chips(const Files::CRT& crt, u8* exp_ram);
+int load_static_chips(const Files::CRT& crt, u8* tgt_mem);
+int load_chips(const Files::CRT& crt, u8* tgt_mem);
 
 } // namespace CRT
 
@@ -79,9 +79,9 @@ struct T0 : public Base { // T0 None
 
 
 struct T1 : public Base { // T1: REU (512 kb)
-    T1(::State::System& s) : Base(s), r{s.exp.state.reu} {}
+    T1(::State::System& s) : Base(s) {}
 
-    State::System::Expansion::REU& r;
+    State::System::Expansion::REU& r{s.exp.state.reu};
 
     enum R : u8 {
         status = 0, cmd, saddr_l, saddr_h, raddr_l, raddr_h, raddr_b, tlen_l,
@@ -307,11 +307,13 @@ private:
 struct T2 : public Base { // T2 Generic
     T2(State::System& s) : Base(s) {}
 
-    void roml_r(const u16& a, u8& d) { d = s.exp_ram[a]; }
-    void romh_r(const u16& a, u8& d) { d = s.exp_ram[0x2000 + a]; }
+    State::System::Expansion::Generic& g{s.exp.state.generic};
+
+    void roml_r(const u16& a, u8& d) { d = g.mem[a]; }
+    void romh_r(const u16& a, u8& d) { d = g.mem[a]; }
 
     bool attach(const Files::CRT& crt) {
-        if (CRT::load_static_chips(crt, s.exp_ram) == 0) return false;
+        if (CRT::load_static_chips(crt, g.mem) == 0) return false;
         set_exrom_game(crt);
         return true;
     }

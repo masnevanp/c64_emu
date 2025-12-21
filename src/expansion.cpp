@@ -15,20 +15,19 @@ using namespace Expansion;
 
 
 // for the basic 'no fancy dynamic banking' carts
-int Expansion::CRT::load_static_chips(const Files::CRT& crt, u8* exp_ram) {
+int Expansion::CRT::load_static_chips(const Files::CRT& crt, u8* tgt_mem) {
     int count = 0;
 
     for (auto cp : crt.chip_packets()) {
-        u32 tgt_addr;
-
-        if (cp->load_addr == 0x8000) tgt_addr = 0x0000;
+        /*if (cp->load_addr == 0x8000) tgt_addr = 0x0000;
         else if (cp->load_addr == 0xa000 || cp->load_addr == 0xe000) tgt_addr = 0x2000;
         else {
             Log::error("Expansion: invalid CRT CHIP packet address - %d", (int)cp->load_addr);
             continue;
-        }
+        }*/
 
-        std::copy(cp->data(), cp->data() + cp->data_size, exp_ram + tgt_addr);
+        const auto tgt_addr = cp->load_addr;
+        std::copy(cp->data(), cp->data() + cp->data_size, tgt_mem + tgt_addr);
 
         ++count;
     }
@@ -37,13 +36,12 @@ int Expansion::CRT::load_static_chips(const Files::CRT& crt, u8* exp_ram) {
 }
 
 // just load all the chips in the order found (TODO: ever need to check the order?)
-int Expansion::CRT::load_chips(const Files::CRT& crt, u8* exp_ram) {
+int Expansion::CRT::load_chips(const Files::CRT& crt, u8* tgt_mem) {
     int count = 0;
 
-    u8* tgt = exp_ram;
     for (auto cp : crt.chip_packets()) {
-        std::copy(cp->data(), cp->data() + cp->data_size, tgt);
-        tgt += cp->data_size;
+        std::copy(cp->data(), cp->data() + cp->data_size, tgt_mem);
+        tgt_mem += cp->data_size;
         ++count;
     }
 

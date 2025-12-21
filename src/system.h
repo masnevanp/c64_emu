@@ -114,7 +114,7 @@ public:
             case m::chr_r: return rom.charr[0x0fff & addr];
             case m::romh: {
                 u8 data = 0x00;
-                Expansion::bus_op(s, Expansion::Bus_op::romh_r, addr & 0x1fff, data);
+                Expansion::bus_op(s, Expansion::Bus_op::romh_r, 0xc000 | addr, data);
                 return data;
             }
         }
@@ -152,7 +152,7 @@ private:
             case m::roml_r: case m::roml_w: case m::romh_r: case m::romh_w: { // 8 KB
                 namespace E = Expansion;
                 const auto op = E::Bus_op::roml_r + (mapping - m::roml_r); // translate mapping to op
-                E::bus_op(s, E::Bus_op(op), addr & 0x1fff, data);
+                E::bus_op(s, E::Bus_op(op), addr, data);
                 return;
             }
             case m::io_r:    r_io(addr & 0x0fff, data);        return; // 4 KB
