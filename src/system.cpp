@@ -439,7 +439,7 @@ void System::C64::output_frame() {
         static const Color col_detached = Color::gray_1;
         static const u16 ch = 0x118;
 
-        const auto col = (s.expansion_type == Expansion::Type::none) ? col_detached : col_attached;
+        const auto col = (s.exp.type == Expansion::Type::none) ? col_detached : col_attached;
 
         PETSCII_Draw{rom.charr, s.vic.frame}.chr(ch, pos_x, pos_y, col, col_bg);
     };

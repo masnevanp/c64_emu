@@ -52,8 +52,8 @@ int Expansion::CRT::load_chips(const Files::CRT& crt, u8* exp_ram) {
 
 
 void Expansion::detach(State::System& s) {
-    s.expansion_type = Expansion::Type::none;
-    s.expansion_ticker = Expansion::Ticker::idle;
+    s.exp.type = Expansion::Type::none;
+    s.exp.ticker = Expansion::Ticker::idle;
     System::set_exrom_game(true, true, s);
 }
 
@@ -82,7 +82,7 @@ bool Expansion::attach(State::System& s, const Files::CRT& crt) {
     }
 
     if (success) {
-        s.expansion_type = type;
+        s.exp.type = type;
         Log::info("Expansion: attached CRT, type: %d", type);
         return true;
     } else {
@@ -94,14 +94,14 @@ bool Expansion::attach(State::System& s, const Files::CRT& crt) {
 
 bool Expansion::attach_REU(State::System& s) {
     detach(s);
-    s.expansion_type = Type::REU;
+    s.exp.type = Type::REU;
     Log::info("Expansion: REU attached");
     return true;
 }
 
 
 void Expansion::reset(State::System& s) {
-    switch (s.expansion_type) {
+    switch (s.exp.type) {
         #define T(t) case t: T##t{s}.reset(); break;
 
         T(0) T(1) T(2) T(12)

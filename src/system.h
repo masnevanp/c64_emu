@@ -114,7 +114,7 @@ public:
             case m::chr_r: return rom.charr[0x0fff & addr];
             case m::romh: {
                 u8 data = 0x00;
-                Expansion::bus_op(s.expansion_type, Expansion::Bus_op::romh_r, addr & 0x1fff, data, s);
+                Expansion::bus_op(s, Expansion::Bus_op::romh_r, addr & 0x1fff, data);
                 return data;
             }
         }
@@ -152,7 +152,7 @@ private:
             case m::roml_r: case m::roml_w: case m::romh_r: case m::romh_w: { // 8 KB
                 namespace E = Expansion;
                 const auto op = E::Bus_op::roml_r + (mapping - m::roml_r); // translate mapping to op
-                E::bus_op(s.expansion_type, E::Bus_op(op), addr & 0x1fff, data, s);
+                E::bus_op(s, E::Bus_op(op), addr & 0x1fff, data);
                 return;
             }
             case m::io_r:    r_io(addr & 0x0fff, data);        return; // 4 KB
@@ -183,8 +183,12 @@ private:
             case 0x8: case 0x9: case 0xa: case 0xb: col_ram_r(addr & 0x03ff, data); return;
             case 0xc:                               cia1.r(addr & 0x000f, data);    return;
             case 0xd:                               cia2.r(addr & 0x000f, data);    return;
-            case 0xe: E::bus_op(s.expansion_type, E::Bus_op::io1_r, addr, data, s); return;
-            case 0xf: E::bus_op(s.expansion_type, E::Bus_op::io2_r, addr, data, s); return;
+            // TODO: the actual full address is lost here (upper bits are masked out),
+            //       but this should get fixed when the bus functionality is rewritten
+            //       (i.e. the full state of the bus is stored in system state so any expansion
+            //        can see the full address)
+            case 0xe: E::bus_op(s, E::Bus_op::io1_r, addr, data);                   return;
+            case 0xf: E::bus_op(s, E::Bus_op::io2_r, addr, data);                   return;
         }
     }
 
@@ -196,8 +200,9 @@ private:
             case 0x8: case 0x9: case 0xa: case 0xb: col_ram_w(addr & 0x03ff, data); return;
             case 0xc:                               cia1.w(addr & 0x000f, data);    return;
             case 0xd:                               cia2.w(addr & 0x000f, data);    return;
-            case 0xe: E::bus_op(s.expansion_type, E::Bus_op::io1_w, addr, const_cast<u8&>(data), s); return;
-            case 0xf: E::bus_op(s.expansion_type, E::Bus_op::io2_w, addr, const_cast<u8&>(data), s); return;
+            // TODO: see comment in 'r_io()'
+            case 0xe: E::bus_op(s, E::Bus_op::io1_w, addr, const_cast<u8&>(data));  return;
+            case 0xf: E::bus_op(s, E::Bus_op::io2_w, addr, const_cast<u8&>(data));  return;
         }
     }
 

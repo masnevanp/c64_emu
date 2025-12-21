@@ -2,6 +2,7 @@
 #define EXPANSION_H_INCLUDED
 
 #include "common.h"
+#include "state.h"
 #include "files.h"
 
 
@@ -77,39 +78,10 @@ struct T0 : public Base { // T0 None
 };
 
 
-struct T1 : public Base { // T1: REU
-    static constexpr u32 ram_size = 512 * 1024;
+struct T1 : public Base { // T1: REU (512 kb)
+    T1(::State::System& s) : Base(s), r{s.exp.state.reu} {}
 
-    struct REU_state {
-        // register data
-        struct Addr {
-            u32 raddr;
-            u16 saddr;
-            u16 tlen;
-
-            // TODO: handle addr beyond actual RAM (past 256k)
-            void inc_raddr() { raddr = ((raddr + 1) & ~R_raddr::raddr_unused); }
-            void inc_saddr() { saddr += 1; }
-        };
-        Addr a;
-        Addr _a;
-        u8 status;
-        u8 cmd;
-        u8 int_mask;
-        u8 addr_ctrl;
-
-        // control data
-        u8 swap_r;
-        u8 swap_s;
-        u8 swap_cycle;
-    };
-
-    // First 512k of ss.exp_ram acts as REU-ram. The 'State' follows REU-ram.
-    T1(::State::System& s)
-        : Base(s),
-          r(*((REU_state*)(s.exp_ram + ram_size))) { }
-
-    REU_state& r;
+    State::System::Expansion::REU& r;
 
     enum R : u8 {
         status = 0, cmd, saddr_l, saddr_h, raddr_l, raddr_h, raddr_b, tlen_l,
@@ -177,7 +149,7 @@ struct T1 : public Base { // T1: REU
             case R::status:    return; // read-only
             case R::cmd:
                 r.cmd = d;
-                s.expansion_ticker = (r.cmd & R_cmd::exec)
+                s.exp.ticker = (r.cmd & R_cmd::exec)
                     ? (r.cmd & R_cmd::no_ff00_trig) ? Ticker::reu_dispatch_op : Ticker::reu_wait_ff00
                     : Ticker::idle;
                 return;
@@ -230,24 +202,24 @@ struct T1_kludge : public T1 { // REU kludge
     // 4 addr. modes for each op.: fix none, fix reu addr, fix sys addr, fix both
 
     // sys -> REU
-    void tick_sr_n() { if (bus_available()) { do_sr(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); } }
-    void tick_sr_r() { if (bus_available()) { do_sr(); r.a.inc_saddr(); do_tlen(); } }
-    void tick_sr_s() { if (bus_available()) { do_sr(); r.a.inc_raddr(); do_tlen(); } }
+    void tick_sr_n() { if (bus_available()) { do_sr(); inc_raddr(); inc_saddr(); do_tlen(); } }
+    void tick_sr_r() { if (bus_available()) { do_sr(); inc_saddr(); do_tlen(); } }
+    void tick_sr_s() { if (bus_available()) { do_sr(); inc_raddr(); do_tlen(); } }
     void tick_sr_b() { if (bus_available()) { do_sr(); do_tlen(); } }
     // REU -> sys
-    void tick_rs_n() { if (bus_available()) { do_rs(); r.a.inc_raddr(); r.a.inc_saddr(); do_tlen(); } }
-    void tick_rs_r() { if (bus_available()) { do_rs(); r.a.inc_saddr(); do_tlen(); } }
-    void tick_rs_s() { if (bus_available()) { do_rs(); r.a.inc_raddr(); do_tlen(); } }
+    void tick_rs_n() { if (bus_available()) { do_rs(); inc_raddr(); inc_saddr(); do_tlen(); } }
+    void tick_rs_r() { if (bus_available()) { do_rs(); inc_saddr(); do_tlen(); } }
+    void tick_rs_s() { if (bus_available()) { do_rs(); inc_raddr(); do_tlen(); } }
     void tick_rs_b() { if (bus_available()) { do_rs(); do_tlen(); } }
     // swap
-    void tick_sw_n() { if (do_swap()) { r.a.inc_raddr(); r.a.inc_saddr();  do_tlen(); } }
-    void tick_sw_r() { if (do_swap()) { r.a.inc_saddr(); do_tlen(); } }
-    void tick_sw_s() { if (do_swap()) { r.a.inc_raddr(); do_tlen(); } }
+    void tick_sw_n() { if (do_swap()) { inc_raddr(); inc_saddr();  do_tlen(); } }
+    void tick_sw_r() { if (do_swap()) { inc_saddr(); do_tlen(); } }
+    void tick_sw_s() { if (do_swap()) { inc_raddr(); do_tlen(); } }
     void tick_sw_b() { if (do_swap()) { do_tlen(); } }
     // verify
-    void tick_vr_n() { if (bus_available()) { do_ver(); r.a.inc_raddr(); r.a.inc_saddr(); } }
-    void tick_vr_r() { if (bus_available()) { do_ver(); r.a.inc_saddr(); } }
-    void tick_vr_s() { if (bus_available()) { do_ver(); r.a.inc_raddr(); } }
+    void tick_vr_n() { if (bus_available()) { do_ver(); inc_raddr(); inc_saddr(); } }
+    void tick_vr_r() { if (bus_available()) { do_ver(); inc_saddr(); } }
+    void tick_vr_s() { if (bus_available()) { do_ver(); inc_raddr(); } }
     void tick_vr_b() { if (bus_available()) { do_ver(); } }
 
     void tick_wait_ff00() {
@@ -260,7 +232,7 @@ struct T1_kludge : public T1 { // REU kludge
     void tick_dispatch_op() {
         // resolve ticker from cmd & addr_ctrl regs
         const auto t = (((r.cmd & R_cmd::xfer) << 2) | ((r.addr_ctrl & R_addr_ctrl::fix) >> 6)) + 1;
-        s.expansion_ticker = t;
+        s.exp.ticker = t;
         s.dma = true;
     }
 
@@ -269,10 +241,13 @@ private:
 
     bool bus_available() const { return !s.ba; }
 
+    void inc_raddr() { r.a.raddr = ((r.a.raddr + 1) & ~R_raddr::raddr_unused); }
+    void inc_saddr() { r.a.saddr += 1; }
+
     void do_tlen() { if (r.a.tlen == 1) done(); else r.a.tlen -= 1; }
 
     void done() {
-        s.expansion_ticker = Expansion::Ticker::idle;
+        s.exp.ticker = Expansion::Ticker::idle;
         s.dma = false;
         if (r.a.tlen == 1) r.status |= R_status::eob;
         r.cmd = r.cmd & ~R_cmd::exec;
@@ -281,19 +256,19 @@ private:
         check_irq();
     }
 
-    void do_sr() { bus.access(r.a.saddr, s.exp_ram[r.a.raddr], State::System::Bus::RW::r); }
-    void do_rs() { bus.access(r.a.saddr, s.exp_ram[r.a.raddr], State::System::Bus::RW::w); }
+    void do_sr() { bus.access(r.a.saddr, r.mem[r.a.raddr], State::System::Bus::RW::r); }
+    void do_rs() { bus.access(r.a.saddr, r.mem[r.a.raddr], State::System::Bus::RW::w); }
 
     bool do_swap() {
         if (bus_available()) {
             r.swap_cycle = !r.swap_cycle;
 
             if (!r.swap_cycle) {
-                s.exp_ram[r.a.raddr] = r.swap_r;
+                r.mem[r.a.raddr] = r.swap_r;
                 bus.access(r.a.saddr, r.swap_s, State::System::Bus::RW::w);
                 return true;
             } else {
-                r.swap_s = s.exp_ram[r.a.raddr];
+                r.swap_s = r.mem[r.a.raddr];
                 bus.access(r.a.saddr, r.swap_r, State::System::Bus::RW::r);
             }
         }
@@ -317,7 +292,7 @@ private:
         #pragma GCC diagnostic push
 
         bus.access(r.a.saddr, ds, State::System::Bus::RW::r);
-        const u8 dr = s.exp_ram[r.a.raddr];
+        const u8 dr = r.mem[r.a.raddr];
 
         do_tlen();
 
@@ -392,7 +367,7 @@ void tick(State::System& s, Bus& bus) {
     //#define T(t) case t: T##t##_kludge<Bus>{s, bus}.tick(); break;
     using REU = T1_kludge<Bus>;
 
-    switch (s.expansion_ticker) {
+    switch (s.exp.ticker) {
         case Ticker::idle: return;
         case Ticker::reu_sr_n: REU{s, bus}.tick_sr_n(); break;
         case Ticker::reu_sr_r: REU{s, bus}.tick_sr_r(); break;
@@ -426,7 +401,7 @@ enum Bus_op : u8 {
 };
 
 
-inline void bus_op(u16 exp_type, Bus_op op, const u16& a, u8& d, State::System& s) {
+inline void bus_op(State::System& s, Bus_op op, const u16& a, u8& d) {
     #define T(t) case (t * Bus_op::_cnt) + Bus_op::roml_r: T##t{s}.roml_r(a, d); return; \
                  case (t * Bus_op::_cnt) + Bus_op::roml_w: T##t{s}.roml_w(a, d); return; \
                  case (t * Bus_op::_cnt) + Bus_op::romh_r: T##t{s}.romh_r(a, d); return; \
@@ -436,7 +411,7 @@ inline void bus_op(u16 exp_type, Bus_op op, const u16& a, u8& d, State::System& 
                  case (t * Bus_op::_cnt) + Bus_op::io1_w: T##t{s}.io1_w(a, d); return; \
                  case (t * Bus_op::_cnt) + Bus_op::io2_w: T##t{s}.io2_w(a, d); return; \
 
-    switch ((exp_type * Bus_op::_cnt) + op) {
+    switch ((s.exp.type * Bus_op::_cnt) + op) {
         T(0) T(1) T(2) T(12)
     }
 

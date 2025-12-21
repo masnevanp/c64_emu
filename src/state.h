@@ -297,6 +297,51 @@ struct System {
         u8 vic_bank = 0b11;
     };
 
+    struct Expansion {
+        struct REU {
+            static constexpr u32 mem_size = 512 * 1024;
+
+            // register data
+            struct Addr {
+                u32 raddr;
+                u16 saddr;
+                u16 tlen;
+            };
+
+            u8 mem[mem_size];
+
+            Addr a;
+            Addr _a;
+
+            u8 status;
+            u8 cmd;
+            u8 int_mask;
+            u8 addr_ctrl;
+
+            // control data
+            u8 swap_r;
+            u8 swap_s;
+            u8 swap_cycle;
+        };
+
+        struct Generic {
+            // 64kb for convinient (=lazy) addressing. Wastes memory, but not really
+            // since its all a big union.
+            u8 mem[64 * 1024];
+        };
+
+        // TODO: compact state files (store only what is in use...)
+        union State {
+            REU reu;
+            Generic generic;
+        };
+
+        u16 type;
+        u16 ticker;
+
+        State state;
+    };
+
     struct Int_hub {
         u8 state;
         u8 old_state;
@@ -330,8 +375,7 @@ struct System {
 
     PLA pla;
 
-    u16 expansion_type;
-    u16 expansion_ticker;
+    Expansion exp;
 
     Int_hub int_hub;
 
