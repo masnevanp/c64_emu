@@ -408,7 +408,8 @@ public:
     void run(Mode init_mode = Mode::clocked);
 
 private:
-    Files::System_snapshot sys_snap;
+    // Using the heap, since the default windows stack size is a bit small...
+    Files::System_snapshot& sys_snap{*(new Files::System_snapshot)};
 
     // TODO: refactor this out?
     const State::System::ROM& rom; // TODO: include in sys_snap (but make it optional)?
