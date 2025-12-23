@@ -41,6 +41,7 @@ enum Ticker : u16 {
     reu_sw_n, reu_sw_r, reu_sw_s, reu_sw_b,
     reu_vr_n, reu_vr_r, reu_vr_s, reu_vr_b,
     reu_wait_ff00, reu_dispatch_op,
+    epyx_fl,
 };
 
 
@@ -78,10 +79,13 @@ struct T0 : public Base { // T0 None
 };
 
 
+using ES = State::System::Expansion;
+
+
 struct T1 : public Base { // T1: REU (512 kb)
     T1(::State::System& s) : Base(s) {}
 
-    State::System::Expansion::REU& r{s.exp.state.reu};
+    ES::REU& r{s.exp.state.reu};
 
     enum R : u8 {
         status = 0, cmd, saddr_l, saddr_h, raddr_l, raddr_h, raddr_b, tlen_l,
@@ -307,7 +311,7 @@ private:
 struct T2 : public Base { // T2 Generic
     T2(State::System& s) : Base(s) {}
 
-    State::System::Expansion::Generic& g{s.exp.state.generic};
+    ES::Generic& g{s.exp.state.generic};
 
     void roml_r(const u16& a, u8& d) { d = g.mem[a]; }
     void romh_r(const u16& a, u8& d) { d = g.mem[a]; }
@@ -323,38 +327,37 @@ struct T2 : public Base { // T2 Generic
 struct T12 : public Base { // T12 Epyx Fastload
     T12(State::System& s) : Base(s) {}
 
-    struct status {
-        bool inactive() const { return s.vic.cycle >= _inact_at(); }
-        void activate()       { _inact_at() = s.vic.cycle + 512; }
+    ES::Epyx_Fastload& efl{s.exp.state.epyx_fl};
 
-        State::System& s;
-        u64& _inact_at() const { return *(u64*)&s.exp_ram[0x2000]; }
-    };
-
-    void roml_r(const u16& a, u8& d) {
-        if (status{s}.inactive()) {
-            d = s.ram[0x8000 + a];
-        } else {
-            d = s.exp_ram[a];
-            status{s}.activate();
-        }
-    }
-
-    void io1_r(const u16& a, u8& d) { UNUSED2(a, d);
-        status{s}.activate();
-    };
-
-    void io2_r(const u16& a, u8& d) { UNUSED2(a, d);
-        d = s.exp_ram[0x1f00 | (a & 0x00ff)];
-    };
+    void roml_r(const u16& a, u8& d) { act(); d = efl.mem[a]; }
+    void io1_r(const u16& a, u8& d)  { UNUSED2(a, d); act(); };
+    void io2_r(const u16& a, u8& d)  { d = efl.mem[0x9f00 | (a & 0x00ff)]; }
 
     bool attach(const Files::CRT& crt) {
-        if (CRT::load_static_chips(crt, s.exp_ram) != 1) return false;
-        System::set_exrom_game(false, crt.header().game, s);
+        if (CRT::load_static_chips(crt, efl.mem) == 0) return false;
+        deact();
         return true;
     }
 
-    void reset() { status{s}.activate(); }
+    void reset() { act(); }
+
+    void tick() { if (s.vic.cycle == efl.deact_cycle) deact(); }
+
+private:
+    void act()   {
+        if (not_act()) {
+            System::set_exrom_game(false, true, s);
+            s.exp.ticker = Ticker::epyx_fl;
+        }
+        efl.deact_cycle = s.vic.cycle + 512;
+    }
+
+    void deact() {
+        System::set_exrom_game(true, true, s);
+        s.exp.ticker = Ticker::idle;
+    }
+
+    bool not_act() const { return s.exp.ticker != Ticker::epyx_fl; }
 };
 
 
@@ -389,6 +392,7 @@ void tick(State::System& s, Bus& bus) {
         case Ticker::reu_vr_b: REU{s, bus}.tick_vr_b(); break;
         case Ticker::reu_wait_ff00:   REU{s, bus}.tick_wait_ff00();   break;
         case Ticker::reu_dispatch_op: REU{s, bus}.tick_dispatch_op(); break;
+        case Ticker::epyx_fl: T12{s}.tick(); break;
     }
 }
 

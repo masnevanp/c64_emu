@@ -330,10 +330,16 @@ struct System {
             u8 mem[64 * 1024];
         };
 
+        struct Epyx_Fastload {
+            u64 deact_cycle;
+            u8 mem[64 * 1024];
+        };
+
         // TODO: compact state files (store only what is in use...)
         union State {
             REU reu;
             Generic generic;
+            Epyx_Fastload epyx_fl;
         };
 
         u16 type;
