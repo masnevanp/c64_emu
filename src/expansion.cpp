@@ -69,7 +69,7 @@ bool Expansion::attach(State::System& s, const Files::CRT& crt) {
     switch (type) {
         #define T(t) case t: success = T##t{s}.attach(crt); break;
 
-        T(2) T(12)
+        T(2) T(6) T(12)
 
         default:
             Log::error("Expansion: unsupported CRT HW type: %d", (int)type);

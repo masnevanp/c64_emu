@@ -69,6 +69,10 @@ protected:
         System::set_exrom_game(crt.header().exrom, crt.header().game, s);
     }
 
+    void set_exrom_game(bool e, bool g) {
+        System::set_exrom_game(e, g, s);
+    }
+
     void set_int(IO::Int_sig::Src src) { IO::Int_sig{s.int_hub.state}.set(src); }
     void clr_int(IO::Int_sig::Src src) { IO::Int_sig{s.int_hub.state}.clr(src); }
 };
@@ -324,13 +328,27 @@ struct T2 : public Base { // T2 Generic
 };
 
 
+struct T6 : public T2 { // T6 Simons' Basic
+    T6(State::System& s) : T2(s) {}
+
+    void io1_r(const u16& a, u8& d) { UNUSED2(a, d); set_8k(); }
+    void io1_w(const u16& a, u8& d) { UNUSED2(a, d); set_16k(); }
+
+    void reset() { set_8k(); }
+
+private:
+    void set_8k()  { set_exrom_game(false, true); }
+    void set_16k() { set_exrom_game(false, false); }
+};
+
+
 struct T12 : public Base { // T12 Epyx Fastload
     T12(State::System& s) : Base(s) {}
 
     ES::Epyx_Fastload& efl{s.exp.state.epyx_fl};
 
     void roml_r(const u16& a, u8& d) { act(); d = efl.mem[a]; }
-    void io1_r(const u16& a, u8& d)  { UNUSED2(a, d); act(); };
+    void io1_r(const u16& a, u8& d)  { UNUSED2(a, d); act(); }
     void io2_r(const u16& a, u8& d)  { d = efl.mem[0x9f00 | (a & 0x00ff)]; }
 
     bool attach(const Files::CRT& crt) {
@@ -346,14 +364,14 @@ struct T12 : public Base { // T12 Epyx Fastload
 private:
     void act()   {
         if (not_act()) {
-            System::set_exrom_game(false, true, s);
+            set_exrom_game(false, true);
             s.exp.ticker = Ticker::epyx_fl;
         }
         efl.deact_cycle = s.vic.cycle + 512;
     }
 
     void deact() {
-        System::set_exrom_game(true, true, s);
+        set_exrom_game(true, true);
         s.exp.ticker = Ticker::idle;
     }
 
@@ -418,7 +436,7 @@ inline void bus_op(State::System& s, Bus_op op, const u16& a, u8& d) {
                  case (t * Bus_op::_cnt) + Bus_op::io2_w: T##t{s}.io2_w(a, d); return; \
 
     switch ((s.exp.type * Bus_op::_cnt) + op) {
-        T(0) T(1) T(2) T(12)
+        T(0) T(1) T(2) T(6) T(12)
     }
 
     #undef T
