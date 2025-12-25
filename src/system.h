@@ -183,10 +183,6 @@ private:
             case 0x8: case 0x9: case 0xa: case 0xb: col_ram_r(addr & 0x03ff, data); return;
             case 0xc:                               cia1.r(addr & 0x000f, data);    return;
             case 0xd:                               cia2.r(addr & 0x000f, data);    return;
-            // TODO: the actual full address is lost here (upper bits are masked out),
-            //       but this should get fixed when the bus functionality is rewritten
-            //       (i.e. the full state of the bus is stored in system state so any expansion
-            //        can see the full address)
             case 0xe: E::bus_op(s, E::Bus_op::io1_r, addr, data);                   return;
             case 0xf: E::bus_op(s, E::Bus_op::io2_r, addr, data);                   return;
         }
@@ -200,7 +196,6 @@ private:
             case 0x8: case 0x9: case 0xa: case 0xb: col_ram_w(addr & 0x03ff, data); return;
             case 0xc:                               cia1.w(addr & 0x000f, data);    return;
             case 0xd:                               cia2.w(addr & 0x000f, data);    return;
-            // TODO: see comment in 'r_io()'
             case 0xe: E::bus_op(s, E::Bus_op::io1_w, addr, const_cast<u8&>(data));  return;
             case 0xf: E::bus_op(s, E::Bus_op::io2_w, addr, const_cast<u8&>(data));  return;
         }
