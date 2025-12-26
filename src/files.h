@@ -245,12 +245,12 @@ struct CRT {
         const U16b bank;
         const U16b load_addr;
         const U16b data_size;
-        const u8 _data_first;
+        const u8 _data_first_byte;
 
-        const u8* data() const { return &_data_first; }
+        const u8* data() const { return &_data_first_byte; }
 
         bool valid() const {
-            static constexpr u8 chip[] = { 0x43, 0x48, 0x49, 0x50 };
+            static constexpr u8 chip[] = { 'C', 'H', 'I', 'P' };
 
             if (signature[0] != chip[0] || signature[1] != chip[1]
                     || signature[2] != chip[2] || signature[3] != chip[3]) return false;

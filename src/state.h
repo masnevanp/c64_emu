@@ -335,11 +335,17 @@ struct System {
             u8 mem[64 * 1024];
         };
 
+        struct Magic_Desk {
+            u8 mem[16][8 * 1024];
+            u8 bank;
+        };
+
         // TODO: compact state files (store only what is in use...)
         union State {
             REU reu;
             Generic generic;
             Epyx_Fastload epyx_fl;
+            Magic_Desk magic_desk;
         };
 
         u16 type;

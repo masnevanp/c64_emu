@@ -379,6 +379,50 @@ private:
 };
 
 
+struct T21 : public Base { // T21 Magic Desk
+    T21(State::System& s) : Base(s) {}
+
+    ES::Magic_Desk& md{s.exp.state.magic_desk};
+
+    void roml_r(const u16& a, u8& d) { d = md.mem[md.bank][a & 0x1fff]; }
+
+    void io1_w(const u16& a, u8& d) {
+        UNUSED(a); // TODO: check address == 0xde00?
+        md.bank = d & 0xf; // 16 banks
+
+        const bool exrom = d >> 7;
+        set_exrom_game(exrom, true);
+    }
+
+    // TODO: io1_r (needed?)
+
+    bool attach(const Files::CRT& crt) {
+        const auto chips = crt.chip_packets();
+
+        if (chips.size() > 16) {
+            Log::error("CRT: Too many chips (%d)", chips.size());
+            return false;
+        }
+
+        for (const auto c : chips) {
+            if (c->data_size != (8 * 1024)) {
+                Log::error("CRT: Invalid data size (%d)", c->data_size);
+                return false;
+            }
+
+            std::copy(c->data(), c->data() + c->data_size, md.mem[c->bank]);
+        }
+
+        return true;
+    }
+
+    void reset() { 
+        set_exrom_game(false, true);
+        md.bank = 0;
+    }
+};
+
+
 void detach(State::System& s);
 bool attach(State::System& s, const Files::CRT& crt);
 bool attach_REU(State::System& s);
@@ -436,7 +480,7 @@ inline void bus_op(State::System& s, Bus_op op, const u16& a, u8& d) {
                  case (t * Bus_op::_cnt) + Bus_op::io2_w: T##t{s}.io2_w(a, d); return; \
 
     switch ((s.exp.type * Bus_op::_cnt) + op) {
-        T(0) T(1) T(2) T(6) T(12)
+        T(0) T(1) T(2) T(6) T(12) T(21)
     }
 
     #undef T
