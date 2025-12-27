@@ -340,12 +340,22 @@ struct System {
             u8 bank;
         };
 
+        struct EasyFlash {
+            static constexpr int bank_count = 64; // 2 chips per bank (roml & romh)
+
+            u8 roml[bank_count][8 * 1024];
+            u8 romh[bank_count][8 * 1024];
+            u8 ram[256];
+            u8 bank;
+        };
+
         // TODO: compact state files (store only what is in use...)
         union State {
             REU reu;
             Generic generic;
             Epyx_Fastload epyx_fl;
             Magic_Desk magic_desk;
+            EasyFlash easyflash;
         };
 
         u16 type;

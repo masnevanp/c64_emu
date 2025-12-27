@@ -423,6 +423,66 @@ struct T21 : public Base { // T21 Magic Desk
 };
 
 
+struct T34 : public Base { // T34 EasyFlash
+    T34(State::System& s) : Base(s) {}
+
+    ES::EasyFlash& ef{s.exp.state.easyflash};
+
+    void roml_r(const u16& a, u8& d) { d = ef.roml[ef.bank][a & 0x1fff]; }
+    void romh_r(const u16& a, u8& d) { d = ef.romh[ef.bank][a & 0x1fff]; }
+
+    void io1_w(const u16& a, u8& d) {
+        enum Reg { bank = 0, ctrl = 2 };
+
+        const auto reg = a & 0xff;
+        if (reg == Reg::bank) {
+            ef.bank = d & (ES::EasyFlash::bank_count - 1);
+        } else if (reg == Reg::ctrl) {
+            const bool exrom = !(d & 0b010);
+            const bool game = (d & 0b100) && !(d & 0b001);
+            set_exrom_game(exrom, game);
+        }        
+    }
+
+    void io2_r(const u16& a, u8& d) { d = ef.ram[a & 0xff]; }
+    void io2_w(const u16& a, u8& d) { ef.ram[a & 0xff] = d; }
+
+    bool attach(const Files::CRT& crt) {
+        const auto chips = crt.chip_packets();
+
+        if (chips.size() > (2 * ES::EasyFlash::bank_count)) {
+            Log::error("CRT: Too many chips (%d)", chips.size());
+            return false;
+        }
+
+        for (const auto c : chips) {
+            if (c->data_size != (8 * 1024)) {
+                Log::error("CRT: Invalid data size (%d)", c->data_size);
+                return false;
+            }
+
+            u8* tgt;
+            if (c->load_addr == 0x8000) tgt = ef.roml[c->bank];
+            else if (c->load_addr == 0xa000 || c->load_addr == 0xe000) tgt = ef.romh[c->bank];
+            else {
+                Log::error("CRT: Invalid load address (%d)", c->load_addr);
+                return false;
+            }
+
+            std::copy(c->data(), c->data() + c->data_size, tgt);
+        }
+
+        return true;
+    }
+
+    void reset() { 
+        u8 d = 0;
+        io1_w(0, d);
+        io1_w(2, d);
+    }
+};
+
+
 void detach(State::System& s);
 bool attach(State::System& s, const Files::CRT& crt);
 bool attach_REU(State::System& s);
@@ -480,7 +540,7 @@ inline void bus_op(State::System& s, Bus_op op, const u16& a, u8& d) {
                  case (t * Bus_op::_cnt) + Bus_op::io2_w: T##t{s}.io2_w(a, d); return; \
 
     switch ((s.exp.type * Bus_op::_cnt) + op) {
-        T(0) T(1) T(2) T(6) T(12) T(21)
+        T(0) T(1) T(2) T(6) T(12) T(21) T(34)
     }
 
     #undef T
