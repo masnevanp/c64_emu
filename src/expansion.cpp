@@ -85,6 +85,7 @@ bool Expansion::attach(State::System& s, const Files::CRT& crt) {
         return true;
     } else {
         Log::error("Expansion: failed to attach CRT");
+        detach(s);
         return false;
     }
 }
@@ -102,7 +103,7 @@ void Expansion::reset(State::System& s) {
     switch (s.exp.type) {
         #define T(t) case t: T##t{s}.reset(); break;
 
-        T(0) T(1) T(2) T(12) T(21) T(34)
+        T(0) T(1) T(2) T(6) T(12) T(21) T(34)
 
         #undef T
     }

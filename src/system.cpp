@@ -537,7 +537,8 @@ bool System::C64::handle_file(Files::File& file) {
         case Type::crt: {
             Log::info("CRT '%s' ...", file.name.c_str());
             deferred = [&, data = std::move(file.data)]() {
-                if (Expansion::attach(s, Files::CRT{data})) reset_cold();
+                Expansion::attach(s, Files::CRT{data});
+                reset_cold();
             };
             return true;
         }
