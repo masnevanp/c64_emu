@@ -407,6 +407,18 @@ void System::C64::output_frame() {
 
         pd.txt(std::string(width_chr, ' '), pos_x, menu_pos_y, col_fg, col_bg);
         pd.txt(menu.text(), pos_x + pad_px, menu_pos_y, col_fg, col_bg);
+
+        /*
+        // draw char.rom (fun & profit...)
+        const int x = 64;
+        const int y = 64 + 1;
+
+        for (u16 c = 0; c < 512; ++c) {
+            const int col = c % 32;
+            const int row = c / 32;
+            pd.chr(c, x + (col * 8), y + (row * 8), col_fg, col_bg);
+        }
+        */
     };
 
     auto draw_c1541_status = [&]() {

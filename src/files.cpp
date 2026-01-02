@@ -264,16 +264,16 @@ File hd_dir_basic_listing(
     };
 
     if (drives_entry) {
-        static auto de = std::string(" ") + petscii::arrow_up + " "
+        const auto de = std::string(" ") + petscii::arrow_up + " "
                             + quoted(win_drive_list_filename);
         bl.append({ 0x02,  de });
     }
     if (root_entry) {
-        static auto re = std::string(" ") + petscii::arrow_up + " \"/\"";
+        const auto re = std::string(" ") + petscii::arrow_up + " \"/\"";
         bl.append({ 0x02, re });
     }
     if (parent_entry) {
-        static auto pe = std::string(" ") + petscii::arrow_left + " " + quoted("..");
+        const auto pe = std::string(" ") + petscii::arrow_left + " " + quoted("..");
         bl.append({ 0x02, pe });
     }
 
