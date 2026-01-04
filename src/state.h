@@ -330,6 +330,15 @@ struct System {
             u8 mem[64 * 1024];
         };
 
+        struct Action_Replay {
+            static constexpr int bank_count = 4;
+
+            u8 rom[bank_count][8 * 1024];
+            u8 ram[8 * 1024];
+            u8 bank;
+            u8 ctrl;
+        };
+
         struct Epyx_Fastload {
             u64 deact_cycle;
             u8 mem[64 * 1024];
@@ -353,6 +362,7 @@ struct System {
         union State {
             REU reu;
             Generic generic;
+            Action_Replay action_replay;
             Epyx_Fastload epyx_fl;
             Magic_Desk magic_desk;
             EasyFlash easyflash;

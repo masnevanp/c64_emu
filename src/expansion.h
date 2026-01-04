@@ -328,6 +328,89 @@ struct T2 : public Base { // T2 Generic
 };
 
 
+struct T3 : public Base { // T3 Action_Replay
+    enum Ctrl : u8 {
+        game        = 0b00000001,
+        exrom       = 0b00000010,
+        io_off      = 0b00000100,
+        bank        = 0b00011000,
+        ram_on      = 0b00100000,
+        release_nmi = 0b01000000,
+
+        bank_lsb = 3,
+    };
+
+    T3(State::System& s) : Base(s) {}
+
+    ES::Action_Replay& ar{s.exp.state.action_replay};
+
+    void roml_r(const u16& a, u8& d) {
+        d = ram_active() ? ar.ram[a & 0x1fff] : ar.rom[ar.bank][a & 0x1fff];
+    }
+    void roml_w(const u16& a, u8& d) { if (ram_active()) ar.ram[a & 0x1fff] = d; }
+
+    void romh_r(const u16& a, u8& d) { d = ar.rom[ar.bank][a & 0x1fff]; }
+
+    void io1_r(const u16& a, u8& d) { UNUSED2(a, d); } // TODO ?
+    void io1_w(const u16& a, u8& d) { UNUSED(a);
+        Log::info("%d", (int)d);
+        if (io_active()) upd_ctrl(d);
+    }
+
+    void io2_r(const u16& a, u8& d) {
+        if (io_active()) {
+            const auto ea = 0x1f00 | (a & 0xff);
+            d = ram_active() ? ar.ram[ea] : ar.rom[ar.bank][ea];
+        }
+    }
+    void io2_w(const u16& a, u8& d) {
+        if (io_active() && ram_active()) ar.ram[0x1f00 | (a & 0xff)] = d;
+    }
+
+    bool attach(const Files::CRT& crt) {
+        const auto chips = crt.chip_packets();
+
+        if (chips.size() > 4) {
+            Log::error("CRT: Too many chips (%d)", chips.size());
+            return false;
+        }
+
+        for (const auto c : chips) {
+            if (c->data_size != (8 * 1024)) {
+                Log::error("CRT: Invalid data size (%d)", c->data_size);
+                return false;
+            }
+
+            std::copy(c->data(), c->data() + c->data_size, ar.rom[c->bank]);
+        }
+
+        return true;
+    }
+
+    void reset() { upd_ctrl(0); }
+
+    void freeze() {
+        activate_io();
+        set_int(IO::Int_sig::Src::exp_n);
+        set_exrom_game(true, false);
+    }
+
+private:
+    void upd_ctrl(const u8& val) {
+        ar.ctrl = val;
+        ar.bank = (val & Ctrl::bank) >> Ctrl::bank_lsb;
+        set_exrom_game(val & Ctrl::exrom, !(val & Ctrl::game));
+        if (val & Ctrl::release_nmi) clr_int(IO::Int_sig::Src::exp_n);
+        Log::info("b%d eg%d", ar.bank, s.pla.exrom_game);
+    }
+
+    void activate_io() { ar.ctrl = ar.ctrl & ~Ctrl::io_off; }
+    bool io_active() const { return !(ar.ctrl & Ctrl::io_off); }
+    bool ram_active() const { return ar.ctrl & Ctrl::ram_on; }
+
+};
+
+
 struct T6 : public T2 { // T6 Simons' Basic
     T6(State::System& s) : T2(s) {}
 
@@ -540,7 +623,7 @@ inline void bus_op(State::System& s, Bus_op op, const u16& a, u8& d) {
                  case (t * Bus_op::_cnt) + Bus_op::io2_w: T##t{s}.io2_w(a, d); return; \
 
     switch ((s.exp.type * Bus_op::_cnt) + op) {
-        T(0) T(1) T(2) T(6) T(12) T(21) T(34)
+        T(0) T(1) T(2) T(3) T(6) T(12) T(21) T(34)
     }
 
     #undef T
