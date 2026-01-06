@@ -420,12 +420,6 @@ struct System {
     CIA cia1;
     CIA cia2;
 
-    // holds all the memory that an expansion (e.g. a cart) requires: ROM, RAM,
-    // emulation control data, ...
-    // TODO: dynamic... (maybe move this somewhere else, and write it to a separate file
-    //                   when state is saved, but only if 'expansion_type != none')
-    u8 exp_ram[640 * 1024];
-
     C1541 c1541;
 };
 
