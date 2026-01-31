@@ -125,12 +125,6 @@ public:
     void col_ram_r(const u16& addr, u8& data) const { data = s.color_ram[addr]; }
 
 private:
-    enum IO_bits : u8 {
-        loram_hiram_charen_bits = 0x07,
-        cassette_switch_sense = 0x10,
-        cassette_motor_control = 0x20,
-    };
-
     void do_access(const u16& addr, u8& data, const State::System::Bus::RW rw) {
         using m = PLA::Mapping;
 
@@ -165,9 +159,15 @@ private:
 
     u8 r_dd() const { return s.pla.io_port_dd; }
     u8 r_pd() const {
-        static constexpr u8 pull_up = IO_bits::loram_hiram_charen_bits | IO_bits::cassette_switch_sense;
+        enum IO_bits : u8 {
+            loram_hiram_charen = 0x07,
+            cassette_switch_sense = 0x10,
+            cassette_motor_control = 0x20,
+        };
+
+        static constexpr u8 pull_up = IO_bits::loram_hiram_charen | IO_bits::cassette_switch_sense;
         const u8 pulled_up = ~s.pla.io_port_dd & pull_up;
-        const u8 cmc = ~cassette_motor_control | s.pla.io_port_dd; // dd input -> 0
+        const u8 cmc = ~IO_bits::cassette_motor_control | s.pla.io_port_dd; // dd input -> 0
         return (s.pla.io_port_state | pulled_up) & cmc;
     }
 
