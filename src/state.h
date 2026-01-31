@@ -341,7 +341,7 @@ struct System {
 
         struct Epyx_Fastload {
             u64 deact_cycle;
-            u8 mem[64 * 1024];
+            u8 mem[64 * 1024]; // see Generic.mem
         };
 
         struct Magic_Desk {

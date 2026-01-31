@@ -155,6 +155,7 @@ private:
                 E::bus_op(s, E::Bus_op(op), addr, data);
                 return;
             }
+            // TODO: leave addr untouched here? (well... full bus imp. will solve the issue?)
             case m::io_r:    r_io(addr & 0x0fff, data);        return; // 4 KB
             case m::io_w:    w_io(addr & 0x0fff, data);        return;
             case m::none_r:  // TODO: anything..? (return 'floating' state..)
@@ -612,6 +613,9 @@ private:
             {"RESET COLD !", [&](){ reset_cold(); } },
             {"SWAP JOYS !",  [&](){ host_input.swap_joysticks(); } },
             {"SAVE STATE !", [&](){ save_state_req(); } },
+            // TODO: move to expansion-menu (and add a keyboard shortcut),
+            //       and make it more generic (e.g. 'expansion button 1')
+            {"FREEZE !", [&]() { Expansion::T3{s}.freeze(); }},
         },
         {
             {"SHUTDOWN ?",   [&](){ request_shutdown(); } },

@@ -41,6 +41,7 @@ enum Ticker : u16 {
     reu_sw_n, reu_sw_r, reu_sw_s, reu_sw_b,
     reu_vr_n, reu_vr_r, reu_vr_s, reu_vr_b,
     reu_wait_ff00, reu_dispatch_op,
+    action_replay_frz,
     epyx_fl,
 };
 
@@ -353,7 +354,6 @@ struct T3 : public Base { // T3 Action_Replay
 
     void io1_r(const u16& a, u8& d) { UNUSED2(a, d); } // TODO ?
     void io1_w(const u16& a, u8& d) { UNUSED(a);
-        Log::info("%d", (int)d);
         if (io_active()) upd_ctrl(d);
     }
 
@@ -389,10 +389,24 @@ struct T3 : public Base { // T3 Action_Replay
 
     void reset() { upd_ctrl(0); }
 
+    // TODO: Freezing with the fastloader installed hangs the machine...
+    //       (timing issue with the exrom/game lines??) 
     void freeze() {
         activate_io();
         set_int(IO::Int_sig::Src::exp_n);
-        set_exrom_game(true, false);
+        s.exp.ticker = Ticker::action_replay_frz;
+    }
+
+    void tick_frz() {
+        const auto rw = NMOS6502::MC::code[s.cpu.mcc].rw;
+        const auto mopc = NMOS6502::MC::code[s.cpu.mcc].mopc;
+
+        // Wait for return address to be pushed before switching...
+        // TODO: is this correct?
+        if (rw == NMOS6502::MC::RW::w && mopc == NMOS6502::MC::MOPC::brk) {
+            s.exp.ticker = Ticker::idle;
+            System::set_exrom_game(true, false, s);
+        }
     }
 
 private:
@@ -401,7 +415,6 @@ private:
         ar.bank = (val & Ctrl::bank) >> Ctrl::bank_lsb;
         set_exrom_game(val & Ctrl::exrom, !(val & Ctrl::game));
         if (val & Ctrl::release_nmi) clr_int(IO::Int_sig::Src::exp_n);
-        Log::info("b%d eg%d", ar.bank, s.pla.exrom_game);
     }
 
     void activate_io() { ar.ctrl = ar.ctrl & ~Ctrl::io_off; }
@@ -597,6 +610,7 @@ void tick(State::System& s, Bus& bus) {
         case Ticker::reu_vr_b: REU{s, bus}.tick_vr_b(); break;
         case Ticker::reu_wait_ff00:   REU{s, bus}.tick_wait_ff00();   break;
         case Ticker::reu_dispatch_op: REU{s, bus}.tick_dispatch_op(); break;
+        case Ticker::action_replay_frz: T3{s}.tick_frz(); break;
         case Ticker::epyx_fl: T12{s}.tick(); break;
     }
 }
