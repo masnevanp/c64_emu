@@ -62,6 +62,11 @@ struct Base {
     void io2_r(const u16& a, u8& d) { UNUSED2(a, d); }
     void io2_w(const u16& a, u8& d) { UNUSED2(a, d); }
 
+    void roml_peek(const u16& a, u8& d) { roml_r(a, d); }
+    void romh_peek(const u16& a, u8& d) { romh_r(a, d); }
+    void io1_peek(const u16& a, u8& d) { io1_r(a, d); }
+    void io2_peek(const u16& a, u8& d) { io2_r(a, d); }
+
     bool attach(const Files::CRT& crt) { UNUSED(crt); return false; }
     void reset() {}
 
@@ -175,7 +180,18 @@ struct T1 : public Base { // T1: REU (512 kb)
             default: return;
         }
     }
-    
+
+    void io2_peek(const u16& a, u8& d) {
+        if (s.dma) return; // switched out during dma
+
+        if (const auto reg = a & 0b11111; reg == R::status) {
+            d = r.status | R_status::sz_1764 | R_status::chip_ver_1764;
+        } else {
+            io2_r(a, d);
+        }
+
+    }
+
     void reset() {
         r.status = 0x00;
         r.cmd = 0b00000000 | R_cmd::no_ff00_trig;
@@ -352,7 +368,7 @@ struct T3 : public Base { // T3 Action_Replay
 
     void romh_r(const u16& a, u8& d) { d = ar.rom[ar.bank][a & 0x1fff]; }
 
-    void io1_r(const u16& a, u8& d) { UNUSED2(a, d); } // TODO ?
+    void io1_r(const u16& a, u8& d) { UNUSED2(a, d); } // TODO (peek() too?)?
     void io1_w(const u16& a, u8& d) { UNUSED(a);
         if (io_active()) upd_ctrl(d);
     }
@@ -430,6 +446,8 @@ struct T6 : public T2 { // T6 Simons' Basic
     void io1_r(const u16& a, u8& d) { UNUSED2(a, d); set_8k(); }
     void io1_w(const u16& a, u8& d) { UNUSED2(a, d); set_16k(); }
 
+    void io1_peek(const u16& a, u8& d) { UNUSED2(a, d); }
+
     void reset() { set_8k(); }
 
 private:
@@ -446,6 +464,9 @@ struct T12 : public Base { // T12 Epyx Fastload
     void roml_r(const u16& a, u8& d) { act(); d = efl.mem[a]; }
     void io1_r(const u16& a, u8& d)  { UNUSED2(a, d); act(); }
     void io2_r(const u16& a, u8& d)  { d = efl.mem[0x9f00 | (a & 0x00ff)]; }
+
+    void roml_peek(const u16& a, u8& d) { d = efl.mem[a]; }
+    void io1_peek(const u16& a, u8& d) { UNUSED2(a, d); }
 
     bool attach(const Files::CRT& crt) {
         if (CRT::load_static_chips(crt, efl.mem) == 0) return false;
@@ -490,7 +511,7 @@ struct T21 : public Base { // T21 Magic Desk
         set_exrom_game(exrom, true);
     }
 
-    // TODO: io1_r (needed?)
+    // TODO: io1_r/peek (needed?)
 
     bool attach(const Files::CRT& crt) {
         const auto chips = crt.chip_packets();
@@ -622,7 +643,10 @@ enum Bus_op : u8 {
     io1_r  = 4,  io2_r  = 5,
     io1_w  = 6,  io2_w  = 7,
 
-    _cnt = 8
+    roml_peek = 8,  romh_peek = 9,
+    io1_peek  = 10, io2_peek = 11,
+
+    _cnt = 12
 };
 
 
@@ -635,6 +659,10 @@ inline void bus_op(State::System& s, Bus_op op, const u16& a, u8& d) {
                  case (t * Bus_op::_cnt) + Bus_op::io2_r: T##t{s}.io2_r(a, d); return; \
                  case (t * Bus_op::_cnt) + Bus_op::io1_w: T##t{s}.io1_w(a, d); return; \
                  case (t * Bus_op::_cnt) + Bus_op::io2_w: T##t{s}.io2_w(a, d); return; \
+                 case (t * Bus_op::_cnt) + Bus_op::roml_peek: T##t{s}.roml_peek(a, d); return; \
+                 case (t * Bus_op::_cnt) + Bus_op::romh_peek: T##t{s}.romh_peek(a, d); return; \
+                 case (t * Bus_op::_cnt) + Bus_op::io1_peek: T##t{s}.io1_peek(a, d); return; \
+                 case (t * Bus_op::_cnt) + Bus_op::io2_peek: T##t{s}.io2_peek(a, d); return; \
 
     switch ((s.exp.type * Bus_op::_cnt) + op) {
         T(0) T(1) T(2) T(3) T(6) T(12) T(21) T(34)

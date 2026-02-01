@@ -99,6 +99,14 @@ public:
         }
     }
 
+    void peek(const u8& ri, u8& data) {
+        if (ri == R::mnm || ri == R::mnd) {
+            data = s.reg[ri];
+        } else {
+            r(ri, data);
+        }
+    }
+
     /* NOTE:
         mobs.prep_dma/do_dma pair is done, so that it takes the specified
         5 cycles in total. do_dma is done at the last moment possible, and

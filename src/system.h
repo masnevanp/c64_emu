@@ -100,6 +100,28 @@ public:
         s.bus.rw = rw;
     }
 
+    u8 peek(const u16& addr) {
+        using m = PLA::Mapping;
+
+        u8 data;
+
+        const auto mapping = PLA::array[s.pla.active].pl[State::System::Bus::RW::r][addr >> 12];
+        switch (mapping) {
+            case m::roml_r:
+                Expansion::bus_op(s, Expansion::Bus_op::roml_peek, addr, data);
+                return data;
+            case m::romh_r:
+                Expansion::bus_op(s, Expansion::Bus_op::romh_peek, addr, data);
+                return data;
+            // TODO: leave addr untouched here? (well... full bus imp. will solve the issue?)
+            case m::io_r:
+                return peek_io(addr & 0x0fff);
+            default:
+                do_access(addr, data, State::System::Bus::RW::r);
+                return data;
+        }
+    }
+
     u8 vic_access(const u16& addr) const { // addr is 14bits
         using m = PLA::VIC_mapping;
         // silence compiler (we do handle all the cases)
@@ -199,6 +221,25 @@ private:
             case 0xd:                               cia2.w(addr & 0x000f, data);    return;
             case 0xe: E::bus_op(s, E::Bus_op::io1_w, addr, const_cast<u8&>(data));  return;
             case 0xf: E::bus_op(s, E::Bus_op::io2_w, addr, const_cast<u8&>(data));  return;
+        }
+    }
+
+    u8 peek_io(const u16& addr) {
+        namespace E = Expansion;
+
+        u8 data;
+
+        // TODO: sid.peek needed? (i.e. check if sid.r has relevant side effects)
+
+        switch (addr >> 8) {
+            case 0x0: case 0x1: case 0x2: case 0x3: vic.peek(addr & 0x003f, data);  return data;
+            case 0x4: case 0x5: case 0x6: case 0x7: sid.r(addr & 0x001f, data);     return data;
+            case 0x8: case 0x9: case 0xa: case 0xb: col_ram_r(addr & 0x03ff, data); return data;
+            // TODO
+            //case 0xc:                               cia1.r(addr & 0x000f, data);    return data;
+            //case 0xd:                               cia2.r(addr & 0x000f, data);    return data;
+            case 0xe: E::bus_op(s, E::Bus_op::io1_peek, addr, data); return data;
+            case 0xf: E::bus_op(s, E::Bus_op::io2_peek, addr, data); return data;
         }
     }
 
