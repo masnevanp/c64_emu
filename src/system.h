@@ -224,7 +224,7 @@ private:
         }
     }
 
-    u8 peek_io(const u16& addr) {
+    u8 peek_io(const u16& addr) const {
         namespace E = Expansion;
 
         u8 data;
@@ -235,9 +235,8 @@ private:
             case 0x0: case 0x1: case 0x2: case 0x3: vic.peek(addr & 0x003f, data);  return data;
             case 0x4: case 0x5: case 0x6: case 0x7: sid.r(addr & 0x001f, data);     return data;
             case 0x8: case 0x9: case 0xa: case 0xb: col_ram_r(addr & 0x03ff, data); return data;
-            // TODO
-            //case 0xc:                               cia1.r(addr & 0x000f, data);    return data;
-            //case 0xd:                               cia2.r(addr & 0x000f, data);    return data;
+            case 0xc:                               cia1.peek(addr & 0x000f, data); return data;
+            case 0xd:                               cia2.peek(addr & 0x000f, data); return data;
             case 0xe: E::bus_op(s, E::Bus_op::io1_peek, addr, data); return data;
             case 0xf: E::bus_op(s, E::Bus_op::io2_peek, addr, data); return data;
         }

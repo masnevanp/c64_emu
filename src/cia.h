@@ -96,6 +96,29 @@ public:
         }
     }
 
+    u8 peek(const u8& ri, u8& data) const {
+        switch (ri) {
+            case pra:      data = port_a.r_pd();
+            case prb:      data = r_prb();
+            case ddra:     data = port_a.r_dd();
+            case ddrb:     data = port_b.r_dd();
+            case ta_lo:    data = timer_a.r_lo();
+            case ta_hi:    data = timer_a.r_hi();
+            case tb_lo:    data = timer_b.r_lo();
+            case tb_hi:    data = timer_b.r_hi();
+            case tod_10th: data = tod.peek_10th();
+            case tod_sec:  data = tod.r_sec();
+            case tod_min:  data = tod.r_min();
+            case tod_hr:   data = tod.peek_hr();
+            case sdr:      data = 0x00; // TODO
+            case icr:      data = int_ctrl.peek_icr();
+            case cra:      data = timer_a.s.cr;
+            case crb:      data = timer_b.s.cr;
+        }
+
+        return data;
+    }
+
     void tick() { if (!r_ticked) _tick(); else r_ticked = false; }
 
     void set_cnt(bool high) { // TODO (sdr...)
@@ -121,11 +144,11 @@ private:
 
     const Sig sig_null = [](){};
 
-    u8 r_prb() { // includes the (possible) timer pb-bits to read value
+    u8 r_prb() const { // includes the (possible) timer pb-bits to read value
         // TODO: This ignores the possible 0 value on an input bit
         //       (it would pull the port value to zero too, right?)
-        u8 t_bits = timer_a.s.pb_bit | timer_b.s.pb_bit;
-        u8 t_vals = timer_a.s.pb_bit_val | timer_b.s.pb_bit_val;
+        const u8 t_bits = timer_a.s.pb_bit | timer_b.s.pb_bit;
+        const u8 t_vals = timer_a.s.pb_bit_val | timer_b.s.pb_bit_val;
         return (port_b.r_pd() & ~t_bits) | (t_vals & t_bits);
     }
 
@@ -158,6 +181,8 @@ private:
             return r;
         }
         void w_icr(const u8& data) { s.new_icr = data | 0x100; }
+
+        u8 peek_icr() const { return s.icr; }
 
         void tick() {
             if (s.icr & s.mask) {
@@ -433,6 +458,9 @@ private:
             }
         }
 
+        u8 peek_10th() const { return s.time[s.r_src].tnth; }
+        u8 peek_hr() const { return s.time[s.r_src].hr; }
+    
         void tick() {
             const bool tod_pin_pulse = (system_cycle % tod_pin_freq == 0);
             if (tod_pin_pulse && running()) {
