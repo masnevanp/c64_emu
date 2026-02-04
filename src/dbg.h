@@ -22,6 +22,22 @@ void print_status(const Core& cpu, u8* mem);
 
 void reg_diff(const Core& cpu);
 
+
+struct Instruction {
+    enum class Addr_mode : u8 {
+        impl, abs, absx, absy, imm, ind, indx, indy, rel, zp, zpx, zpy
+    };
+
+    const u8 code;
+    const u8 size;
+    const Addr_mode addr_mode;
+    const std::string mnemonic;
+    const std::string templ;
+};
+
+extern const Instruction instruction[256];
+
+
 class System;
 
 void step(System& sys, u16 until_pc = 0xffff);
