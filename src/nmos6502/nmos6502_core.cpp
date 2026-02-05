@@ -99,7 +99,7 @@ namespace NMOS6502 {
                 case 0x0: s.d = s.y; return;
                 case 0x1: s.d = s.a; return;
                 case 0x2: s.d = s.x; return;
-                case 0x3: s.d = s.a & s.x; return;
+                case 0x3: s.d = s.a & s.x; return; // sax
             }
         }
 
