@@ -10,21 +10,17 @@ void test();
 
 
 void run_c64() {
-    u8 basic[0x2000];
-    u8 kernal[0x2000];
-    u8 charr[0x1000];
-    u8 c1541[0x4000];
+    State::System::ROM roms{};
 
     auto read_roms = [&]() -> bool {
-        return (read_file("data/c64_roms/basic.rom", basic) > 0)
-                    && (read_file("data/c64_roms/kernal.rom", kernal) > 0)
-                    && (read_file("data/c64_roms/char.rom", charr) > 0)
-                    && (read_file("data/c1541_roms/c1541.rom", c1541) > 0);
+        return (read_file("data/c64_roms/basic.rom", roms.basic) > 0)
+                    && (read_file("data/c64_roms/kernal.rom", roms.kernal) > 0)
+                    && (read_file("data/c64_roms/char.rom", roms.charr) > 0)
+                    && (read_file("data/c1541_roms/c1541.rom", roms.c1541) > 0);
     };
 
     if (!read_roms()) return;
 
-    State::System::ROM roms{basic, kernal, charr, c1541};
     System::C64 c64(roms);
 
     c64.run();

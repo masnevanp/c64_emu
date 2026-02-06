@@ -2,6 +2,8 @@
 #define DBG_H_INCLUDED
 
 #include <string>
+#include <vector>
+#include <stdio.h>
 #include "common.h"
 #include "nmos6502/nmos6502.h"
 #include "nmos6502/nmos6502_core.h"
@@ -32,10 +34,61 @@ struct Instruction {
     const u8 size;
     const Addr_mode addr_mode;
     const std::string mnemonic;
-    const std::string templ;
+    const std::string format;
 };
 
 extern const Instruction instruction[256];
+
+
+template<typename Bytes>
+std::vector<std::string> disasm(const Bytes& bytes, const u16 start_addr = 0x0000) {
+    std::vector<std::string> asm_list;
+
+    const std::size_t byte_cnt = std::size(bytes);
+
+    for (std::size_t byte_pos = 0; byte_pos < byte_cnt; ) {
+        const auto opc = bytes[byte_pos];
+        const auto& instr = instruction[opc];
+        const u16 pc = start_addr + byte_pos;
+
+        char instr_disasm[16];
+        char instr_bytes[9]; // max: 3 bytes + 2 spaces + terminator = 6 + 2 + 1 
+
+        if (bool bytes_missing = (byte_pos + instr.size) > byte_cnt; bytes_missing) {
+            sprintf(instr_disasm, "%s ???", instr.mnemonic.c_str());
+
+            const auto extra_bytes = byte_cnt - byte_pos;
+            if (extra_bytes == 1) {
+                sprintf(instr_bytes, "%02X", bytes[byte_pos]);
+            } else { // only 1 or 2 possible
+                sprintf(instr_bytes, "%02X %02X", bytes[byte_pos], bytes[byte_pos + 1]);
+            }
+        } else {
+            switch (instr.size) {
+                case 1:
+                    sprintf(instr_disasm, instr.format.c_str());
+                    sprintf(instr_bytes, "%02X", bytes[byte_pos]);
+                    break; 
+                case 2:
+                    sprintf(instr_disasm, instr.format.c_str(), bytes[byte_pos + 1]);
+                    sprintf(instr_bytes, "%02X %02X", bytes[byte_pos], bytes[byte_pos + 1]);
+                    break;
+                case 3:
+                    sprintf(instr_disasm, instr.format.c_str(), bytes[byte_pos + 2], bytes[byte_pos + 1]);
+                    sprintf(instr_bytes, "%02X %02X %02X", bytes[byte_pos], bytes[byte_pos + 1], bytes[byte_pos + 2]);
+                    break;
+            }
+        }
+
+        char disasm_line[32];
+        sprintf(disasm_line, ".%04X  %-8s  %s", pc, instr_bytes, instr_disasm);
+        asm_list.push_back(std::string{disasm_line});
+
+        byte_pos += instr.size;
+    }
+
+    return asm_list;
+}
 
 
 class System;

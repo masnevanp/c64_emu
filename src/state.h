@@ -270,10 +270,10 @@ struct System {
     struct ROM {
         // TODO: include in State::System, if ROMs are to be included in sys_snap
         // (just the definition here for now...)
-        const u8* basic;
-        const u8* kernal;
-        const u8* charr;
-        const u8* c1541;
+        u8 basic[0x2000];
+        u8 kernal[0x2000];
+        u8 charr[0x1000];
+        u8 c1541[0x4000];
     };
 
     struct Bus {
