@@ -264,6 +264,58 @@ void System::C64::check_deferred() {
 }
 
 
+/*
+
+L/C: 023[232]/07  B: RRRBRIK  I: [N.]
+A:00  X:01  Y:14  SP:F3  P: 81 [N......C]  PC:E5D4 [K]  > BEQ $E5CD
+
+*/
+// pla (the 7 zones, e.g. "RRRBRIK" for standard basic mode), irq/nmi status, cycle/frame
+// status reg
+// pc mapping (e.g. "B", "K", "R", or "L")
+void log_status(const State::System& s, System::Bus& bus) {
+    char buffer[64];
+
+    const auto sys_status = [&]() {
+        const int line = (s.vic.cycle / LINE_CYCLE_COUNT) % FRAME_LINE_COUNT;
+        const int line_cycle = s.vic.cycle % LINE_CYCLE_COUNT;
+
+        const char* banking = "RRRBRIK"; // TODO (mapping of the 7 zones)
+
+        const char nmi_status = s.int_hub.nmi_act ? 'N' : '.';
+        const char irq_status = s.int_hub.irq_act ? 'I' : '.';
+    
+        const char* format = "L/C:%03d/%02d  B: %s  I: [%c%c]";
+        sprintf(buffer, format, line, line_cycle, banking, nmi_status, irq_status);
+
+        Log::info("%s", buffer);
+    };
+
+    const auto cpu_status = [&]() {
+        const auto& dr = NMOS6502::MC::code[s.cpu.mcc].dr;
+        const auto& pc = s.cpu.pc;
+
+        std::string instr_txt = "";
+        if (const bool fetch = (dr == NMOS6502::Ri8::ir); fetch) {
+            const auto bytes = Bytes{{bus.peek(pc), bus.peek(pc + 1), bus.peek(pc + 2)}};
+            instr_txt = "> " + Dbg::disasm_first(bytes, pc).text;
+        } else {
+            instr_txt = "> " + NMOS6502::instruction[s.cpu.ir].mnemonic;
+        }
+
+        // TODO: pc mapping, e.g. PC:E5D4 [K]  > BEQ $E5CD
+        const char* format = "A:%02X  X:%02X  Y:%02X  SP:%02X  P:%02X [..todo..]  PC:%04X  %s";
+        sprintf(buffer, format, s.cpu.a, s.cpu.x, s.cpu.y, u8(s.cpu.sp), s.cpu.p, s.cpu.pc,
+                    instr_txt.c_str());
+
+        Log::info("%s", buffer);
+    };
+
+    sys_status();
+    cpu_status();
+}
+
+
 void System::C64::pre_run() {
     switch (s.mode) {
         case Mode::none: break;
@@ -275,6 +327,7 @@ void System::C64::pre_run() {
             break;
         case Mode::stepped:
             sid.flush();
+            log_status(s, bus);
             break;
     }
 }
@@ -366,6 +419,8 @@ void System::C64::step_forward(u8 key_code) {
     }
 
     sid.output();
+
+    log_status(s, bus);
 }
 
 
