@@ -96,27 +96,25 @@ public:
         }
     }
 
-    u8 peek(const u8& ri, u8& data) const {
+    void peek(const u8& ri, u8& data) const {
         switch (ri) {
-            case pra:      data = port_a.r_pd();
-            case prb:      data = r_prb();
-            case ddra:     data = port_a.r_dd();
-            case ddrb:     data = port_b.r_dd();
-            case ta_lo:    data = timer_a.r_lo();
-            case ta_hi:    data = timer_a.r_hi();
-            case tb_lo:    data = timer_b.r_lo();
-            case tb_hi:    data = timer_b.r_hi();
-            case tod_10th: data = tod.peek_10th();
-            case tod_sec:  data = tod.r_sec();
-            case tod_min:  data = tod.r_min();
-            case tod_hr:   data = tod.peek_hr();
-            case sdr:      data = 0x00; // TODO
-            case icr:      data = int_ctrl.peek_icr();
-            case cra:      data = timer_a.s.cr;
-            case crb:      data = timer_b.s.cr;
+            case pra:      data = port_a.r_pd();       return;
+            case prb:      data = r_prb();             return;
+            case ddra:     data = port_a.r_dd();       return;
+            case ddrb:     data = port_b.r_dd();       return;
+            case ta_lo:    data = timer_a.r_lo();      return;
+            case ta_hi:    data = timer_a.r_hi();      return;
+            case tb_lo:    data = timer_b.r_lo();      return;
+            case tb_hi:    data = timer_b.r_hi();      return;
+            case tod_10th: data = tod.peek_10th();     return;
+            case tod_sec:  data = tod.r_sec();         return;
+            case tod_min:  data = tod.r_min();         return;
+            case tod_hr:   data = tod.peek_hr();       return;
+            case sdr:      data = 0x00;                return; // TODO
+            case icr:      data = int_ctrl.peek_icr(); return;
+            case cra:      data = timer_a.s.cr;        return;
+            case crb:      data = timer_b.s.cr;        return;
         }
-
-        return data;
     }
 
     void tick() { if (!r_ticked) _tick(); else r_ticked = false; }
