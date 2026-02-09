@@ -273,40 +273,102 @@ A:00  X:01  Y:14  SP:F3  P: 81 [N......C]  PC:E5D4 [K]  > BEQ $E5CD
 // pla (the 7 zones, e.g. "RRRBRIK" for standard basic mode), irq/nmi status, cycle/frame
 // status reg
 // pc mapping (e.g. "B", "K", "R", or "L")
-void log_status(const State::System& s, System::Bus& bus) {
-    char buffer[64];
 
-    const auto sys_status = [&]() {
+/*
+enum Flag : u8 { // nvubdizc, u = unused (bit 5)
+    N = 0b10000000, V = 0b01000000, u = 0b00100000, B = 0b00010000,
+    D = 0b00001000, I = 0b00000100, Z = 0b00000010, C = 0b00000001,
+    all = 0b11111111,
+};
+*/
+std::string flags_str(u8 p) {
+    using NMOS6502::Flag;
+
+    std::string s = "........";
+
+    if (p & Flag::N) s[0] = 'n';
+    if (p & Flag::V) s[1] = 'v';
+    if (p & Flag::u) s[2] = '1';
+    if (p & Flag::B) s[3] = 'b';
+    if (p & Flag::D) s[4] = 'd';
+    if (p & Flag::I) s[5] = 'i';
+    if (p & Flag::Z) s[6] = 'z';
+    if (p & Flag::C) s[7] = 'c';
+
+    return s;
+}
+
+/*
+        ram0_r,  ram0_w,
+        ram_r,   ram_w,
+        bas_r,
+        kern_r,
+        charr_r,
+        roml_r,  roml_w,
+        romh_r,  romh_w,
+        io_r,    io_w,
+        none_r,  none_w,
+*/
+//'r', 'r', 'r', 'r', 'b', 'k', 'c', 'l', 'l', 'h', 'h', 'i', 'i', '-', '-', 
+void log_status(const State::System& s, System::Bus& bus) {
+    using RW = State::System::Bus::RW;
+
+    char buffer[128];
+
+    auto mapped_at = [&](const u16 addr, RW rw) {
+        static constexpr char mc[] = {
+            'r', 'r', 'r', 'r', 'b', 'k', 'c', 'l', 'l', 'h', 'h', 'i', 'i', '-', '-'
+        };
+        const auto m = bus.mapped_at(addr, rw);
+        return mc[m];
+    };
+
+    auto rw_mappings = [&]() {
+        static constexpr u16 zone_addr[] = {
+            0x0000, 0x1000, 0x8000, 0xa000, 0xc000, 0xd000, 0xe000, 
+        };
+
+        std::string rw = "......./.......";
+        for (int z = 0; z < 7; ++z) {
+            rw[z] = mapped_at(zone_addr[z], RW::r);
+            rw[z + 8] = mapped_at(zone_addr[z], RW::w);
+        }
+
+        return rw;
+    };
+
+    auto sys_status = [&]() {
+        const int frame = s.vic.cycle / FRAME_CYCLE_COUNT;
         const int line = (s.vic.cycle / LINE_CYCLE_COUNT) % FRAME_LINE_COUNT;
         const int line_cycle = s.vic.cycle % LINE_CYCLE_COUNT;
 
-        const char* banking = "RRRBRIK"; // TODO (mapping of the 7 zones)
-
-        const char nmi_status = s.int_hub.nmi_act ? 'N' : '.';
-        const char irq_status = s.int_hub.irq_act ? 'I' : '.';
+        const char nmi_status = s.int_hub.nmi_act ? 'n' : '.';
+        const char irq_status = s.int_hub.irq_act ? 'i' : '.';
     
-        const char* format = "L/C:%03d/%02d  B: %s  I: [%c%c]";
-        sprintf(buffer, format, line, line_cycle, banking, nmi_status, irq_status);
+        const char* format = "f:%05d  l:%03d  c:%02d  r/w: %s  i: [%c%c]";
+        sprintf(buffer, format, frame, line, line_cycle, rw_mappings().c_str(), 
+                    nmi_status, irq_status);
 
         Log::info("%s", buffer);
     };
 
-    const auto cpu_status = [&]() {
+    auto cpu_status = [&]() {
         const auto& dr = NMOS6502::MC::code[s.cpu.mcc].dr;
         const auto& pc = s.cpu.pc;
 
         std::string instr_txt = "";
         if (const bool fetch = (dr == NMOS6502::Ri8::ir); fetch) {
             const auto bytes = Bytes{{bus.peek(pc), bus.peek(pc + 1), bus.peek(pc + 2)}};
-            instr_txt = "> " + Dbg::disasm_first(bytes, pc).text;
+            instr_txt = "> " + as_lower(Dbg::disasm_first(bytes, pc).text);
         } else {
-            instr_txt = "> " + NMOS6502::instruction[s.cpu.ir].mnemonic;
+            instr_txt = "> " + as_lower(NMOS6502::instruction[s.cpu.ir].mnemonic);
         }
 
-        // TODO: pc mapping, e.g. PC:E5D4 [K]  > BEQ $E5CD
-        const char* format = "A:%02X  X:%02X  Y:%02X  SP:%02X  P:%02X [..todo..]  PC:%04X  %s";
-        sprintf(buffer, format, s.cpu.a, s.cpu.x, s.cpu.y, u8(s.cpu.sp), s.cpu.p, s.cpu.pc,
-                    instr_txt.c_str());
+        const char pc_mapping = mapped_at(s.cpu.pc, RW::r);
+
+        const char* format = "a:%02x  x:%02x  y:%02x  sp:%02x  p:%02x [%s]  pc:%04x [%c]  %s";
+        sprintf(buffer, format, s.cpu.a, s.cpu.x, s.cpu.y, u8(s.cpu.sp), s.cpu.p,
+                    flags_str(s.cpu.p).c_str(), s.cpu.pc, pc_mapping, instr_txt.c_str());
 
         Log::info("%s", buffer);
     };

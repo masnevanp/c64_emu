@@ -92,6 +92,10 @@ public:
         Expansion::reset(s);
     }
 
+    PLA::Mapping mapped_at(const u16 addr, const State::System::Bus::RW rw) {
+        return PLA::array[s.pla.active].pl[rw][addr >> 12];
+    }
+
     void access(const u16& addr, u8& data, const State::System::Bus::RW rw) {
         do_access(addr, data, rw);
         // TODO: a better (a more efficient) way of maintaining bus state?
