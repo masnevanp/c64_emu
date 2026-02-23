@@ -8,15 +8,23 @@
 using namespace NMOS6502;
 
 
-std::string Dbg::flag_str(u8 r) {
-    std::string s = "";
-    s = s
-        + std::string((r & 0x80 ) ? "n" : ".") + std::string((r & 0x40 ) ? "v" : ".")
-        + std::string((r & 0x20 ) ? "1" : ".") + std::string((r & 0x10 ) ? "b" : ".")
-        + std::string((r & 0x08 ) ? "d" : ".") + std::string((r & 0x04 ) ? "i" : ".")
-        + std::string((r & 0x02 ) ? "z" : ".") + std::string((r & 0x01 ) ? "c" : ".");
+std::string Dbg::flags_str(u8 p) {
+    using NMOS6502::Flag;
+
+    std::string s = "........";
+
+    if (p & Flag::N) s[0] = 'n';
+    if (p & Flag::V) s[1] = 'v';
+    if (p & Flag::u) s[2] = '1';
+    if (p & Flag::B) s[3] = 'b';
+    if (p & Flag::D) s[4] = 'd';
+    if (p & Flag::I) s[5] = 'i';
+    if (p & Flag::Z) s[6] = 'z';
+    if (p & Flag::C) s[7] = 'c';
+
     return s;
 }
+
 
 std::string Dbg::print_u16(uint16_t x) {
     std::stringstream ss;
@@ -68,7 +76,7 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     std::cout << "   x: " << print_u8(cpu.s.x);
     std::cout << "   y: " << print_u8(cpu.s.y);
     std::cout << "   p: " << print_u8(cpu.s.p);
-    std::cout << " [" << flag_str(cpu.s.p) << "]";
+    std::cout << " [" << flags_str(cpu.s.p) << "]";
     //// zpaf, a1, a2, a3, a4
     std::cout << "\n\nzp: " << print_u16((cpu.s.zph <<8) | cpu.s.zp);
     std::cout << " a1: " << print_u16((cpu.s.a1h << 8) | cpu.s.a1l);

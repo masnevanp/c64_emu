@@ -12,7 +12,7 @@ namespace Dbg {
 
 using namespace NMOS6502;
 
-std::string flag_str(u8 r);
+std::string flags_str(u8 p);
 
 std::string print_u16(uint16_t x);
 std::string print_u8(uint8_t x);

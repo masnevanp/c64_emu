@@ -62,10 +62,10 @@ struct Base {
     void io2_r(const u16& a, u8& d) { UNUSED2(a, d); }
     void io2_w(const u16& a, u8& d) { UNUSED2(a, d); }
 
-    void roml_peek(const u16& a, u8& d) { roml_r(a, d); }
-    void romh_peek(const u16& a, u8& d) { romh_r(a, d); }
-    void io1_peek(const u16& a, u8& d) { io1_r(a, d); }
-    void io2_peek(const u16& a, u8& d) { io2_r(a, d); }
+    void roml_peek(const u16& a, u8& d) { UNUSED2(a, d); }
+    void romh_peek(const u16& a, u8& d) { UNUSED2(a, d); }
+    void io1_peek(const u16& a, u8& d)  { UNUSED2(a, d); }
+    void io2_peek(const u16& a, u8& d)  { UNUSED2(a, d); }
 
     bool attach(const Files::CRT& crt) { UNUSED(crt); return false; }
     void reset() {}
@@ -337,6 +337,9 @@ struct T2 : public Base { // T2 Generic
     void roml_r(const u16& a, u8& d) { d = g.mem[a]; }
     void romh_r(const u16& a, u8& d) { d = g.mem[a]; }
 
+    void roml_peek(const u16& a, u8& d) { d = g.mem[a]; }
+    void romh_peek(const u16& a, u8& d) { d = g.mem[a]; }
+
     bool attach(const Files::CRT& crt) {
         if (CRT::load_static_chips(crt, g.mem) == 0) return false;
         set_exrom_game(crt);
@@ -368,7 +371,6 @@ struct T3 : public Base { // T3 Action_Replay
 
     void romh_r(const u16& a, u8& d) { d = ar.rom[ar.bank][a & 0x1fff]; }
 
-    void io1_r(const u16& a, u8& d) { UNUSED2(a, d); } // TODO (peek() too?)?
     void io1_w(const u16& a, u8& d) { UNUSED(a);
         if (io_active()) upd_ctrl(d);
     }
@@ -382,6 +384,10 @@ struct T3 : public Base { // T3 Action_Replay
     void io2_w(const u16& a, u8& d) {
         if (io_active() && ram_active()) ar.ram[0x1f00 | (a & 0xff)] = d;
     }
+
+    void roml_peek(const u16& a, u8& d) { roml_r(a, d); }
+    void romh_peek(const u16& a, u8& d) { romh_r(a, d); }
+    void io2_peek(const u16& a, u8& d)  { io2_r(a, d); }
 
     bool attach(const Files::CRT& crt) {
         const auto chips = crt.chip_packets();
@@ -446,8 +452,6 @@ struct T6 : public T2 { // T6 Simons' Basic
     void io1_r(const u16& a, u8& d) { UNUSED2(a, d); set_8k(); }
     void io1_w(const u16& a, u8& d) { UNUSED2(a, d); set_16k(); }
 
-    void io1_peek(const u16& a, u8& d) { UNUSED2(a, d); }
-
     void reset() { set_8k(); }
 
 private:
@@ -466,7 +470,7 @@ struct T12 : public Base { // T12 Epyx Fastload
     void io2_r(const u16& a, u8& d)  { d = efl.mem[0x9f00 | (a & 0x00ff)]; }
 
     void roml_peek(const u16& a, u8& d) { d = efl.mem[a]; }
-    void io1_peek(const u16& a, u8& d) { UNUSED2(a, d); }
+    void io2_peek(const u16& a, u8& d)  { io2_r(a, d); }
 
     bool attach(const Files::CRT& crt) {
         if (CRT::load_static_chips(crt, efl.mem) == 0) return false;
@@ -511,7 +515,7 @@ struct T21 : public Base { // T21 Magic Desk
         set_exrom_game(exrom, true);
     }
 
-    // TODO: io1_r/peek (needed?)
+    void roml_peek(const u16& a, u8& d) { roml_r(a, d); }
 
     bool attach(const Files::CRT& crt) {
         const auto chips = crt.chip_packets();
@@ -563,6 +567,10 @@ struct T34 : public Base { // T34 EasyFlash
 
     void io2_r(const u16& a, u8& d) { d = ef.ram[a & 0xff]; }
     void io2_w(const u16& a, u8& d) { ef.ram[a & 0xff] = d; }
+
+    void roml_peek(const u16& a, u8& d) { roml_r(a, d); }
+    void romh_peek(const u16& a, u8& d) { romh_r(a, d); }
+    void io2_peek(const u16& a, u8& d)  { io2_r(a, d); }
 
     bool attach(const Files::CRT& crt) {
         const auto chips = crt.chip_packets();

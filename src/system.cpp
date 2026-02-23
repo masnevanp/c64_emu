@@ -264,56 +264,24 @@ void System::C64::check_deferred() {
 }
 
 
-/*
-
-L/C: 023[232]/07  B: RRRBRIK  I: [N.]
-A:00  X:01  Y:14  SP:F3  P: 81 [N......C]  PC:E5D4 [K]  > BEQ $E5CD
-
-*/
-// pla (the 7 zones, e.g. "RRRBRIK" for standard basic mode), irq/nmi status, cycle/frame
-// status reg
-// pc mapping (e.g. "B", "K", "R", or "L")
-
-/*
-enum Flag : u8 { // nvubdizc, u = unused (bit 5)
-    N = 0b10000000, V = 0b01000000, u = 0b00100000, B = 0b00010000,
-    D = 0b00001000, I = 0b00000100, Z = 0b00000010, C = 0b00000001,
-    all = 0b11111111,
-};
-*/
-std::string flags_str(u8 p) {
-    using NMOS6502::Flag;
-
-    std::string s = "........";
-
-    if (p & Flag::N) s[0] = 'n';
-    if (p & Flag::V) s[1] = 'v';
-    if (p & Flag::u) s[2] = '1';
-    if (p & Flag::B) s[3] = 'b';
-    if (p & Flag::D) s[4] = 'd';
-    if (p & Flag::I) s[5] = 'i';
-    if (p & Flag::Z) s[6] = 'z';
-    if (p & Flag::C) s[7] = 'c';
-
-    return s;
-}
-
-/*
-        ram0_r,  ram0_w,
-        ram_r,   ram_w,
-        bas_r,
-        kern_r,
-        charr_r,
-        roml_r,  roml_w,
-        romh_r,  romh_w,
-        io_r,    io_w,
-        none_r,  none_w,
-*/
-//'r', 'r', 'r', 'r', 'b', 'k', 'c', 'l', 'l', 'h', 'h', 'i', 'i', '-', '-', 
 void log_status(const State::System& s, System::Bus& bus) {
     using RW = State::System::Bus::RW;
 
     char buffer[128];
+
+    auto pla_mode = [&]() {
+        std::string mode_str = ".....";
+
+        const u8 mode = System::pla_mode(s);
+
+        if (mode & 0b10000) mode_str[0] = 'e';
+        if (mode & 0b01000) mode_str[1] = 'g';
+        if (mode & 0b00100) mode_str[2] = 'c';
+        if (mode & 0b00010) mode_str[3] = 'h';
+        if (mode & 0b00001) mode_str[4] = 'l';
+
+        return mode_str;
+    };
 
     auto mapped_at = [&](const u16 addr, RW rw) {
         static constexpr char mc[] = {
@@ -337,17 +305,28 @@ void log_status(const State::System& s, System::Bus& bus) {
         return rw;
     };
 
-    auto sys_status = [&]() {
+    auto nmi_irq_srcs = [&](const State::System::Int_hub& int_hub) {
+        using Src = IO::Int_sig::Src;
+
+        std::string s = ".../...";
+
+        if (int_hub.state & Src::cia2) s[0] = 'c';
+        if (int_hub.old_state & Src::rstr) s[1] = 'r'; // using 'old_state', since it is cleared immediately
+        if (int_hub.state & Src::exp_n) s[2] = 'e';
+        if (int_hub.state & Src::cia1) s[4] = 'c';
+        if (int_hub.state & Src::vic) s[5] = 'v';
+        if (int_hub.state & Src::exp_i) s[6] = 'e';
+
+        return s;
+    };
+
+    auto time_status = [&]() {
         const int frame = s.vic.cycle / FRAME_CYCLE_COUNT;
         const int line = (s.vic.cycle / LINE_CYCLE_COUNT) % FRAME_LINE_COUNT;
         const int line_cycle = s.vic.cycle % LINE_CYCLE_COUNT;
 
-        const char nmi_status = s.int_hub.nmi_act ? 'n' : '.';
-        const char irq_status = s.int_hub.irq_act ? 'i' : '.';
-    
-        const char* format = "f:%05d  l:%03d  c:%02d  r/w: %s  i: [%c%c]";
-        sprintf(buffer, format, frame, line, line_cycle, rw_mappings().c_str(), 
-                    nmi_status, irq_status);
+        const char* format = "flc: %05d/%03d/%02d";
+        sprintf(buffer, format, frame, line, line_cycle);
 
         Log::info("%s", buffer);
     };
@@ -368,13 +347,34 @@ void log_status(const State::System& s, System::Bus& bus) {
 
         const char* format = "a:%02x  x:%02x  y:%02x  sp:%02x  p:%02x [%s]  pc:%04x [%c]  %s";
         sprintf(buffer, format, s.cpu.a, s.cpu.x, s.cpu.y, u8(s.cpu.sp), s.cpu.p,
-                    flags_str(s.cpu.p).c_str(), s.cpu.pc, pc_mapping, instr_txt.c_str());
+                    Dbg::flags_str(s.cpu.p).c_str(), s.cpu.pc, pc_mapping, instr_txt.c_str());
 
         Log::info("%s", buffer);
     };
 
-    sys_status();
+    auto bus_status = [&]() {
+        const char bus_addr_mapping = mapped_at(s.bus.addr, s.bus.rw);
+        const char rw = (s.bus.rw == RW::r) ? '>' : '<';
+
+        const std::string nmi_status = s.int_hub.nmi_act ? "NMI" : "nmi";
+        const std::string irq_status = s.int_hub.irq_act ? "IRQ" : "irq";
+
+        const std::string rdy = (s.ba | s.dma) ? "RDY" : "rdy";
+        const char ba_status = s.ba ? 'b' : '.';
+        const char dma_status = s.dma ? 'd' : '.';
+
+        const char* format = "bus: %04x [%c] %c %02x  pla: [%s] => [%s]  %s/%s: [%s]  %s: [%c%c]";
+        sprintf(buffer, format,
+                    s.bus.addr, bus_addr_mapping, rw, s.bus.data,
+                    pla_mode().c_str(), rw_mappings().c_str(),
+                    nmi_status.c_str(), irq_status.c_str(), nmi_irq_srcs(s.int_hub).c_str(),
+                    rdy.c_str(), ba_status, dma_status);
+        Log::info("%s", buffer);
+    };
+
+    time_status();
     cpu_status();
+    bus_status();
 }
 
 

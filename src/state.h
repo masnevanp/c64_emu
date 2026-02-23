@@ -429,17 +429,25 @@ struct System {
 
 namespace System {
 
+inline u8 pla_mode(const State::System& s) {
+    static constexpr u8 loram_hiram_charen_bits = 0x07;
+
+    const u8 lhc = (s.pla.io_port_state | ~s.pla.io_port_dd) & loram_hiram_charen_bits; // inputs -> pulled up
+    const u8 mode = s.pla.exrom_game | lhc;
+
+    return mode;
+}
+
+
 inline void update_pla(State::System& s) { // TODO: non-inlined? (definition to .cpp)
     static constexpr u8 Mode_to_array[32] = {
         0,  0,  1,  2,  0, 11,  3,  4, 0,  8,  9,  5,  0, 11, 12,  6,
         7,  7,  7,  7,  7,  7,  7,  7, 0,  8,  9, 10,  0, 11, 12, 13,
     };
-    static constexpr u8 loram_hiram_charen_bits = 0x07;
 
-    const u8 lhc = (s.pla.io_port_state | ~s.pla.io_port_dd) & loram_hiram_charen_bits; // inputs -> pulled up
-    const u8 mode = s.pla.exrom_game | lhc;
-    s.pla.active = Mode_to_array[mode];
+    s.pla.active = Mode_to_array[pla_mode(s)];
 }
+
 
 inline void set_exrom_game(bool e, bool g, State::System& s) {
     s.pla.exrom_game = (e << 4) | (g << 3);
