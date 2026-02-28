@@ -154,7 +154,8 @@ namespace Key_code {
         nop = GS,
         rst_cold, swap_joy, tgl_fscr, mode,
         step_cycle, step_instr, step_line, step_frame,
-        menu_tgl, menu_ent, menu_back, menu_up, menu_down,
+        mod,
+        menu_ent, menu_back, menu_up, menu_down,
         rot_dsk, shutdown
     };
 

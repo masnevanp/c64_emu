@@ -228,7 +228,9 @@ void System::Input_matrix::output() {
 void System::Menu::handle_key(u8 code) {
     using kc = Key_code::System;
 
-    if (active) { // TODO: redundant check...?
+    if (!active) {
+        active = true;
+    } else {
         switch (code) {
             case kc::menu_ent:  root.enter(); break;
             case kc::menu_back: root.back();  break;
@@ -296,7 +298,7 @@ void log_status(const State::System& s, System::Bus& bus) {
             0x0000, 0x1000, 0x8000, 0xa000, 0xc000, 0xd000, 0xe000, 
         };
 
-        std::string rw = "......./.......";
+        std::string rw = ".......|.......";
         for (int z = 0; z < 7; ++z) {
             rw[z] = mapped_at(zone_addr[z], RW::r);
             rw[z + 8] = mapped_at(zone_addr[z], RW::w);
@@ -308,7 +310,7 @@ void log_status(const State::System& s, System::Bus& bus) {
     auto nmi_irq_srcs = [&](const State::System::Int_hub& int_hub) {
         using Src = IO::Int_sig::Src;
 
-        std::string s = ".../...";
+        std::string s = "...|...";
 
         if (int_hub.state & Src::cia2) s[0] = 'c';
         if (int_hub.old_state & Src::rstr) s[1] = 'r'; // using 'old_state', since it is cleared immediately
@@ -320,18 +322,51 @@ void log_status(const State::System& s, System::Bus& bus) {
         return s;
     };
 
-    auto time_status = [&]() {
+    auto line_1 = [&]() {
         const int frame = s.vic.cycle / FRAME_CYCLE_COUNT;
         const int line = (s.vic.cycle / LINE_CYCLE_COUNT) % FRAME_LINE_COUNT;
         const int line_cycle = s.vic.cycle % LINE_CYCLE_COUNT;
 
-        const char* format = "flc: %05d/%03d/%02d";
-        sprintf(buffer, format, frame, line, line_cycle);
+        const std::string nmi_status = s.int_hub.nmi_act ? "n" : ".";
+        const std::string irq_status = s.int_hub.irq_act ? "i" : ".";
+        const std::string rdy_status = (s.ba | s.dma) ? "r" : ".";
+
+        const char ba_status = s.ba ? 'b' : '.';
+        const char dma_status = s.dma ? 'd' : '.';
+
+        const char* format = "t: %05d|%03d|%02d              [%s%s%s] <= [%s|%c%c]";
+        sprintf(buffer, format,
+                    frame, line, line_cycle,
+                    nmi_status.c_str(), irq_status.c_str(), rdy_status.c_str(),
+                    nmi_irq_srcs(s.int_hub).c_str(), ba_status, dma_status);
 
         Log::info("%s", buffer);
     };
 
-    auto cpu_status = [&]() {
+    auto line_2 = [&]() {
+        const char bus_addr_mapping = mapped_at(s.bus.addr, s.bus.rw);
+        const char rw = (s.bus.rw == RW::r) ? '>' : '<';
+
+        const char* format = "b: %04x [%c] %c %02x             [%s] <= [%s]";
+        sprintf(buffer, format,
+                    s.bus.addr, bus_addr_mapping, rw, s.bus.data,
+                    rw_mappings().c_str(), pla_mode().c_str());
+
+        Log::info("%s", buffer);
+    };
+
+    auto line_3 = [&]() {
+
+
+        const char* format = "a: %02x  x: %02x  y: %02x  sp: %02x  [%s] <=  p: %02x";
+        sprintf(buffer, format,
+                    s.cpu.a, s.cpu.x, s.cpu.y, u8(s.cpu.sp),
+                    Dbg::flags_str(s.cpu.p).c_str(), s.cpu.p);
+
+        Log::info("%s", buffer);
+    };
+
+    auto line_4 = [&]() {
         const auto& dr = NMOS6502::MC::code[s.cpu.mcc].dr;
         const auto& pc = s.cpu.pc;
 
@@ -345,36 +380,18 @@ void log_status(const State::System& s, System::Bus& bus) {
 
         const char pc_mapping = mapped_at(s.cpu.pc, RW::r);
 
-        const char* format = "a:%02x  x:%02x  y:%02x  sp:%02x  p:%02x [%s]  pc:%04x [%c]  %s";
-        sprintf(buffer, format, s.cpu.a, s.cpu.x, s.cpu.y, u8(s.cpu.sp), s.cpu.p,
-                    Dbg::flags_str(s.cpu.p).c_str(), s.cpu.pc, pc_mapping, instr_txt.c_str());
+        const char* format = "pc: %04x [%c] %s";
+        sprintf(buffer, format, s.cpu.pc, pc_mapping, instr_txt.c_str());
 
         Log::info("%s", buffer);
     };
 
-    auto bus_status = [&]() {
-        const char bus_addr_mapping = mapped_at(s.bus.addr, s.bus.rw);
-        const char rw = (s.bus.rw == RW::r) ? '>' : '<';
+    Log::info("");
 
-        const std::string nmi_status = s.int_hub.nmi_act ? "NMI" : "nmi";
-        const std::string irq_status = s.int_hub.irq_act ? "IRQ" : "irq";
-
-        const std::string rdy = (s.ba | s.dma) ? "RDY" : "rdy";
-        const char ba_status = s.ba ? 'b' : '.';
-        const char dma_status = s.dma ? 'd' : '.';
-
-        const char* format = "bus: %04x [%c] %c %02x  pla: [%s] => [%s]  %s/%s: [%s]  %s: [%c%c]";
-        sprintf(buffer, format,
-                    s.bus.addr, bus_addr_mapping, rw, s.bus.data,
-                    pla_mode().c_str(), rw_mappings().c_str(),
-                    nmi_status.c_str(), irq_status.c_str(), nmi_irq_srcs(s.int_hub).c_str(),
-                    rdy.c_str(), ba_status, dma_status);
-        Log::info("%s", buffer);
-    };
-
-    time_status();
-    cpu_status();
-    bus_status();
+    line_1();
+    line_2();
+    line_3();
+    line_4();
 }
 
 
@@ -470,7 +487,9 @@ void System::C64::step_forward(u8 key_code) {
             run_cycle();
             break;
         case kc::step_instr:
-            do run_cycle(); while (cpu.mop().dr != NMOS6502::Ri8::ir);
+            if (!cpu.halted()) {
+                do run_cycle(); while (cpu.mop().dr != NMOS6502::Ri8::ir);
+            }
             break;
         case kc::step_line:
             do run_cycle(); while (s.vic.line_cycle() < (LINE_CYCLE_COUNT - 1));

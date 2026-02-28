@@ -506,30 +506,29 @@ private:
     
         // system keys
         [this](u8 code, u8 down) {
-            using kc = Key_code::System;
+            using ks = Key_code::System;
     
             if (down) {
                 switch (code) {
-                    case kc::rst_cold:   reset_cold();                 break;
-                    case kc::swap_joy:   host_input.swap_joysticks();  break;
-                    case kc::tgl_fscr:   vid_out.toggle_fullscr_win(); break;
-                    case kc::mode:
+                    case ks::rst_cold:   reset_cold();                 break;
+                    case ks::swap_joy:   host_input.swap_joysticks();  break;
+                    case ks::tgl_fscr:   vid_out.toggle_fullscr_win(); break;
+                    case ks::mode:
                         s.mode = (s.mode == Mode::clocked) ? Mode::stepped : Mode::clocked;
                         break;
-                    case kc::step_cycle:
-                    case kc::step_instr:
-                    case kc::step_line:
-                    case kc::step_frame: if (s.mode == Mode::stepped) step_forward(code); break;
-                    case kc::menu_tgl:   menu.active = true;           break;
-                    case kc::menu_ent:
-                    case kc::menu_back:
-                    case kc::menu_up:
-                    case kc::menu_down:  menu.handle_key(code);        break;
-                    case kc::rot_dsk:    c1541.disk_carousel.rotate(); break;
-                    case kc::shutdown:   request_shutdown();           break;
+                    case ks::step_cycle:
+                    case ks::step_instr:
+                    case ks::step_line:
+                    case ks::step_frame: if (s.mode == Mode::stepped) step_forward(code); break;
+                    case ks::menu_ent:
+                    case ks::menu_back:
+                    case ks::menu_up:
+                    case ks::menu_down:  menu.handle_key(code);        break;
+                    case ks::rot_dsk:    c1541.disk_carousel.rotate(); break;
+                    case ks::shutdown:   request_shutdown();           break;
                 }
             } else {
-                if (code == kc::menu_tgl) menu.active = false;
+                if (code == ks::mod) menu.active = false;
             }
         },
 
