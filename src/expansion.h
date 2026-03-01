@@ -411,10 +411,9 @@ struct T3 : public Base { // T3 Action_Replay
 
     void reset() { upd_ctrl(0); }
 
-    // TODO: Freezing with the fastloader installed hangs the machine...
-    //       (timing issue with the exrom/game lines??) 
     void freeze() {
         activate_io();
+        upd_ctrl(ar.ctrl & ~Ctrl::bank); // bank 0 (seems to work.. but is this really correct?)
         set_int(IO::Int_sig::Src::exp_n);
         s.exp.ticker = Ticker::action_replay_frz;
     }
