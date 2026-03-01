@@ -356,8 +356,6 @@ void log_status(const State::System& s, System::Bus& bus) {
     };
 
     auto line_3 = [&]() {
-
-
         const char* format = "a: %02x  x: %02x  y: %02x  sp: %02x  [%s] <=  p: %02x";
         sprintf(buffer, format,
                     s.cpu.a, s.cpu.x, s.cpu.y, u8(s.cpu.sp),
@@ -380,7 +378,7 @@ void log_status(const State::System& s, System::Bus& bus) {
 
         const char pc_mapping = mapped_at(s.cpu.pc, RW::r);
 
-        const char* format = "pc: %04x [%c] %s";
+        const char* format = "pc:%04x [%c] %s";
         sprintf(buffer, format, s.cpu.pc, pc_mapping, instr_txt.c_str());
 
         Log::info("%s", buffer);
