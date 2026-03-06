@@ -519,7 +519,11 @@ private:
                     case ks::step_cycle:
                     case ks::step_instr:
                     case ks::step_line:
-                    case ks::step_frame: if (s.mode == Mode::stepped) step_forward(code); break;
+                    case ks::step_frame:
+                        if (s.mode == Mode::stepped) step_forward(code);
+                        log_status(); // yes, log regardless of mode...
+                        break;
+                    case ks::exp_btn_1:  Expansion::button_1(s);       break;
                     case ks::menu_ent:
                     case ks::menu_back:
                     case ks::menu_up:
@@ -595,6 +599,8 @@ private:
     std::function<void()> deferred;
     void check_deferred();
 
+    void log_status();
+
     void pre_run();
 
     void run_cycle();
@@ -621,9 +627,12 @@ private:
         s.mode = Mode::none;
     }
 
-    std::vector<::Menu::Confirmed_action> exp_menu_actions{
+    std::vector<::Menu::Confirmed_action> exp_menu_conf_actions{
         {"DETACH ?", [&](){ Expansion::detach(s); reset_cold(); }},
         {"ATTACH REU ?", [&]() { Expansion::attach_REU(s); reset_cold(); }},
+    };
+    std::vector<::Menu::Immediate_action> exp_menu_imm_actions{
+        {"BUTTON 1 !", [&]() { Expansion::button_1(s); }},
     };
 
     std::vector<::Menu::Knob> perf_menu_items{
@@ -656,9 +665,6 @@ private:
             {"RESET COLD !", [&](){ reset_cold(); } },
             {"SWAP JOYS !",  [&](){ host_input.swap_joysticks(); } },
             {"SAVE STATE !", [&](){ save_state_req(); } },
-            // TODO: move to expansion-menu (and add a keyboard shortcut),
-            //       and make it more generic (e.g. 'expansion button 1')
-            {"FREEZE !", [&]() { Expansion::T3{s}.freeze(); }},
         },
         {
             {"SHUTDOWN ?",   [&](){ request_shutdown(); } },
@@ -667,7 +673,7 @@ private:
             vid_out.settings_menu(),
             sid.settings_menu(),
             c1541.menu(),
-            {"EXPANSION / ", exp_menu_actions},
+            {"EXPANSION / ", exp_menu_conf_actions, exp_menu_imm_actions},
             {"PERFORMANCE / ", perf_menu_items},
         }
     };

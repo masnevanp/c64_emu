@@ -93,15 +93,15 @@ const u8 Input::SC_LU_TBL[] = {
 const u8 Input::SC_RALT_LU_TBL[] = { // SDL_Scancode with RALT modifier */
     // 00..0f
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
-    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    sy::nop,sy::exp_btn_1,sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
     // 10..1f
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::step_cycle, sy::step_instr,
     // 20..2f
-    sy::step_line, sy::step_frame,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    sy::step_line, sy::step_frame,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   kb::eq,
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
     // 30..3f
-    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    sy::nop,   kb::mul,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
     // 40..4f
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,

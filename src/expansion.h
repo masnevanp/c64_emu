@@ -389,6 +389,8 @@ struct T3 : public Base { // T3 Action_Replay
     void romh_peek(const u16& a, u8& d) { romh_r(a, d); }
     void io2_peek(const u16& a, u8& d)  { io2_r(a, d); }
 
+    void button_1() { freeze(); }
+
     bool attach(const Files::CRT& crt) {
         const auto chips = crt.chip_packets();
 
@@ -410,13 +412,6 @@ struct T3 : public Base { // T3 Action_Replay
     }
 
     void reset() { upd_ctrl(0); }
-
-    void freeze() {
-        activate_io();
-        upd_ctrl(ar.ctrl & ~Ctrl::bank); // bank 0 (seems to work.. but is this really correct?)
-        set_int(IO::Int_sig::Src::exp_n);
-        s.exp.ticker = Ticker::action_replay_frz;
-    }
 
     void tick_frz() {
         const auto rw = NMOS6502::MC::code[s.cpu.mcc].rw;
@@ -442,6 +437,12 @@ private:
     bool io_active() const { return !(ar.ctrl & Ctrl::io_off); }
     bool ram_active() const { return ar.ctrl & Ctrl::ram_on; }
 
+    void freeze() {
+        activate_io();
+        upd_ctrl(ar.ctrl & ~Ctrl::bank); // bank 0 (seems to work.. but is this really correct?)
+        set_int(IO::Int_sig::Src::exp_n);
+        s.exp.ticker = Ticker::action_replay_frz;
+    }
 };
 
 
@@ -612,6 +613,7 @@ bool attach(State::System& s, const Files::CRT& crt);
 bool attach_REU(State::System& s);
 void reset(State::System& s);
 
+void button_1(State::System& s);
 
 template<typename Bus>
 void tick(State::System& s, Bus& bus) {

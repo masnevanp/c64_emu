@@ -266,7 +266,7 @@ void System::C64::check_deferred() {
 }
 
 
-void log_status(const State::System& s, System::Bus& bus) {
+void System::C64::log_status() {
     using RW = State::System::Bus::RW;
 
     char buffer[128];
@@ -404,7 +404,7 @@ void System::C64::pre_run() {
             break;
         case Mode::stepped:
             sid.flush();
-            log_status(s, bus);
+            log_status();
             break;
     }
 }
@@ -498,8 +498,6 @@ void System::C64::step_forward(u8 key_code) {
     }
 
     sid.output();
-
-    log_status(s, bus);
 }
 
 

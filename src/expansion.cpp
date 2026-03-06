@@ -110,6 +110,16 @@ void Expansion::reset(State::System& s) {
 }
 
 
+void Expansion::button_1(State::System& s) {
+    switch (s.exp.type) {
+        #define T(t) case t: T##t{s}.button_1(); break;
+
+        T(3)
+
+        #undef T
+    }
+}
+
 /*
 Result T5_Ocean_type_1(const Files::CRT& crt, Ctx& ctx) {
     u32 exp_mem_addr = 0x0001; // current bank stored at 0x0000
