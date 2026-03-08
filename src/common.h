@@ -152,12 +152,14 @@ namespace Key_code {
 
     enum System : u8 {
         nop = GS,
-        rst_cold, swap_joy, tgl_fscr, mode,
+        rst_cold, rst_warm, save_state, mode,
         step_cycle, step_instr, step_line, step_frame,
+        swap_joy, tgl_fscr,
         exp_btn_1,
         mod,
         menu_ent, menu_back, menu_up, menu_down,
-        rot_dsk, shutdown
+        rot_dsk, tgl_wp,
+        shutdown
     };
 
 } // namespace Key_code

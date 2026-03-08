@@ -738,6 +738,7 @@ public:
         const auto new_wp_state = !disk_ctrl.status.write_prot_on();
         disk_ctrl.set_write_prot(new_wp_state);
         selected().write_prot = new_wp_state;
+        Log::info("Disk write protection: %s", new_wp_state ? "on" : "off");
     }
 
 private:

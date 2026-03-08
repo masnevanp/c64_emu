@@ -511,8 +511,8 @@ private:
             if (down) {
                 switch (code) {
                     case ks::rst_cold:   reset_cold();                 break;
-                    case ks::swap_joy:   host_input.swap_joysticks();  break;
-                    case ks::tgl_fscr:   vid_out.toggle_fullscr_win(); break;
+                    case ks::rst_warm:   reset_warm();                 break;
+                    case ks::save_state: save_state_req();             break;
                     case ks::mode:
                         s.mode = (s.mode == Mode::clocked) ? Mode::stepped : Mode::clocked;
                         break;
@@ -523,13 +523,16 @@ private:
                         if (s.mode == Mode::stepped) step_forward(code);
                         log_status(); // yes, log regardless of mode...
                         break;
+                    case ks::swap_joy:   host_input.swap_joysticks();  break;
+                    case ks::tgl_fscr:   vid_out.toggle_fullscr_win(); break;
                     case ks::exp_btn_1:  Expansion::button_1(s);       break;
                     case ks::menu_ent:
                     case ks::menu_back:
                     case ks::menu_up:
-                    case ks::menu_down:  menu.handle_key(code);        break;
-                    case ks::rot_dsk:    c1541.disk_carousel.rotate(); break;
-                    case ks::shutdown:   request_shutdown();           break;
+                    case ks::menu_down:  menu.handle_key(code);           break;
+                    case ks::rot_dsk:    c1541.disk_carousel.rotate();    break;
+                    case ks::tgl_wp:     c1541.disk_carousel.toggle_wp(); break;
+                    case ks::shutdown:   request_shutdown();              break;
                 }
             } else {
                 if (code == ks::mod) menu.active = false;
