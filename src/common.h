@@ -158,6 +158,8 @@ namespace Key_code {
         exp_btn_1,
         mod,
         menu_ent, menu_back, menu_up, menu_down,
+        menu_audio, menu_video, menu_disk, menu_perf,
+        menu_exp, menu_att_reu,
         rot_dsk, tgl_wp,
         shutdown
     };

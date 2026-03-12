@@ -134,7 +134,7 @@ public:
         Param<u8> mask_level {15, 0,  15, 1}; // 0 --> all pass
     };
 
-    Menu::Group settings_menu() { return {"VIDEO / ", menu_items}; }
+    Menu::Group settings_menu() { return {"VIDEO", menu_items}; }
 
     Video_out(const double& frame_rate_in_) : frame_rate_in(frame_rate_in_) {}
     ~Video_out();

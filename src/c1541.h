@@ -777,7 +777,7 @@ public:
         //install_idle_trap();
     }
 
-    Menu::Group menu() { return {"DISK / ", menu_imm_actions, menu_confirmed_actions}; }
+    Menu::Group menu() { return {"DISK", menu_imm_actions, menu_confirmed_actions}; }
 
     void reset();
     void tick();

@@ -48,7 +48,7 @@ public:
         core.write(ri, data);
     }
 
-    Menu::Group settings_menu() { return {"RESID / ", menu_items}; }
+    Menu::Group settings_menu() { return {"RESID", menu_items}; }
 
 private:
     // TODO: consider moving stuph to 'state' (at least 'last_tick_cycle', since now a

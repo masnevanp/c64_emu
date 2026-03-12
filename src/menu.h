@@ -15,13 +15,19 @@ class Item {
 public:
     Item(const std::string& name_ = "") : name(name_) {}
 
-    virtual bool select() { return true; }
-    virtual bool enter()  { return false; }
-    virtual bool back()   { return true; }
-    virtual void up()     {}
-    virtual void down()   {}
+    virtual bool activate() { return true; }
+    virtual bool enter()    { return false; }
+    virtual bool back()     { return true; }
+    virtual void up()       {}
+    virtual void down()     {}
 
-    virtual std::string text() const { return name; }
+    virtual bool activate(const std::string& item_name) { UNUSED(item_name); return false; }
+    virtual bool activate(const std::string& item_name, const std::string& sub_item_name) {
+        UNUSED2(item_name, sub_item_name); return false;
+    }
+
+    virtual std::string active_text() const   { return name; }
+    virtual std::string inactive_text() const { return name; }
 
     const std::string name;
 };
@@ -55,42 +61,66 @@ public:
     }
 
     virtual bool enter() {
-        if (!selected) {
-            if (items[selector]->select()) selected = items[selector];
+        if (!active) {
+            if (items[selector]->activate()) active = items[selector];
         }
-        else if (!selected->enter()) {
-            selected = nullptr;
+        else if (!active->enter()) {
+            active = nullptr;
         }
 
         return true;
     }
     virtual bool back() {
-        if (selected) {
-            if (selected->back()) selected = nullptr;
+        if (active) {
+            if (active->back()) active = nullptr;
             return false;
         }
 
         return true;
     }
     virtual void up() {
-        if (selected) selected->up();
+        if (active) active->up();
         else {
             if (selector == 0) selector = items.size();
             --selector;
         }
     }
     virtual void down() {
-        if (selected) selected->down();
+        if (active) active->down();
         else if (++selector == items.size()) selector = 0;
     }
 
-    virtual std::string text() const {
-        if (selected) return name + selected->text();
-        else return name + items[selector]->name;
+    virtual bool activate(const std::string& item_name) {
+        unsigned int new_selector = 0;
+        for (const auto i : items) {
+            if (i->name == item_name) {
+                active = i;
+                selector = new_selector;
+                return true;
+            }
+            ++new_selector;
+        }
+
+        return false;
     }
 
+    virtual bool activate(const std::string& item_name, const std::string& sub_item_name) {
+        return activate(item_name) && active->activate(sub_item_name);
+    }
+
+    virtual std::string active_text() const {
+        const std::string lead = (name != "")
+            ? name + " / "
+            : "";
+
+        if (active) return lead + active->active_text();
+        else return lead + items[selector]->inactive_text();
+    }
+
+    virtual std::string inactive_text() const { return name + " /"; }
+
 private:
-    Item* selected = nullptr;
+    Item* active = nullptr;
 
     std::vector<Item*> items;
     unsigned int selector = 0;
@@ -113,7 +143,7 @@ public:
     virtual void up()   { confirmed = !confirmed; }
     virtual void down() { confirmed = !confirmed; }
 
-    virtual std::string text() const { return name + (confirmed ? "  YES" : "  NO"); }
+    virtual std::string active_text() const { return name + (confirmed ? "  YES" : "  NO"); }
 
 private:
     bool confirmed = false;
@@ -125,7 +155,7 @@ class Immediate_action : public Item {
 public:
     Immediate_action(const std::string& name, std::function<void ()> a) : Item(name), act(a) {}
 
-    virtual bool select() {
+    virtual bool activate() {
         act();
         return false;
     }
@@ -145,13 +175,13 @@ public:
     Knob(const std::string& name, Choice<T>& choice, Sig notify)
         : Item(name), imp(std::make_shared<_Choice<Choice<T>>>(choice, notify)) {}
 
-    virtual bool select() { return imp->select(); }
-    virtual bool enter()  { return imp->enter(); }
+    virtual bool activate() { return imp->activate(); }
+    virtual bool enter()    { return imp->enter(); }
 
     virtual void up()     { imp->up(); }
     virtual void down()   { imp->down(); }
 
-    virtual std::string text() const { return name + imp->text(); }
+    virtual std::string active_text() const { return name + imp->active_text(); }
 
 private:
     std::shared_ptr<Item> imp;
@@ -164,7 +194,7 @@ private:
         virtual void up()    { ++param; notify(); }
         virtual void down()  { --param; notify(); }
 
-        virtual std::string text() const { return "  # " + std::string(param); }
+        virtual std::string active_text() const { return "  # " + std::string(param); }
 
     private:
         T& param;
@@ -176,7 +206,7 @@ private:
     public:
         _Choice(T& choice_, Sig notify_) : Item(""), choice(choice_), notify(notify_) { notify(); }
 
-        virtual bool select() {
+        virtual bool activate() {
             const auto c = std::find(choice.choices.begin(), choice.choices.end(), choice.chosen);
             ci =  std::distance(choice.choices.begin(), c);
             return true;
@@ -195,7 +225,7 @@ private:
             --ci;
         }
 
-        virtual std::string text() const { return "  @ " + chosen_str(); }
+        virtual std::string active_text() const { return "  @ " + chosen_str(); }
 
     private:
         T& choice;

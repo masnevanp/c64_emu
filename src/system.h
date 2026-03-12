@@ -400,7 +400,15 @@ public:
         root("", imm_actions, confirmed_actions, subs) {}
 
     void handle_key(u8 code);
-    std::string text() const { return root.text(); }
+    void activate(const std::string& name) {
+        root.activate(name);
+        active = true;
+    }
+    void activate(const std::string& name, const std::string& sub_name) {
+        root.activate(name, sub_name);
+        active = true;
+    }
+    std::string text() const { return root.active_text(); }
 
     bool active = false;
 
@@ -529,10 +537,16 @@ private:
                     case ks::menu_ent:
                     case ks::menu_back:
                     case ks::menu_up:
-                    case ks::menu_down:  menu.handle_key(code);           break;
-                    case ks::rot_dsk:    c1541.disk_carousel.rotate();    break;
-                    case ks::tgl_wp:     c1541.disk_carousel.toggle_wp(); break;
-                    case ks::shutdown:   request_shutdown();              break;
+                    case ks::menu_down:    menu.handle_key(code);           break;
+                    case ks::menu_audio:   menu.activate("RESID");          break;
+                    case ks::menu_video:   menu.activate("VIDEO");          break;
+                    case ks::menu_disk:    menu.activate("DISK");           break;
+                    case ks::menu_perf:    menu.activate("PERFORMANCE");    break;
+                    case ks::menu_exp:     menu.activate("EXPANSION");      break;
+                    case ks::menu_att_reu: menu.activate("EXPANSION", "ATTACH REU ?"); break;
+                    case ks::rot_dsk:      c1541.disk_carousel.rotate();    break;
+                    case ks::tgl_wp:       c1541.disk_carousel.toggle_wp(); break;
+                    case ks::shutdown:     request_shutdown();              break;
                 }
             } else {
                 if (code == ks::mod) menu.active = false;
@@ -676,8 +690,8 @@ private:
             vid_out.settings_menu(),
             sid.settings_menu(),
             c1541.menu(),
-            {"EXPANSION / ", exp_menu_conf_actions, exp_menu_imm_actions},
-            {"PERFORMANCE / ", perf_menu_items},
+            {"EXPANSION", exp_menu_conf_actions, exp_menu_imm_actions},
+            {"PERFORMANCE", perf_menu_items},
         }
     };
 
