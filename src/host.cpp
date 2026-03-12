@@ -92,11 +92,11 @@ const u8 Input::SC_LU_TBL[] = {
 
 const u8 Input::SC_RALT_LU_TBL[] = { // SDL_Scancode with RALT modifier */
     // 00..0f
-    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::menu_audio,sy::nop,   sy::nop,   sy::menu_disk,
+    sy::nop, sy::nop, sy::nop, sy::nop, sy::menu_audio,sy::nop, sy::menu_vid_col, sy::menu_disk,
     sy::menu_exp ,sy::exp_btn_1,sy::nop,   sy::nop,   sy::nop, sy::swap_joy, sy::nop,   sy::nop,
     // 10..1f
-    sy::nop,   sy::nop,   sy::nop,   sy::menu_perf,   sy::nop,   sy::menu_att_reu, sy::save_state, sy::nop,
-    sy::nop, sy::menu_video,sy::tgl_wp, sy::nop,   sy::nop,   sy::nop,   sy::step_cycle, sy::step_instr,
+    sy::nop,   sy::nop,   sy::nop,   sy::menu_perf,   sy::menu_quit,   sy::menu_att_reu, sy::save_state, sy::nop,
+    sy::nop, sy::menu_video,sy::tgl_wp, sy::menu_xtra, sy::nop, sy::nop, sy::step_cycle, sy::step_instr,
     // 20..2f
     sy::step_line, sy::step_frame,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   kb::eq,
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,

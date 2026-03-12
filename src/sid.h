@@ -48,7 +48,7 @@ public:
         core.write(ri, data);
     }
 
-    Menu::Group settings_menu() { return {"RESID", menu_items}; }
+    Menu::Group settings_menu() { return {"AUDIO", menu_items}; }
 
 private:
     // TODO: consider moving stuph to 'state' (at least 'last_tick_cycle', since now a
@@ -72,7 +72,7 @@ private:
         using Sampling = reSID::sampling_method;
 
         Choice<Model> model{
-            {Model::MOS6581, Model::MOS8580}, {"6581", "8580"},
+            {Model::MOS6581, Model::MOS8580}, {"RESID 6581", "RESID 8580"},
         };
         Choice<Sampling> sampling{ // NOTE: 'fast' can get pitchy...
             {Sampling::SAMPLE_INTERPOLATE, Sampling::SAMPLE_RESAMPLE, Sampling::SAMPLE_FAST/*, Sampling::SAMPLE_RESAMPLE_FASTMEM*/},

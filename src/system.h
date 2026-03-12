@@ -392,12 +392,12 @@ private:
 
 class Menu {
 public:
-    Menu(std::initializer_list<::Menu::Immediate_action> imm_actions_,
-        std::initializer_list<::Menu::Confirmed_action> confirmed_actions_,
-        std::initializer_list<::Menu::Group> subs_)
+    Menu(/*std::initializer_list<::Menu::Immediate_action> imm_actions_,*/
+        std::initializer_list<::Menu::Group> subs_,
+        std::initializer_list<::Menu::Confirmed_action> confirmed_actions_)
       :
-        imm_actions(imm_actions_), confirmed_actions(confirmed_actions_), subs(subs_),
-        root("", imm_actions, confirmed_actions, subs) {}
+        /*imm_actions(imm_actions_),*/ subs(subs_), confirmed_actions(confirmed_actions_),
+        root("", subs, confirmed_actions) {}
 
     void handle_key(u8 code);
     void activate(const std::string& name) {
@@ -413,9 +413,9 @@ public:
     bool active = false;
 
 private:
-    std::vector<::Menu::Immediate_action> imm_actions;
-    std::vector<::Menu::Confirmed_action> confirmed_actions;
+    //std::vector<::Menu::Immediate_action> imm_actions;
     std::vector<::Menu::Group> subs;
+    std::vector<::Menu::Confirmed_action> confirmed_actions;
 
     ::Menu::Group root;
 };
@@ -537,16 +537,19 @@ private:
                     case ks::menu_ent:
                     case ks::menu_back:
                     case ks::menu_up:
-                    case ks::menu_down:    menu.handle_key(code);           break;
-                    case ks::menu_audio:   menu.activate("RESID");          break;
-                    case ks::menu_video:   menu.activate("VIDEO");          break;
-                    case ks::menu_disk:    menu.activate("DISK");           break;
-                    case ks::menu_perf:    menu.activate("PERFORMANCE");    break;
-                    case ks::menu_exp:     menu.activate("EXPANSION");      break;
+                    case ks::menu_down:    menu.handle_key(code);              break;
+                    case ks::menu_audio:   menu.activate("AUDIO");             break;
+                    case ks::menu_video:   menu.activate("VIDEO");             break;
+                    case ks::menu_vid_col: menu.activate("VIDEO", "COLODORE"); break;
+                    case ks::menu_disk:    menu.activate("DISK");              break;
+                    case ks::menu_perf:    menu.activate("PERFORMANCE");       break;
+                    case ks::menu_exp:     menu.activate("EXPANSION");         break;
+                    case ks::menu_xtra:    menu.activate("XTRAS");             break;
                     case ks::menu_att_reu: menu.activate("EXPANSION", "ATTACH REU ?"); break;
-                    case ks::rot_dsk:      c1541.disk_carousel.rotate();    break;
-                    case ks::tgl_wp:       c1541.disk_carousel.toggle_wp(); break;
-                    case ks::shutdown:     request_shutdown();              break;
+                    case ks::menu_quit:    menu.activate("SHUTDOWN ?");        break;
+                    case ks::rot_dsk:      c1541.disk_carousel.rotate();       break;
+                    case ks::tgl_wp:       c1541.disk_carousel.toggle_wp();    break;
+                    case ks::shutdown:     request_shutdown();                 break;
                 }
             } else {
                 if (code == ks::mod) menu.active = false;
@@ -644,6 +647,13 @@ private:
         s.mode = Mode::none;
     }
 
+    std::vector<::Menu::Immediate_action> main_menu_xtra_actions{
+        {"SAVE STATE !", [&](){ save_state_req(); } },
+        {"SWAP JOYS !",  [&](){ host_input.swap_joysticks(); } },
+        {"RESET WARM !", [&](){ reset_warm(); } },
+        {"RESET COLD !", [&](){ reset_cold(); } },
+    };
+
     std::vector<::Menu::Confirmed_action> exp_menu_conf_actions{
         {"DETACH ?", [&](){ Expansion::detach(s); reset_cold(); }},
         {"ATTACH REU ?", [&]() { Expansion::attach_REU(s); reset_cold(); }},
@@ -677,22 +687,23 @@ private:
     };
 
     Menu menu{
-        {
+        /*{
             {"RESET WARM !", [&](){ reset_warm(); } },
             {"RESET COLD !", [&](){ reset_cold(); } },
             {"SWAP JOYS !",  [&](){ host_input.swap_joysticks(); } },
             {"SAVE STATE !", [&](){ save_state_req(); } },
-        },
+        },*/
         {
-            {"SHUTDOWN ?",   [&](){ request_shutdown(); } },
-        },
-        {
-            vid_out.settings_menu(),
             sid.settings_menu(),
             c1541.menu(),
             {"EXPANSION", exp_menu_conf_actions, exp_menu_imm_actions},
             {"PERFORMANCE", perf_menu_items},
-        }
+            vid_out.settings_menu(),
+            {"XTRAS", main_menu_xtra_actions},
+        },
+        {
+            {"SHUTDOWN ?",   [&](){ request_shutdown(); } },
+        },
     };
 
     static void install_kernal_tape_traps(u8* kernal, u8 trap_opc);
