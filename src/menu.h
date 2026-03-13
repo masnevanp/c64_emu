@@ -96,6 +96,7 @@ public:
             if (i->name == item_name) {
                 active = i;
                 selector = new_selector;
+                while (!active->exit()); // 'rewind'
                 return true;
             }
             ++new_selector;
