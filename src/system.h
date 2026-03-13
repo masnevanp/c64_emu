@@ -535,7 +535,7 @@ private:
                     case ks::tgl_fscr:   vid_out.toggle_fullscr_win(); break;
                     case ks::exp_btn_1:  Expansion::button_1(s);       break;
                     case ks::menu_ent:
-                    case ks::menu_back:
+                    case ks::menu_exit:
                     case ks::menu_up:
                     case ks::menu_down:    menu.handle_key(code);              break;
                     case ks::menu_audio:   menu.activate("AUDIO");             break;

@@ -233,7 +233,7 @@ void System::Menu::handle_key(u8 code) {
     } else {
         switch (code) {
             case kc::menu_ent:  root.enter(); break;
-            case kc::menu_back: root.back();  break;
+            case kc::menu_exit: root.exit();  break;
             case kc::menu_up:   root.up();    break;
             case kc::menu_down: root.down();  break;
         }

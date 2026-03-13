@@ -17,7 +17,7 @@ public:
 
     virtual bool activate() { return true; }
     virtual bool enter()    { return false; }
-    virtual bool back()     { return true; }
+    virtual bool exit()     { return true; }
     virtual void up()       {}
     virtual void down()     {}
 
@@ -70,9 +70,9 @@ public:
 
         return true;
     }
-    virtual bool back() {
+    virtual bool exit() {
         if (active) {
-            if (active->back()) active = nullptr;
+            if (active->exit()) active = nullptr;
             return false;
         }
 
