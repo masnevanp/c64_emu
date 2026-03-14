@@ -526,11 +526,11 @@ struct PETSCII_Draw { // user is trusted, no checks...
 
 
 void System::C64::output_frame() {
-    static const int menu_pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 12;
+    static const int menu_pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 4;
 
     auto draw_menu = [&]() {
-        static const int pos_x = VIC_II::BORDER_SZ_V + 4;
-        static const int width_chr = 36;
+        static const int width_chr = 37;
+        static const int pos_x = VIC_II::BORDER_SZ_V + 2;
         static const int pad_px = 4;
         static const Color col_fg = Color::light_green;
         static const Color col_bg = Color::gray_1;
@@ -554,7 +554,7 @@ void System::C64::output_frame() {
     };
 
     auto draw_c1541_status = [&]() {
-        static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 22;
+        static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 20;
         static const int pos_y = menu_pos_y;
         static const Color col_bg = Color::black;
         static const Color col_led_on = Color::light_green;
@@ -576,7 +576,7 @@ void System::C64::output_frame() {
     };
 
     auto draw_expansion_status = [&]() {
-        static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 12;
+        static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 10;
         static const int pos_y = menu_pos_y;
         static const Color col_bg = Color::black;
         static const Color col_attached = Color::green;
@@ -588,8 +588,9 @@ void System::C64::output_frame() {
         PETSCII_Draw{rom.charr, s.vic.frame}.chr(ch, pos_x, pos_y, col, col_bg);
     };
 
-    if (menu.active) {
-        draw_menu();
+    if (menu.active) draw_menu();
+
+    if (show_status) {
         draw_c1541_status();
         draw_expansion_status();
     } else if (c1541.dc.status.head.active()) {
