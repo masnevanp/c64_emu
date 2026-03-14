@@ -400,14 +400,22 @@ public:
         root("", subs, confirmed_actions) {}
 
     void handle_key(u8 code);
+
     void activate(const std::string& name) {
         root.activate(name);
         active = true;
     }
+
     void activate(const std::string& name, const std::string& sub_name) {
         root.activate(name, sub_name);
         active = true;
     }
+
+    void activate_root() { // meh.... but works...
+        activate("AUDIO");
+        root.exit();
+    }
+
     std::string text() const { return root.active_text(); }
 
     bool active = false;
@@ -534,11 +542,12 @@ private:
                     case ks::swap_joy:     host_input.swap_joysticks();        break;
                     case ks::tgl_fscr:     vid_out.toggle_fullscr_win();       break;
                     case ks::exp_btn_1:    Expansion::button_1(s);             break;
-                    case ks::mod:          show_status = true;                 break;
+                    case ks::sys:          show_status = true;                 break;
                     case ks::menu_ent:
                     case ks::menu_exit:
                     case ks::menu_up:
                     case ks::menu_down:    menu.handle_key(code);              break;
+                    case ks::menu_root:    menu.activate_root();               break;
                     case ks::menu_audio:   menu.activate("AUDIO");             break;
                     case ks::menu_video:   menu.activate("VIDEO");             break;
                     case ks::menu_vid_col: menu.activate("VIDEO", "COLODORE"); break;
@@ -553,7 +562,7 @@ private:
                     case ks::shutdown:     request_shutdown();                 break;
                 }
             } else {
-                if (code == ks::mod) menu.active = show_status = false;
+                if (code == ks::sys) menu.active = show_status = false;
             }
         },
 

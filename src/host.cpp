@@ -77,7 +77,7 @@ u8 Input::KC_LU_TBL[] = {
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,    sy::nop,
     // 120..12f
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,    kb::ctrl,
-    kb::sh_l,  kb::cmdre, sy::nop,   kb::ctrl,  kb::sh_r,  sy::mod,   sy::nop,  sy::nop,
+    kb::sh_l,  kb::cmdre, sy::nop,   kb::ctrl,  kb::sh_r,  sy::sys,   sy::nop,  sy::nop,
     // 130..13f
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,    sy::nop,
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,    sy::nop,
@@ -95,7 +95,7 @@ const u8 Input::SC_RALT_LU_TBL[] = { // SDL_Scancode with RALT modifier */
     sy::nop, sy::nop, sy::nop, sy::nop, sy::menu_audio,sy::nop, sy::menu_vid_col, sy::menu_disk,
     sy::menu_exp ,sy::exp_btn_1,sy::nop,   sy::nop,   sy::nop, sy::swap_joy, sy::nop,   sy::nop,
     // 10..1f
-    sy::nop,   sy::nop,   sy::nop,   sy::menu_perf,   sy::menu_quit,   sy::menu_att_reu, sy::save_state, sy::nop,
+    sy::menu_root, sy::nop, sy::nop, sy::menu_perf, sy::menu_quit, sy::menu_att_reu, sy::save_state, sy::nop,
     sy::nop, sy::menu_video,sy::tgl_wp, sy::menu_xtra, sy::nop, sy::nop, sy::step_cycle, sy::step_instr,
     // 20..2f
     sy::step_line, sy::step_frame,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   kb::eq,

@@ -870,8 +870,8 @@ private:
     };
 
     std::vector<Menu::Immediate_action> menu_imm_actions{
-        {"TOGGLE WRITE PROTECTION !", [&](){ disk_carousel.toggle_wp(); }},
         {"EJECT !",                   [&](){ disk_carousel.select(0); }},
+        {"TOGGLE WRITE PROTECTION !", [&](){ disk_carousel.toggle_wp(); }},
     };
     std::vector<Menu::Confirmed_action> menu_confirmed_actions{
         {"INSERT BLANK ?",            [&](){ insert_blank(); }},

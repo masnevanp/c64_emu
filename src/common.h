@@ -156,9 +156,9 @@ namespace Key_code {
         step_cycle, step_instr, step_line, step_frame,
         swap_joy, tgl_fscr,
         exp_btn_1,
-        mod,
+        sys,
         menu_ent, menu_exit, menu_up, menu_down,
-        menu_audio, menu_video, menu_vid_col, menu_disk, menu_perf,
+        menu_root, menu_audio, menu_video, menu_vid_col, menu_disk, menu_perf,
         menu_exp, menu_xtra, menu_att_reu, menu_quit,
         rot_dsk, tgl_wp,
         shutdown
