@@ -144,7 +144,7 @@ public:
     virtual void up()   { confirmed = !confirmed; }
     virtual void down() { confirmed = !confirmed; }
 
-    virtual std::string active_text() const { return name + (confirmed ? "  YES" : "  NO"); }
+    virtual std::string active_text() const { return name + (confirmed ? " YES" : " NO"); }
 
 private:
     bool confirmed = false;
@@ -195,7 +195,7 @@ private:
         virtual void up()    { ++param; notify(); }
         virtual void down()  { --param; notify(); }
 
-        virtual std::string active_text() const { return "  # " + std::string(param); }
+        virtual std::string active_text() const { return " # " + std::string(param); }
 
     private:
         T& param;
@@ -226,7 +226,7 @@ private:
             --ci;
         }
 
-        virtual std::string active_text() const { return "  @ " + chosen_str(); }
+        virtual std::string active_text() const { return " @ " + chosen_str(); }
 
     private:
         T& choice;

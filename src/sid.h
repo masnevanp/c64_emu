@@ -72,7 +72,7 @@ private:
         using Sampling = reSID::sampling_method;
 
         Choice<Model> model{
-            {Model::MOS6581, Model::MOS8580}, {"RESID 6581", "RESID 8580"},
+            {Model::MOS6581, Model::MOS8580}, {"6581", "8580"},
         };
         Choice<Sampling> sampling{ // NOTE: 'fast' can get pitchy...
             {Sampling::SAMPLE_INTERPOLATE, Sampling::SAMPLE_RESAMPLE, Sampling::SAMPLE_FAST/*, Sampling::SAMPLE_RESAMPLE_FASTMEM*/},
@@ -82,8 +82,8 @@ private:
     Settings set;
 
     std::vector<Menu::Knob> menu_items{
-        {"MODEL",    set.model,    [&](){ core.set_chip_model(set.model); }},
-        {"SAMPLING", set.sampling, [&](){ core.set_sampling_method(set.sampling); }},
+        {"RESID MODEL",    set.model,    [&](){ core.set_chip_model(set.model); }},
+        {"RESID SAMPLING", set.sampling, [&](){ core.set_sampling_method(set.sampling); }},
     };
 
     void tick();

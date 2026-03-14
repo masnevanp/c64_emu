@@ -699,12 +699,6 @@ private:
     };
 
     Menu menu{
-        /*{
-            {"RESET WARM !", [&](){ reset_warm(); } },
-            {"RESET COLD !", [&](){ reset_cold(); } },
-            {"SWAP JOYS !",  [&](){ host_input.swap_joysticks(); } },
-            {"SAVE STATE !", [&](){ save_state_req(); } },
-        },*/
         {
             sid.settings_menu(),
             c1541.menu(),
