@@ -525,26 +525,25 @@ struct PETSCII_Draw { // user is trusted, no checks...
 };
 
 
-void System::C64::output_frame() {
-    static const int menu_pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 4;
-
+void System::C64::output_frame() { 
     auto draw_menu = [&]() {
-        static const int width_chr = 37;
-        static const int pos_x = VIC_II::BORDER_SZ_V + 2;
+        static const int width_chr = 39;
+        static const int pos_x = VIC_II::BORDER_SZ_V + 4;
+        static const int pos_y = (VIC_II::BORDER_SZ_H) - (8 + 2);
         static const int pad_px = 4;
         static const Color col_fg = Color::light_green;
         static const Color col_bg = Color::gray_1;
 
         PETSCII_Draw pd{rom.charr, s.vic.frame};
 
-        pd.txt(std::string(width_chr, ' '), pos_x, menu_pos_y, col_fg, col_bg);
-        pd.txt(menu.text(), pos_x + pad_px, menu_pos_y, col_fg, col_bg);
+        pd.txt(std::string(width_chr, ' '), pos_x, pos_y, col_fg, col_bg);
+        pd.txt(menu.text(), pos_x + pad_px, pos_y, col_fg, col_bg);
 
         /*
         // draw char.rom (fun & profit...)
         const int x = 64;
         const int y = 64 + 1;
-
+ 
         for (u16 c = 0; c < 512; ++c) {
             const int col = c % 32;
             const int row = c / 32;
@@ -553,31 +552,69 @@ void System::C64::output_frame() {
         */
     };
 
-    auto draw_c1541_status = [&]() {
-        static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 20;
-        static const int pos_y = menu_pos_y;
-        static const Color col_bg = Color::black;
-        static const Color col_led_on = Color::light_green;
-        static const Color col_led_off = Color::gray_1;
+    auto draw_status = [&]() {
+        static const int status_pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 4;
 
-        static const u16 ch_led_wp = 0x0051;
-        static const u16 ch_led    = 0x0057;
+        auto draw_c1541_led = [&]() {
+            static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 10;
 
-        const auto led_ch = c1541.dc.status.write_prot_on() ? ch_led_wp : ch_led;
-        const auto led_col = c1541.dc.status.led_on() ? col_led_on : col_led_off;
+            static const Color col_bg = Color::black;
+            static const Color col_led_on = Color::light_green;
+            static const Color col_led_off = Color::gray_1;
 
-        PETSCII_Draw{rom.charr, s.vic.frame}.chr(led_ch, pos_x, pos_y, led_col, col_bg);
+            static const u16 ch_led_wp = 0x0051;
+            static const u16 ch_led    = 0x0057;
 
-        /*static constexpr u16 ch_zero   = 0x0030;
-        const auto track_n = (status.head.track_n / 2) + 1;
-        const auto tn_col = status.head.active() ? Color::green : Color::gray_2;
-        draw_char(ch_zero + track_n / 10, x + 8 + 2,  y, tn_col, col_bg);
-        draw_char(ch_zero + track_n % 10, x + 16 + 2, y, tn_col, col_bg);*/
+            const auto led_ch = c1541.dc.status.write_prot_on() ? ch_led_wp : ch_led;
+            const auto led_col = c1541.dc.status.led_on() ? col_led_on : col_led_off;
+
+            PETSCII_Draw{rom.charr, s.vic.frame}.chr(led_ch, pos_x, status_pos_y, led_col, col_bg);
+
+            /*static constexpr u16 ch_zero   = 0x0030;
+            const auto track_n = (status.head.track_n / 2) + 1;
+            const auto tn_col = status.head.active() ? Color::green : Color::gray_2;
+            draw_char(ch_zero + track_n / 10, x + 8 + 2,  y, tn_col, col_bg);
+            draw_char(ch_zero + track_n % 10, x + 16 + 2, y, tn_col, col_bg);*/
+        };
+
+        auto draw_disk_and_exp_names = [&]() {
+            static const int width_chr = 38;
+            static const int pos_x = VIC_II::BORDER_SZ_V + 2;
+            static const int pad_px = 4;
+
+
+            static const Color col_fg = Color::light_green;
+            static const Color col_bg = Color::gray_1;
+
+            PETSCII_Draw pd{rom.charr, s.vic.frame};
+
+            int pos_y = status_pos_y;
+
+            if (!c1541.disk_carousel.no_disk()) {
+                pd.txt(std::string(width_chr, ' '), pos_x, pos_y, col_fg, col_bg);
+                const std::string txt = "8: " + c1541.disk_carousel.selected().disk_name;
+                pd.txt(txt, pos_x + pad_px, pos_y, col_fg, col_bg);
+                pos_y += (8 + 2);
+            }
+
+            if (s.exp.type != Expansion::Type::none) {
+                pd.txt(std::string(width_chr, ' '), pos_x, pos_y, col_fg, col_bg);
+                const std::string txt = "E: <TODO>";
+                pd.txt(txt, pos_x + pad_px, pos_y, col_fg, col_bg);
+            }
+        };
+
+        if (show_status) {
+            draw_c1541_led();
+            draw_disk_and_exp_names();
+        } else if (c1541.dc.status.head.active()) {
+            draw_c1541_led();
+        }
     };
 
-    auto draw_expansion_status = [&]() {
+    /*auto draw_expansion_status = [&]() {
         static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 10;
-        static const int pos_y = menu_pos_y;
+        static const int pos_y = status_pos_y;
         static const Color col_bg = Color::black;
         static const Color col_attached = Color::green;
         static const Color col_detached = Color::gray_1;
@@ -586,16 +623,11 @@ void System::C64::output_frame() {
         const auto col = (s.exp.type == Expansion::Type::none) ? col_detached : col_attached;
 
         PETSCII_Draw{rom.charr, s.vic.frame}.chr(ch, pos_x, pos_y, col, col_bg);
-    };
+    };*/
 
     if (menu.active) draw_menu();
 
-    if (show_status) {
-        draw_c1541_status();
-        draw_expansion_status();
-    } else if (c1541.dc.status.head.active()) {
-        draw_c1541_status();
-    }
+    draw_status();
 
     vid_out.put(s.vic.frame);
 }

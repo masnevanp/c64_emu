@@ -720,7 +720,7 @@ public:
     Disk_carousel(Disk_ctrl& disk_ctrl_, u8& dos_wp_change_flag_)
       : disk_ctrl(disk_ctrl_), dos_wp_change_flag(dos_wp_change_flag_)
     {
-        slots[0] = Slot{&null_disk, "none", false};
+        slots[0] = Slot{&null_disk, "<NO DISK>", false};
     }
 
     void insert(int in_slot, const Disk_image* disk, const std::string& name);
@@ -741,6 +741,8 @@ public:
         Log::info("Disk write protection: %s", new_wp_state ? "on" : "off");
     }
 
+    bool no_disk() const { return selected_slot == 0; }
+ 
 private:
     std::vector<Slot> slots{slot_count};
     int selected_slot = 0;
@@ -859,7 +861,7 @@ private:
         // TODO: generate a truly blank disk
         const std::vector<u8> d64_data(std::size_t{Files::D64::size});
         Disk_image* blank_disk = new C1541::D64(Files::D64{d64_data}); // not truly blank...
-        disk_carousel.insert(0, blank_disk, "blank"); // TODO: handle 0 free slots case
+        disk_carousel.insert(0, blank_disk, "BLANK"); // TODO: handle 0 free slots case
     }
 
     NMOS6502::Sig cpu_trap {
