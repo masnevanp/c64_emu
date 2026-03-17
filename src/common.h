@@ -105,6 +105,7 @@ namespace Log {
         fprintf(stderr, "[ERR] ");
         fprintf(stderr, fmt, args...);
         fprintf(stderr, "\n");
+        fflush(stderr);
     }
 }
 
