@@ -371,6 +371,10 @@ struct System {
         u16 type;
         u16 ticker;
 
+        static constexpr std::size_t max_name_length = 32;
+
+        char name[max_name_length];
+
         State state;
     };
 

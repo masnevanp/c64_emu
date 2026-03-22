@@ -12,20 +12,6 @@ namespace fs = std::filesystem;
 namespace Files {
 
 
-namespace petscii { // TOREDO...
-    static constexpr char slash      = 0x2f;
-    static constexpr char arrow_up   = 0x5e;
-    static constexpr char arrow_left = 0x5f;
-    static constexpr char nbsp       = (char)0xa0;
-    static constexpr char underscore = (char)0xa4;
-}
-
-namespace ctrl_ch { // TOREDO...
-    static constexpr char rvs_on     = 0x12;
-    //static constexpr char del        = 0x14;
-}
-
-
 static const char* win_drive_list_filename = "?:/";
 static const char* unmount_filename = ":";
 
@@ -148,9 +134,9 @@ File generate_basic_info_list(const File& file) {
 }
 
 
-std::string extract_string(const u8* from, char terminator = petscii::nbsp, int max_len = 16) {
+std::string extract_string(const u8* from, petscii terminator = petscii::nbsp, int max_len = 16) {
     int n = 0;
-    while ((char)from[n] != terminator && ++n < max_len);
+    while ((char)from[n] != chr(terminator) && ++n < max_len);
     return std::string(&from[0], &from[n]);
 }
 
@@ -164,25 +150,6 @@ std::regex regex(const std::string& pattern) {
     std::string rs = replace(pattern, "*", ".*");
     rs = replace(rs, "?", ".");
     return std::regex(as_lower(rs));
-}
-
-
-std::string to_client(const std::string& from_host) {
-    std::string s = as_upper(from_host);
-    for (std::string::size_type c = 0; c < s.length(); ++c) {
-        if (s[c] == '\\') s[c] = petscii::slash;
-        else if (s[c] == '_') s[c] = petscii::underscore;
-    }
-    return s;
-}
-
-
-std::string to_host(const std::string& from_client) {
-    std::string s(from_client);
-    for (std::string::size_type c = 0; c < s.length(); ++c) {
-        if (s[c] == petscii::underscore) s[c] = '_';
-    }
-    return s;
 }
 
 
@@ -256,7 +223,7 @@ File hd_dir_basic_listing(
     const std::vector<std::string>& files,
     bool drives_entry = false, bool root_entry = false, bool parent_entry = false)
 {
-    auto header = ctrl_ch::rvs_on + std::string(" $ ") + quoted(to_client(dir));
+    auto header = chr(petscii::rvs_on) + std::string(" $ ") + quoted(to_petscii(dir));
 
     Basic_listing bl{
         { 0x00, std::string((char*)dir_list_first_line) },
@@ -264,21 +231,21 @@ File hd_dir_basic_listing(
     };
 
     if (drives_entry) {
-        const auto de = std::string(" ") + petscii::arrow_up + " "
+        const auto de = std::string(" ") + chr(petscii::arrow_up) + " "
                             + quoted(win_drive_list_filename);
         bl.append({ 0x02,  de });
     }
     if (root_entry) {
-        const auto re = std::string(" ") + petscii::arrow_up + " \"/\"";
+        const auto re = std::string(" ") + chr(petscii::arrow_up) + " \"/\"";
         bl.append({ 0x02, re });
     }
     if (parent_entry) {
-        const auto pe = std::string(" ") + petscii::arrow_left + " " + quoted("..");
+        const auto pe = std::string(" ") + chr(petscii::arrow_left) + " " + quoted("..");
         bl.append({ 0x02, pe });
     }
 
-    for (const auto& d : sub_dirs) bl.append({ 0x03, " / " + quoted(to_client(d)) });
-    for (const auto& f : files)    bl.append({ 0x04, " : " + quoted(to_client(f)) });
+    for (const auto& d : sub_dirs) bl.append({ 0x03, " / " + quoted(to_petscii(d)) });
+    for (const auto& f : files)    bl.append({ 0x04, " : " + quoted(to_petscii(f)) });
 
     return File{File::Type::c64_bin, "", bl.to_bin()};
 }
@@ -341,7 +308,7 @@ File _Loader::load_hd(const std::string& what) {
         #endif
 
         // if file/dir --> load it
-        const std::string name = to_host(what);
+        const std::string name = to_ascii(what);
         auto path = fs::path(name);
         if (!path.is_absolute()) path = cur_dir / path;
         if (fs::is_directory(path)) return load_hd_dir(path);
@@ -471,8 +438,8 @@ File d64_dir_basic_listing(const D64& d64) {
         return s;
     };
 
-    const auto header = ctrl_ch::rvs_on + std::string(" $ ")
-        + quoted(extract_string(d64.bam().disk_name, 0x00)) + "  "
+    const auto header = chr(petscii::rvs_on) + std::string(" $ ")
+        + quoted(extract_string(d64.bam().disk_name, petscii::null)) + "  "
         + extract_string(d64.bam().disk_id, petscii::nbsp, 2) + " "
         + extract_string(d64.bam().dos_type, petscii::nbsp, 2) + "    ";
 
@@ -486,7 +453,7 @@ File d64_dir_basic_listing(const D64& d64) {
         int c = 0;
         for (; c < 16; ++c) { // TODO: simplify...?
             const char ch = entry->filename[c];
-            if (ch == petscii::nbsp) break;
+            if (ch == chr(petscii::nbsp)) break;
             text[c + 4] = ch;
         }
         text[c + 4] = '"';

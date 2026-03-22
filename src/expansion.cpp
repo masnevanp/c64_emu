@@ -93,8 +93,14 @@ bool Expansion::attach(State::System& s, const Files::CRT& crt) {
 
 bool Expansion::attach_REU(State::System& s) {
     detach(s);
+
     s.exp.type = Type::REU;
+
+    static constexpr char name[] = {'r', 'e', 'u', ' ', '5', '1', '2', '\0'};
+    std::copy(std::begin(name), std::end(name), s.exp.name);
+
     Log::info("Expansion: REU attached");
+
     return true;
 }
 

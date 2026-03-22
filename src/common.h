@@ -68,6 +68,20 @@ struct U32b {
 };
 
 
+enum class petscii : u8 {
+    null       = 0x00,
+    rvs_on     = 0x12,
+    del        = 0x14,
+    slash      = 0x2f,
+    arrow_up   = 0x5e,
+    arrow_left = 0x5f,
+    nbsp       = 0xa0,
+    underscore = 0xa4,
+};
+
+static constexpr char chr(petscii c) { return char(c); }
+
+
 using byte = u8;
 using Bytes = std::vector<byte>;
 

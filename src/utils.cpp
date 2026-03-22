@@ -150,8 +150,45 @@ std::string replace(std::string s, const std::string& what, const std::string& w
 }
 
 
+std::string squash(const std::string& s, std::size_t to_size) {
+    if (to_size >= s.size()) return s;
+
+    static const std::string mid = "...";
+
+    const std::size_t head_len = 0.6 * to_size;
+    if (head_len <= mid.length()) {
+        return s.substr(0, to_size);
+    } else {
+        const std::size_t tail_len = to_size - (head_len + mid.length());
+
+        return s.substr(0, head_len) + mid
+                + s.substr(s.length() - tail_len, tail_len);
+    }
+}
+
+
 std::string to_string(double d, int precision) {
     std::stringstream stream;
     stream << std::fixed << std::setprecision(precision) << d;
     return stream.str();
+}
+
+
+// TODO: fix these
+std::string to_petscii(const std::string& ascii) {
+    std::string s = as_upper(ascii);
+    for (std::string::size_type c = 0; c < s.length(); ++c) {
+        if (s[c] == '\\') s[c] = chr(petscii::slash);
+        else if (s[c] == '_') s[c] = chr(petscii::underscore);
+    }
+    return s;
+}
+
+
+std::string to_ascii(const std::string& petscii) {
+    std::string s(petscii);
+    for (std::string::size_type c = 0; c < s.length(); ++c) {
+        if (s[c] == chr(petscii::underscore)) s[c] = '_';
+    }
+    return s;
 }

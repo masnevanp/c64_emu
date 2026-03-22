@@ -123,8 +123,12 @@ std::string as_upper(const std::string& src);
 
 std::string replace(std::string s, const std::string& what, const std::string& with);
 
+std::string squash(const std::string& s, std::size_t to_size);
+
 std::string to_string(double d, int precision);
 
+std::string to_petscii(const std::string& ascii);
+std::string to_ascii(const std::string& petscii);
 
 /*
 template<typename T>
