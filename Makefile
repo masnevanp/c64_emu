@@ -35,12 +35,13 @@ release:
 bin/$(BUILD)/$(TARGET): $(OBJ)
 	@mkdir -p $(dir $@)
 	@$(CXX) -o $@ $(LDFLAGS) $^ $(SDL_LIBS)
-	@echo ;echo "  ==> $@"; echo
+	@echo ;echo "    ==> $@"; echo
 
 obj/$(BUILD)/%.o: src/%.cpp
+	@echo -n "  $<"
 	@mkdir -p $(dir $@)
 	@$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) -MMD -MP $< -c -o $@
-	@echo "$< --> $@"
+	@echo " --> $@"
 
 run:
 	@$(MAKE) --silent all
