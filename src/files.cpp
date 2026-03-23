@@ -223,7 +223,9 @@ File hd_dir_basic_listing(
     const std::vector<std::string>& files,
     bool drives_entry = false, bool root_entry = false, bool parent_entry = false)
 {
-    auto header = chr(petscii::rvs_on) + std::string(" $ ") + quoted(to_petscii(dir));
+    auto text = [](const std::string& s) { return to_petscii(as_upper(s)); };
+
+    auto header = chr(petscii::rvs_on) + std::string(" $ ") + quoted(text(dir));
 
     Basic_listing bl{
         { 0x00, std::string((char*)dir_list_first_line) },
@@ -244,8 +246,8 @@ File hd_dir_basic_listing(
         bl.append({ 0x02, pe });
     }
 
-    for (const auto& d : sub_dirs) bl.append({ 0x03, " / " + quoted(to_petscii(d)) });
-    for (const auto& f : files)    bl.append({ 0x04, " : " + quoted(to_petscii(f)) });
+    for (const auto& d : sub_dirs) bl.append({ 0x03, " / " + quoted(text(d)) });
+    for (const auto& f : files)    bl.append({ 0x04, " : " + quoted(text(f)) });
 
     return File{File::Type::c64_bin, "", bl.to_bin()};
 }

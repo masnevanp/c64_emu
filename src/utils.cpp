@@ -174,9 +174,9 @@ std::string to_string(double d, int precision) {
 }
 
 
-// TODO: fix these
+// TODO: check&fix these
 std::string to_petscii(const std::string& ascii) {
-    std::string s = as_upper(ascii);
+    std::string s(ascii);
     for (std::string::size_type c = 0; c < s.length(); ++c) {
         if (s[c] == '\\') s[c] = chr(petscii::slash);
         else if (s[c] == '_') s[c] = chr(petscii::underscore);
