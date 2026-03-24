@@ -117,7 +117,7 @@ public:
     struct Settings {
         Choice<Mode> mode{
             {Mode::win,  Mode::fullscr_win, Mode::fullscr},
-            {"WINDOWED", "FULLSCREEN", "TRUE FULLSCREEN"},
+            {"Windowed", "Fullscreen", "True fullscreen"},
         };
         // TODO: fullscreen_scale?
         // init, min, max, step, to_str
@@ -134,7 +134,7 @@ public:
         Param<u8> mask_level {15, 0,  15, 1}; // 0 --> all pass
     };
 
-    Menu::Group settings_menu() { return { "VIDEO", menu_items, colodore_sub}; }
+    Menu::Group settings_menu() { return { "Video", menu_items, colodore_sub}; }
 
     Video_out(const double& frame_rate_in_) : frame_rate_in(frame_rate_in_) {}
     ~Video_out();
@@ -226,21 +226,21 @@ private:
 
     std::vector<Menu::Knob> menu_items{
         //name                  connected setting   notify
-        {"MODE",                set.mode,           [&](){ upd_mode(); }},
-        {"WINDOW SCALE",        set.window_scale,   [&](){ upd_dimensions(); }},
-        {"ASPECT RATIO",        set.aspect_ratio,   [&](){ upd_dimensions(); }},
-        {"SHARPNESS",           set.sharpness,      [&](){ frame.upd_sharpness(set); }},
-        {"MASK PATTERN",        set.mask_pattern,   [&](){ mask.upd(set); }},
-        {"MASK LEVEL",          set.mask_level,     [&](){ mask.upd(set); }},
+        {"Mode",                set.mode,           [&](){ upd_mode(); }},
+        {"Window scale",        set.window_scale,   [&](){ upd_dimensions(); }},
+        {"Aspect ratio",        set.aspect_ratio,   [&](){ upd_dimensions(); }},
+        {"Sharpness",           set.sharpness,      [&](){ frame.upd_sharpness(set); }},
+        {"Mask pattern",        set.mask_pattern,   [&](){ mask.upd(set); }},
+        {"Mask level",          set.mask_level,     [&](){ mask.upd(set); }},
     };
 
     std::vector<Menu::Knob> colodore_menu_items{
         //name         connected setting   notify
-        {"BRIGHTNESS", set.brightness,     [&](){ frame.upd_palette(set); }},
-        {"CONTRAST",   set.contrast,       [&](){ frame.upd_palette(set); }},
-        {"SATURATION", set.saturation,     [&](){ frame.upd_palette(set); }},
+        {"Brightness", set.brightness,     [&](){ frame.upd_palette(set); }},
+        {"Contrast",   set.contrast,       [&](){ frame.upd_palette(set); }},
+        {"Saturation", set.saturation,     [&](){ frame.upd_palette(set); }},
     };
-    std::vector<::Menu::Group> colodore_sub{{"COLODORE", colodore_menu_items}};
+    std::vector<::Menu::Group> colodore_sub{{"Colodore", colodore_menu_items}};
 };
 
 

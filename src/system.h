@@ -318,7 +318,7 @@ struct Performance {
 
     Choice<bool> audio_pitch_shift{
         {false, true},
-        {"FIXED", "SHIFT"},
+        {"Fixed", "Shift"},
     };
 
     static constexpr int min_sync_points = 1;
@@ -331,7 +331,7 @@ struct Performance {
             //{ FRAME_CYCLE_COUNT / 12, 128 },
             //{ FRAME_CYCLE_COUNT / 24, 128 },
         },
-        {"FRAME/8", "FRAME/4", "FRAME/2", "1 FRAME"/*, "FRAME/12"*//*, "FRAME/24"*/},
+        {"Frame/8", "Frame/4", "Frame/2", "1 Frame"/*, "Frame/12"*//*, "Frame/24"*/},
     };
 };
 
@@ -412,7 +412,7 @@ public:
     }
 
     void activate_root() { // meh.... but works...
-        activate("AUDIO");
+        activate("Audio");
         root.exit();
     }
 
@@ -548,15 +548,15 @@ private:
                     case ks::menu_up:
                     case ks::menu_down:    menu.handle_key(code);              break;
                     case ks::menu_root:    menu.activate_root();               break;
-                    case ks::menu_audio:   menu.activate("AUDIO");             break;
-                    case ks::menu_video:   menu.activate("VIDEO");             break;
-                    case ks::menu_vid_col: menu.activate("VIDEO", "COLODORE"); break;
-                    case ks::menu_disk:    menu.activate("DISK");              break;
-                    case ks::menu_perf:    menu.activate("PERFORMANCE");       break;
-                    case ks::menu_exp:     menu.activate("EXPANSION");         break;
-                    case ks::menu_xtra:    menu.activate("XTRAS");             break;
-                    case ks::menu_att_reu: menu.activate("EXPANSION", "ATTACH REU ?"); break;
-                    case ks::menu_quit:    menu.activate("SHUTDOWN ?");        break;
+                    case ks::menu_audio:   menu.activate("Audio");             break;
+                    case ks::menu_video:   menu.activate("Video");             break;
+                    case ks::menu_vid_col: menu.activate("Video", "Colodore"); break;
+                    case ks::menu_disk:    menu.activate("Disk");              break;
+                    case ks::menu_perf:    menu.activate("Performance");       break;
+                    case ks::menu_exp:     menu.activate("Expansion");         break;
+                    case ks::menu_xtra:    menu.activate("Xtras");             break;
+                    case ks::menu_att_reu: menu.activate("Expansion", "Attach REU ?"); break;
+                    case ks::menu_quit:    menu.activate("Shutdown ?");        break;
                     case ks::rot_dsk:      c1541.disk_carousel.rotate();       break;
                     case ks::tgl_wp:       c1541.disk_carousel.toggle_wp();    break;
                     case ks::shutdown:     request_shutdown();                 break;
@@ -660,18 +660,18 @@ private:
     }
 
     std::vector<::Menu::Immediate_action> main_menu_xtra_actions{
-        {"SAVE STATE !", [&](){ save_state_req(); } },
-        {"SWAP JOYS !",  [&](){ host_input.swap_joysticks(); } },
-        {"RESET WARM !", [&](){ reset_warm(); } },
-        {"RESET COLD !", [&](){ reset_cold(); } },
+        {"Save state !", [&](){ save_state_req(); } },
+        {"Swap joys !",  [&](){ host_input.swap_joysticks(); } },
+        {"Reset warm !", [&](){ reset_warm(); } },
+        {"Reset cold !", [&](){ reset_cold(); } },
     };
 
     std::vector<::Menu::Confirmed_action> exp_menu_conf_actions{
-        {"DETACH ?", [&](){ Expansion::detach(s); reset_cold(); }},
-        {"ATTACH REU ?", [&]() { Expansion::attach_REU(s); reset_cold(); }},
+        {"Detach ?", [&](){ Expansion::detach(s); reset_cold(); }},
+        {"Attach REU ?", [&]() { Expansion::attach_REU(s); reset_cold(); }},
     };
     std::vector<::Menu::Immediate_action> exp_menu_imm_actions{
-        {"BUTTON 1 !", [&]() { Expansion::button_1(s); }},
+        {"Button 1 !", [&]() { Expansion::button_1(s); }},
     };
 
     std::vector<::Menu::Knob> perf_menu_items{
@@ -686,12 +686,12 @@ private:
             }
         },
         // TODO: defer also the following two?
-        {"AUDIO PITCH", perf.audio_pitch_shift,
+        {"Audio pitch", perf.audio_pitch_shift,
             [&]() {
                 sid.reconfig(perf.frame_rate, perf.audio_pitch_shift);
             }
         },
-        {"LATENCY", perf.latency,
+        {"Latency", perf.latency,
             [&]() {
                 sid.reconfig(perf.latency.chosen.audio_buf_sz);
             }
@@ -702,13 +702,13 @@ private:
         {
             sid.settings_menu(),
             c1541.menu(),
-            {"EXPANSION", exp_menu_conf_actions, exp_menu_imm_actions},
-            {"PERFORMANCE", perf_menu_items},
+            {"Expansion", exp_menu_conf_actions, exp_menu_imm_actions},
+            {"Performance", perf_menu_items},
             vid_out.settings_menu(),
-            {"XTRAS", main_menu_xtra_actions},
+            {"Xtras", main_menu_xtra_actions},
         },
         {
-            {"SHUTDOWN ?",   [&](){ request_shutdown(); } },
+            {"Shutdown ?",   [&](){ request_shutdown(); } },
         },
     };
 

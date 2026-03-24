@@ -517,9 +517,9 @@ struct PETSCII_Draw { // user is trusted, no checks...
     }
 
     void txt(const std::string& txt, u16 tx, u16 ty, Color fg, Color bg) {
-        for (u8 ci = 0; ci < txt.length(); ++ci, tx += 8) {
-            const auto c = (txt[ci] % 64) + 256; // map ascii code to petscii (using the 'lower case' half)
-            chr(c, tx, ty, fg, bg);
+        for (u8 c = 0; c < txt.length(); ++c, tx += 8) {
+            const auto char_rom_idx = ascii_to_char_rom(txt[c]);
+            chr(char_rom_idx, tx, ty, fg, bg);
         }
     }
 };
@@ -582,7 +582,6 @@ void System::C64::output_frame() {
             static const int pos_x = VIC_II::BORDER_SZ_V + 2;
             static const int pad_px = 4;
 
-
             static const Color col_fg = Color::light_green;
             static const Color col_bg = Color::gray_1;
 
@@ -611,19 +610,6 @@ void System::C64::output_frame() {
             draw_c1541_led();
         }
     };
-
-    /*auto draw_expansion_status = [&]() {
-        static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 10;
-        static const int pos_y = status_pos_y;
-        static const Color col_bg = Color::black;
-        static const Color col_attached = Color::green;
-        static const Color col_detached = Color::gray_1;
-        static const u16 ch = 0x118;
-
-        const auto col = (s.exp.type == Expansion::Type::none) ? col_detached : col_attached;
-
-        PETSCII_Draw{rom.charr, s.vic.frame}.chr(ch, pos_x, pos_y, col, col_bg);
-    };*/
 
     if (menu.active) draw_menu();
 

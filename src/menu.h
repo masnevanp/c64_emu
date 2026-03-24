@@ -144,7 +144,7 @@ public:
     virtual void up()   { confirmed = !confirmed; }
     virtual void down() { confirmed = !confirmed; }
 
-    virtual std::string active_text() const { return name + (confirmed ? " YES" : " NO"); }
+    virtual std::string active_text() const { return name + (confirmed ? " Yes" : " No"); }
 
 private:
     bool confirmed = false;

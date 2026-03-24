@@ -174,21 +174,61 @@ std::string to_string(double d, int precision) {
 }
 
 
-// TODO: check&fix these
-std::string to_petscii(const std::string& ascii) {
-    std::string s(ascii);
-    for (std::string::size_type c = 0; c < s.length(); ++c) {
-        if (s[c] == '\\') s[c] = chr(petscii::slash);
-        else if (s[c] == '_') s[c] = chr(petscii::underscore);
-    }
-    return s;
-}
+/*
+  code  chr   chr.rom index (* = 'best fit')
+  "32": " ",  120
+  "33": "!",  121
+  "61": "=",  ...
+  "62": ">",  13e
+  "63": "?",  13f
+
+  "64": "@",  100
+
+  "65": "A",  141
+  "66": "B",  142
+  "67": "C",  ...
+  "89": "Y",  159
+  "90": "Z",  15A
 
 
-std::string to_ascii(const std::string& petscii) {
-    std::string s(petscii);
-    for (std::string::size_type c = 0; c < s.length(); ++c) {
-        if (s[c] == chr(petscii::underscore)) s[c] = '_';
+  "97": "a",  101
+  "98": "b",  102
+  "99": "c",  ...
+  "121": "y", 119
+  "122": "z", 11a
+
+
+  "91": "[",  11b
+  "92": "\\", 04d *
+  "93": "]",  11d
+  "94": "^",  11e *
+  "95": "_",  064 
+  "96": "`",  04a *
+
+  "123": "{", 073 *
+  "124": "|", 042
+  "125": "}", 06b *
+  "126": "~"  17A *
+*/
+u16 ascii_to_char_rom(u8 ascii_code) {
+    if (ascii_code >= 32 && ascii_code <= 90) {
+        if (ascii_code == 64) return 0x100;
+        else return 0x120 + (ascii_code - 32);
+    } else if (ascii_code >= 97 && ascii_code <= 122) {
+        return 0x101 + (ascii_code - 97);
+    } else {
+        switch (ascii_code) {
+            case 91:  return 0x11b;
+            case 92:  return 0x04d;
+            case 93:  return 0x11d;
+            case 94:  return 0x11e;
+            case 95:  return 0x064;
+            case 96:  return 0x04a;
+            case 123: return 0x073;
+            case 124: return 0x042;
+            case 125: return 0x06b;
+            case 126: return 0x17a;
+            default:  return 0x120; // ' '
+        }
     }
-    return s;
 }

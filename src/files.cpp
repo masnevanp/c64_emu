@@ -141,6 +141,25 @@ std::string extract_string(const u8* from, petscii terminator = petscii::nbsp, i
 }
 
 
+std::string to_petscii(const std::string& ascii) {
+    std::string s(ascii);
+    for (std::string::size_type c = 0; c < s.length(); ++c) {
+        if (s[c] == '\\') s[c] = chr(petscii::slash);
+        else if (s[c] == '_') s[c] = chr(petscii::underscore);
+    }
+    return s;
+}
+
+
+std::string to_ascii(const std::string& petscii) {
+    std::string s(petscii);
+    for (std::string::size_type c = 0; c < s.length(); ++c) {
+        if (s[c] == chr(petscii::underscore)) s[c] = '_';
+    }
+    return s;
+}
+
+
 std::string quoted(const std::string& s) {
     return '"' + s + '"';
 }

@@ -127,9 +127,7 @@ std::string squash(const std::string& s, std::size_t to_size);
 
 std::string to_string(double d, int precision);
 
-std::string to_petscii(const std::string& ascii);
-std::string to_ascii(const std::string& petscii);
-
+u16 ascii_to_char_rom(u8 ascii_code);
 /*
 template<typename T>
 constexpr int count_leading_zero_bits(T x) {

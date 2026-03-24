@@ -779,7 +779,7 @@ public:
         //install_idle_trap();
     }
 
-    Menu::Group menu() { return {"DISK", menu_imm_actions, menu_confirmed_actions}; }
+    Menu::Group menu() { return {"Disk", menu_imm_actions, menu_confirmed_actions}; }
 
     void reset();
     void tick();
@@ -861,7 +861,7 @@ private:
         // TODO: generate a truly blank disk
         const std::vector<u8> d64_data(std::size_t{Files::D64::size});
         Disk_image* blank_disk = new C1541::D64(Files::D64{d64_data}); // not truly blank...
-        disk_carousel.insert(0, blank_disk, "BLANK"); // TODO: handle 0 free slots case
+        disk_carousel.insert(0, blank_disk, "Blank"); // TODO: handle 0 free slots case
     }
 
     NMOS6502::Sig cpu_trap {
@@ -872,12 +872,12 @@ private:
     };
 
     std::vector<Menu::Immediate_action> menu_imm_actions{
-        {"EJECT !",                   [&](){ disk_carousel.select(0); }},
-        {"TOGGLE WRITE PROTECTION !", [&](){ disk_carousel.toggle_wp(); }},
+        {"Eject !",                   [&](){ disk_carousel.select(0); }},
+        {"Toggle write protection !", [&](){ disk_carousel.toggle_wp(); }},
     };
     std::vector<Menu::Confirmed_action> menu_confirmed_actions{
-        {"INSERT BLANK ?",            [&](){ insert_blank(); }},
-        {"RESET DRIVE ?",             [&](){ reset(); }},
+        {"Insert blank ?",            [&](){ insert_blank(); }},
+        {"Reset drive ?",             [&](){ reset(); }},
     };
 
     /*bool& run_cfg_change;

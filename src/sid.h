@@ -48,7 +48,7 @@ public:
         core.write(ri, data);
     }
 
-    Menu::Group settings_menu() { return {"AUDIO", menu_items}; }
+    Menu::Group settings_menu() { return {"Audio", menu_items}; }
 
 private:
     // TODO: consider moving stuph to 'state' (at least 'last_tick_cycle', since now a
@@ -76,14 +76,14 @@ private:
         };
         Choice<Sampling> sampling{ // NOTE: 'fast' can get pitchy...
             {Sampling::SAMPLE_INTERPOLATE, Sampling::SAMPLE_RESAMPLE, Sampling::SAMPLE_FAST/*, Sampling::SAMPLE_RESAMPLE_FASTMEM*/},
-            {"INTERPOLATE", "RESAMPLE", "FAST"/*, "RESAMPLE FASTMEM"*/},
+            {"Interpolate", "Resample", "Fast"/*, "Resample fastmem"*/},
         };
     };
     Settings set;
 
     std::vector<Menu::Knob> menu_items{
-        {"RESID MODEL",    set.model,    [&](){ core.set_chip_model(set.model); }},
-        {"RESID SAMPLING", set.sampling, [&](){ core.set_sampling_method(set.sampling); }},
+        {"reSID model",    set.model,    [&](){ core.set_chip_model(set.model); }},
+        {"reSID sampling", set.sampling, [&](){ core.set_sampling_method(set.sampling); }},
     };
 
     void tick();
