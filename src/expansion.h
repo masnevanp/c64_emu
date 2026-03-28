@@ -609,7 +609,7 @@ struct T34 : public Base { // T34 EasyFlash
 
 
 void detach(State::System& s);
-bool attach(State::System& s, const Files::CRT& crt);
+bool attach(State::System& s, const std::string& name, const Files::CRT& crt);
 bool attach_REU(State::System& s);
 void reset(State::System& s);
 

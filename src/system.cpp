@@ -529,7 +529,7 @@ void System::C64::output_frame() {
     auto draw_menu = [&]() {
         static const int width_chr = 39;
         static const int pos_x = VIC_II::BORDER_SZ_V + 4;
-        static const int pos_y = (VIC_II::BORDER_SZ_H) - (8 + 2);
+        static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 4;
         static const int pad_px = 4;
         static const Color col_fg = Color::light_green;
         static const Color col_bg = Color::gray_1;
@@ -553,10 +553,10 @@ void System::C64::output_frame() {
     };
 
     auto draw_status = [&]() {
-        static const int status_pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 4;
 
         auto draw_c1541_led = [&]() {
-            static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 10;
+            static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 14;;
+            static const int pos_x = VIC_II::FRAME_WIDTH - VIC_II::BORDER_SZ_V - 12;
 
             static const Color col_bg = Color::black;
             static const Color col_led_on = Color::light_green;
@@ -568,7 +568,7 @@ void System::C64::output_frame() {
             const auto led_ch = c1541.dc.status.write_prot_on() ? ch_led_wp : ch_led;
             const auto led_col = c1541.dc.status.led_on() ? col_led_on : col_led_off;
 
-            PETSCII_Draw{rom.charr, s.vic.frame}.chr(led_ch, pos_x, status_pos_y, led_col, col_bg);
+            PETSCII_Draw{rom.charr, s.vic.frame}.chr(led_ch, pos_x, pos_y, led_col, col_bg);
 
             /*static constexpr u16 ch_zero   = 0x0030;
             const auto track_n = (status.head.track_n / 2) + 1;
@@ -578,8 +578,10 @@ void System::C64::output_frame() {
         };
 
         auto draw_disk_and_exp_names = [&]() {
-            static const int width_chr = 38;
-            static const int pos_x = VIC_II::BORDER_SZ_V + 2;
+            static const int name_pos_y = 4;
+
+            static const int width_chr = 39;
+            static const int pos_x = VIC_II::BORDER_SZ_V + 4;
             static const int pad_px = 4;
 
             static const Color col_fg = Color::light_green;
@@ -587,7 +589,7 @@ void System::C64::output_frame() {
 
             PETSCII_Draw pd{rom.charr, s.vic.frame};
 
-            int pos_y = status_pos_y;
+            int pos_y = name_pos_y;
 
             if (!c1541.disk_carousel.no_disk()) {
                 pd.txt(std::string(width_chr, ' '), pos_x, pos_y, col_fg, col_bg);
@@ -598,7 +600,7 @@ void System::C64::output_frame() {
 
             if (s.exp.type != Expansion::Type::none) {
                 pd.txt(std::string(width_chr, ' '), pos_x, pos_y, col_fg, col_bg);
-                const std::string txt = "E: <TODO>";
+                const std::string txt = "e: " + std::string(s.exp.name);
                 pd.txt(txt, pos_x + pad_px, pos_y, col_fg, col_bg);
             }
         };
@@ -699,21 +701,22 @@ bool System::C64::handle_file(Files::File& file) {
     switch (file.type) {
         case Type::crt: {
             Log::info("CRT '%s' ...", file.name.c_str());
-            deferred = [&, data = std::move(file.data)]() {
-                Expansion::attach(s, Files::CRT{data});
+            deferred = [&, name = file.name, data = std::move(file.data)]() {
+                Expansion::attach(s, name, Files::CRT{data});
                 reset_cold();
             };
             return true;
         }
-        case Type::d64:
+        case Type::d64: // TODO: maybe for d64&g64 the name should be squashed elsewhere...
+                        //       (TBD if/when the state file includes the disk_carousel)
             // auto slot = s.ram[0xb9]; // secondary address
             // slot=0 --> first free slot
             c1541.disk_carousel.insert(0,
-                    new C1541::D64(Files::D64{file.data}), file.name);
+                    new C1541::D64(Files::D64{file.data}), as_lower(squash(file.name, 35)));
             return true;
         case Type::g64:
             c1541.disk_carousel.insert(0,
-                    new C1541::G64(std::move(file.data)), file.name);
+                    new C1541::G64(std::move(file.data)), as_lower(squash(file.name, 35)));
             return true;
         case Type::c64_bin:
             inject(file.data);

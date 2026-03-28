@@ -167,6 +167,13 @@ std::string squash(const std::string& s, std::size_t to_size) {
 }
 
 
+void transfer(const std::string& s, char* dest, std::size_t dest_max_len) { // max_len excludes terminator
+    const auto squashed = squash(s, dest_max_len);
+    squashed.copy(dest, squashed.length());
+    dest[squashed.length()] = '\0';
+}
+
+
 std::string to_string(double d, int precision) {
     std::stringstream stream;
     stream << std::fixed << std::setprecision(precision) << d;

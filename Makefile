@@ -38,7 +38,7 @@ bin/$(BUILD)/$(TARGET): $(OBJ)
 	@echo ;echo "    ==> $@"; echo
 
 obj/$(BUILD)/%.o: src/%.cpp
-	@echo -n "  $<"
+	@echo -n "> $<"
 	@mkdir -p $(dir $@)
 	@$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) -MMD -MP $< -c -o $@
 	@echo " --> $@"

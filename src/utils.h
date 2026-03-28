@@ -113,9 +113,11 @@ private:
 // Colodore by pepto - http://www.pepto.de/projects/colorvic/
 void get_Colodore(u32* target_palette, double brightness = 50, double contrast = 100, double saturation = 50);
 
+
 Maybe<Bytes> read_file(const std::string& filepath);
 
 int read_file(const std::string& filepath, u8* buf);
+
 
 std::string as_lower(const std::string& src);
 
@@ -125,7 +127,10 @@ std::string replace(std::string s, const std::string& what, const std::string& w
 
 std::string squash(const std::string& s, std::size_t to_size);
 
+void transfer(const std::string& s, char* dest, std::size_t dest_max_len); // max_len excludes terminator
+
 std::string to_string(double d, int precision);
+
 
 u16 ascii_to_char_rom(u8 ascii_code);
 /*

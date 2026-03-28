@@ -371,9 +371,9 @@ struct System {
         u16 type;
         u16 ticker;
 
-        static constexpr std::size_t max_name_length = 32;
+        static constexpr std::size_t max_name_length = 35; // excluding the terminator
 
-        char name[max_name_length];
+        char name[max_name_length + 1]; // add one for terminator
 
         State state;
     };

@@ -56,7 +56,7 @@ void Expansion::detach(State::System& s) {
 }
 
 
-bool Expansion::attach(State::System& s, const Files::CRT& crt) {
+bool Expansion::attach(State::System& s, const std::string& name, const Files::CRT& crt) {
     if (!crt.header().valid()) {
         Log::error("Expansion: invalid CRT img header");
         return false;
@@ -81,7 +81,10 @@ bool Expansion::attach(State::System& s, const Files::CRT& crt) {
 
     if (success) {
         s.exp.type = type;
-        Log::info("Expansion: attached CRT, type: %d", type);
+
+        transfer(as_lower(name), s.exp.name, State::System::Expansion::max_name_length);
+
+        Log::info("Expansion: attached %s, type: %d", name.c_str(), type);
         return true;
     } else {
         Log::error("Expansion: failed to attach CRT");
@@ -96,8 +99,7 @@ bool Expansion::attach_REU(State::System& s) {
 
     s.exp.type = Type::REU;
 
-    static constexpr char name[] = {'r', 'e', 'u', ' ', '5', '1', '2', '\0'};
-    std::copy(std::begin(name), std::end(name), s.exp.name);
+    transfer("RAM Expansion Unit (512 kb)", s.exp.name, State::System::Expansion::max_name_length);
 
     Log::info("Expansion: REU attached");
 
