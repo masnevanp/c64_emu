@@ -21,6 +21,7 @@ public:
         Sig1<u8> restore;
         Sig_key sys;
         Sig1<const char*> filedrop;
+        Sig2<int, int> win_resized;
     };
 
     static const u8 JOY_ID_BIT = 0x10; // included in the joy. key code
@@ -83,6 +84,9 @@ private:
             case SDL_WINDOWEVENT_FOCUS_GAINED:
                 set_shift_lock();
                 break;
+            case SDL_WINDOWEVENT_RESIZED:
+                handlers.win_resized(sdl_ev.window.data1, sdl_ev.window.data2);
+                break;
         }
     }
 
@@ -102,7 +106,7 @@ private:
     }
 
     void disable_sh_r() { KC_LU_TBL[sh_r_idx] = Key_code::System::nop; }
-    void enable_sh_r() { KC_LU_TBL[sh_r_idx] = Key_code::Keyboard::sh_r; }
+    void enable_sh_r()  { KC_LU_TBL[sh_r_idx] = Key_code::Keyboard::sh_r; }
 
 };
 
@@ -121,17 +125,17 @@ public:
         };
         // TODO: fullscreen_scale?
         // init, min, max, step, to_str
-        Param<double> window_scale{3.40,  0.5, 8.00, 0.05,  [](double d){ return to_string(d, 2); }};
-        Param<double> aspect_ratio{0.918, 0.5, 1.25, 0.001, [](double d){ return to_string(d, 3); }}; // PAL: ~0.936
+        Param<i16> window_scale{340,  50,  800, 5, [](i16 v){ return to_string(v / 100.0, 2); }};
+        Param<i16> aspect_ratio{918, 500, 1250, 1, [](i16 v){ return to_string(v / 1000.0, 3); }}; // PAL: ~0.936
 
-        Param<u8> sharpness{0, 0, 3, 1};
+        Param<i8> sharpness{0, 0, 3, 1};
 
-        Param<u8> brightness{82, 0, 100, 1};
-        Param<u8> contrast {100, 0, 100, 1};
-        Param<u8> saturation{74, 0, 100, 1};
+        Param<i8> brightness{82, 0, 100, 1};
+        Param<i8> contrast {100, 0, 100, 1};
+        Param<i8> saturation{74, 0, 100, 1};
 
-        Param<u8> mask_pattern{3, 0, 254, 1}; // TODO: actual max
-        Param<u8> mask_level {15, 0,  15, 1}; // 0 --> all pass
+        Param<i8> mask_pattern{3, 0, 25, 1}; // TODO: actual max
+        Param<i8> mask_level {15, 0,  15, 1}; // 0 --> all pass
     };
 
     Menu::Group settings_menu() { return { "Video", menu_items, colodore_sub}; }
@@ -146,7 +150,30 @@ public:
     void toggle_fullscr_win() { // TODO: cycle through presets instead --> TODO: presets...
         set.mode = (set.mode == Mode::win) ? Mode::fullscr_win : Mode::win;
         upd_mode();
+        upd_dimensions();
     }
+
+    Sig2<int, int> win_resized {
+        [this](int w, int h) {
+            if (set.mode != Mode::win) return;
+
+            const int old_w = frame.frame.dstrect.w;
+            const int old_h = frame.frame.dstrect.h;
+
+            if (w != old_w && h != old_h) {
+                const auto window_scale = double(h) / VIC_II::FRAME_HEIGHT;
+                const auto aspect_ratio = double(w) / (window_scale * VIC_II::FRAME_WIDTH);
+                set.aspect_ratio.set(1000 * aspect_ratio);
+                set.window_scale.set(100 * window_scale);
+            } else if (w != old_w) {
+                set.window_scale.set(100 * (double(w) / VIC_II::FRAME_WIDTH));
+            } else if (h != old_h) {
+                set.window_scale.set(100 * (double(h) / VIC_II::FRAME_HEIGHT));
+            }
+
+            upd_dimensions();
+        }
+    };
 
     void reconfig() { upd_mode(); }
 
@@ -225,20 +252,20 @@ private:
     Mask mask;
 
     std::vector<Menu::Knob> menu_items{
-        //name                  connected setting   notify
-        {"Mode",                set.mode,           [&](){ upd_mode(); }},
-        {"Window scale",        set.window_scale,   [&](){ upd_dimensions(); }},
-        {"Aspect ratio",        set.aspect_ratio,   [&](){ upd_dimensions(); }},
-        {"Sharpness",           set.sharpness,      [&](){ frame.upd_sharpness(set); }},
-        {"Mask pattern",        set.mask_pattern,   [&](){ mask.upd(set); }},
-        {"Mask level",          set.mask_level,     [&](){ mask.upd(set); }},
+        //name           connected setting   notify
+        {"Mode",         set.mode,           [&](){ upd_mode(); }},
+        {"Window scale", set.window_scale,   [&](){ upd_dimensions(); }},
+        {"Aspect ratio", set.aspect_ratio,   [&](){ upd_dimensions(); }},
+        {"Sharpness",    set.sharpness,      [&](){ frame.upd_sharpness(set); }},
+        {"Mask pattern", set.mask_pattern,   [&](){ mask.upd(set); }},
+        {"Mask level",   set.mask_level,     [&](){ mask.upd(set); }},
     };
 
     std::vector<Menu::Knob> colodore_menu_items{
-        //name         connected setting   notify
-        {"Brightness", set.brightness,     [&](){ frame.upd_palette(set); }},
-        {"Contrast",   set.contrast,       [&](){ frame.upd_palette(set); }},
-        {"Saturation", set.saturation,     [&](){ frame.upd_palette(set); }},
+        //name           connected setting   notify
+        {"Brightness",   set.brightness,     [&](){ frame.upd_palette(set); }},
+        {"Contrast",     set.contrast,       [&](){ frame.upd_palette(set); }},
+        {"Saturation",   set.saturation,     [&](){ frame.upd_palette(set); }},
     };
     std::vector<::Menu::Group> colodore_sub{{"Colodore", colodore_menu_items}};
 };

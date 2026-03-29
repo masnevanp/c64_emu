@@ -470,7 +470,7 @@ SDL_Texture* Video_out::create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SD
 
 void Video_out::upd_mode() {
     if (!window) {
-        window = SDL_CreateWindow("WIP #$40", 400, 100, 100, 100, 0);
+        window = SDL_CreateWindow("WIP #$40", 400, 100, 100, 100, SDL_WINDOW_RESIZABLE);
         if (!window) {
             Log::error("Failed to SDL_CreateWindow: %s", SDL_GetError());
             exit(1);
@@ -534,23 +534,26 @@ void Video_out::upd_mode() {
 
 
 void Video_out::upd_dimensions() {
+    const auto aspect_ratio = set.aspect_ratio / 1000.0;
+    const auto window_scale = set.window_scale / 100.0;
+
     if (set.mode == Mode::win) {
-        const int w = set.aspect_ratio * (set.window_scale * VIC_II::FRAME_WIDTH);
-        const int h = set.window_scale * VIC_II::FRAME_HEIGHT;
+        const int w = aspect_ratio * (window_scale * VIC_II::FRAME_WIDTH);
+        const int h = window_scale * VIC_II::FRAME_HEIGHT;
         SDL_SetWindowSize(window, w, h);
         frame.frame.dstrect = SDL_Rect{0, 0, w, h};
         mask.frame.srcrect = mask.frame.dstrect = SDL_Rect{0, 0, w, h};;
     } else {
         int win_w; int win_h;
         SDL_GetRendererOutputSize(renderer, &win_w, &win_h);
-        int w = set.aspect_ratio * (((double)win_h / VIC_II::FRAME_HEIGHT) * VIC_II::FRAME_WIDTH);
+        int w = aspect_ratio * (((double)win_h / VIC_II::FRAME_HEIGHT) * VIC_II::FRAME_WIDTH);
         if (w < win_w) {
             frame.frame.dstrect.x = (win_w - w) / 2;
             frame.frame.dstrect.y = 0;
             frame.frame.dstrect.w = w;
             frame.frame.dstrect.h = win_h;
         } else {
-            int h =  (((double)win_w / VIC_II::FRAME_WIDTH) * VIC_II::FRAME_HEIGHT) / set.aspect_ratio;
+            int h =  (((double)win_w / VIC_II::FRAME_WIDTH) * VIC_II::FRAME_HEIGHT) / aspect_ratio;
             frame.frame.dstrect.x = 0;
             frame.frame.dstrect.y = (win_h - h) / 2;
             frame.frame.dstrect.w = win_w;

@@ -189,7 +189,7 @@ template<typename T>
 class Param {
 public:
     Param(T init, T min_, T max_, T step_, std::function<std::string (T)> to_str_ = std::function<std::string (T)>())
-        : val(init), min(min_), max(max_), step(step_), to_str(to_str_) {}
+        : min(min_), max(max_), step(step_), val(init), to_str(to_str_) {}
 
     operator T() const { return val; }
     operator std::string() const {
@@ -201,15 +201,20 @@ public:
     Param<T>& operator--() { set(val - step); return *this; }
     Param<T>& operator=(T v) { set(v); return *this; }
 
-private:
-    T val;
+    void set(T v) {
+        if (v < min) val = min;
+        else if (v > max) val = max;
+        else val = v;
+    }
+
     const T min;
     const T max;
     const T step;
 
-    std::function<std::string (T)> to_str;
+private:
+    T val;
 
-    void set(T v) { if (v >= min && v <= max) val = v; }
+    std::function<std::string (T)> to_str;
 };
 
 

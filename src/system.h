@@ -509,6 +509,8 @@ private:
     };
     IO::Port::PD_out cia2_pb_out { [](u8 _) { UNUSED(_); } };
 
+    Host::Video_out vid_out{perf.frame_rate.chosen};
+
     Host::Input::Handlers host_input_handlers{
         // TODO: just-in-time polling for keyboard/ctrl-ports? (i.e. when CIA1 regs are read)
 
@@ -575,12 +577,13 @@ private:
             } else {
                 Log::info("Ignored: '%s'", filepath);
             }
-        }
+        },
+
+        // window resized
+        vid_out.win_resized,
     };
 
     Host::Input host_input{host_input_handlers};
-
-    Host::Video_out vid_out{perf.frame_rate.chosen};
 
     // TODO: verify that it is a valid kernal trap (e.g. 'addr_space.mapping(cpu.pc) == kernal')
     NMOS6502::Sig cpu_trap {
