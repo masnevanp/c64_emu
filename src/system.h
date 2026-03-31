@@ -503,7 +503,6 @@ private:
             c1541.iec.cia2_pa_output(state);
             /*if (c1541.idle) {
                 c1541.idle = false;
-                run_cfg_change = true;
             }*/
         }
     };
@@ -580,7 +579,7 @@ private:
         },
 
         // window resized
-        vid_out.win_resized,
+        vid_out.window_resized,
     };
 
     Host::Input host_input{host_input_handlers};

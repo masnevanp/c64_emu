@@ -21,7 +21,7 @@ public:
         Sig1<u8> restore;
         Sig_key sys;
         Sig1<const char*> filedrop;
-        Sig2<int, int> win_resized;
+        Sig2<int, int> window_resized;
     };
 
     static const u8 JOY_ID_BIT = 0x10; // included in the joy. key code
@@ -85,7 +85,7 @@ private:
                 set_shift_lock();
                 break;
             case SDL_WINDOWEVENT_RESIZED:
-                handlers.win_resized(sdl_ev.window.data1, sdl_ev.window.data2);
+                handlers.window_resized(sdl_ev.window.data1, sdl_ev.window.data2);
                 break;
         }
     }
@@ -150,29 +150,10 @@ public:
     void toggle_fullscr_win() { // TODO: cycle through presets instead --> TODO: presets...
         set.mode = (set.mode == Mode::win) ? Mode::fullscr_win : Mode::win;
         upd_mode();
-        upd_dimensions();
     }
 
-    Sig2<int, int> win_resized {
-        [this](int w, int h) {
-            if (set.mode != Mode::win) return;
-
-            const int old_w = frame.frame.dstrect.w;
-            const int old_h = frame.frame.dstrect.h;
-
-            if (w != old_w && h != old_h) {
-                const auto window_scale = double(h) / VIC_II::FRAME_HEIGHT;
-                const auto aspect_ratio = double(w) / (window_scale * VIC_II::FRAME_WIDTH);
-                set.aspect_ratio.set(1000 * aspect_ratio);
-                set.window_scale.set(100 * window_scale);
-            } else if (w != old_w) {
-                set.window_scale.set(100 * (double(w) / VIC_II::FRAME_WIDTH));
-            } else if (h != old_h) {
-                set.window_scale.set(100 * (double(h) / VIC_II::FRAME_HEIGHT));
-            }
-
-            upd_dimensions();
-        }
+    Sig2<int, int> window_resized {
+        [this](int w, int h) { resize_window(w, h); }
     };
 
     void reconfig() { upd_mode(); }
@@ -238,6 +219,7 @@ private:
 
     void upd_mode();
     void upd_dimensions();
+    void resize_window(int w, int h);
 
     const double& frame_rate_in;
 

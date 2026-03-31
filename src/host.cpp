@@ -567,6 +567,27 @@ void Video_out::upd_dimensions() {
 }
 
 
+void Video_out::resize_window(int w, int h) {
+    if (set.mode != Mode::win) return;
+
+    const int old_w = frame.frame.dstrect.w;
+    const int old_h = frame.frame.dstrect.h;
+
+    if (w != old_w && h != old_h) {
+        const auto window_scale = double(h) / VIC_II::FRAME_HEIGHT;
+        const auto aspect_ratio = double(w) / (window_scale * VIC_II::FRAME_WIDTH);
+        set.aspect_ratio.set(1000 * aspect_ratio);
+        set.window_scale.set(100 * window_scale);
+    } else if (w != old_w) {
+        set.window_scale.set(100 * (double(w) / VIC_II::FRAME_WIDTH));
+    } else if (h != old_h) {
+        set.window_scale.set(100 * (double(h) / VIC_II::FRAME_HEIGHT));
+    }
+
+    upd_dimensions();
+}
+
+
 u16 Audio_out::config(u16 buf_sz) {
     SDL_AudioSpec want;
     SDL_AudioSpec have;
