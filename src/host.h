@@ -253,18 +253,21 @@ private:
 };
 
 
-// TODO: error handling (e.g. on error just run without audio?)
 class Audio_out {
 public:
     static constexpr int bytes_per_sample = 2;
 
-    ~Audio_out();
+    ~Audio_out() { if (dev) SDL_CloseAudioDevice(dev); }
 
     u16 config(u16 buf_sz);
 
     int put(const i16* chunk, u32 sz) {
-        SDL_QueueAudio(dev, chunk, sz * bytes_per_sample);
-        return SDL_GetQueuedAudioSize(dev) / bytes_per_sample;
+        if (dev) {
+            SDL_QueueAudio(dev, chunk, sz * bytes_per_sample);
+            return SDL_GetQueuedAudioSize(dev) / bytes_per_sample;
+        }
+
+        return 0;
     }
 
     void flush() { SDL_ClearQueuedAudio(dev); }

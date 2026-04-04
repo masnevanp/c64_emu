@@ -592,6 +592,8 @@ u16 Audio_out::config(u16 buf_sz) {
     SDL_AudioSpec want;
     SDL_AudioSpec have;
 
+    Log::info("Configuring audio device...");
+
     if (dev) {
         flush();
         SDL_CloseAudioDevice(dev);
@@ -605,17 +607,15 @@ u16 Audio_out::config(u16 buf_sz) {
 
     dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
     if (dev == 0) {
-        Log::error("Unable to SDL_OpenAudioDevice: %s", SDL_GetError());
-        exit(1);
+        Log::error("Fail: '%s'", SDL_GetError());
+        return 0;
     }
 
     SDL_PauseAudioDevice(dev, 0);
 
-    return have.samples;
-}
+    Log::info("Done.");
 
-Audio_out::~Audio_out() {
-    if (dev) SDL_CloseAudioDevice(dev);
+    return have.samples;
 }
 
 

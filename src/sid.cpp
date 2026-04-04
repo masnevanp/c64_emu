@@ -22,9 +22,9 @@ void reSID_Wrapper::output() {
     const int buffered_hi = 3 * buffered_lo;
 
     // Some crude clock speed control here. Good'nuff..? (Not tested on low-end machines...)
-    if (buffered <= buffered_lo) {
+    if (buffered < buffered_lo) {
         clock_speed = 1.01 * clock_speed_base;
-    } else if (buffered >= buffered_hi) {
+    } else if (buffered > buffered_hi) {
         const float reduction = 0.01 + (((buffered - buffered_hi) / audio_out_buf_sz) / 100.0);
         clock_speed = (1 - reduction) * clock_speed_base;
     } else {
