@@ -126,7 +126,7 @@ public:
         // TODO: fullscreen_scale?
         // init, min, max, step, to_str
         Param<i16> window_scale{340,  50,  800, 5, [](i16 v){ return to_string(v / 100.0, 2); }};
-        Param<i16> aspect_ratio{918, 500, 1250, 1, [](i16 v){ return to_string(v / 1000.0, 3); }}; // PAL: ~0.936
+        Param<i16> aspect_ratio{918, 500, 1250, 2, [](i16 v){ return to_string(v / 1000.0, 3); }}; // PAL: ~0.936
 
         Param<i8> sharpness{0, 0, 3, 1};
 

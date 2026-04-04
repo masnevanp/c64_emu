@@ -574,15 +574,29 @@ void Video_out::resize_window(int w, int h) {
     const int old_h = frame.frame.dstrect.h;
 
     if (w != old_w && h != old_h) {
-        const auto window_scale = double(h) / VIC_II::FRAME_HEIGHT;
-        const auto aspect_ratio = double(w) / (window_scale * VIC_II::FRAME_WIDTH);
-        set.aspect_ratio.set(1000 * aspect_ratio);
-        set.window_scale.set(100 * window_scale);
-    } else if (w != old_w) {
+        // pick the bigger change (keeping aspect ratio)
+        if (std::abs(w - old_w) > std::abs(h - old_h)) h = old_h;
+        else w = old_w;
+    }
+
+    if (w != old_w) {
         set.window_scale.set(100 * (double(w) / VIC_II::FRAME_WIDTH));
     } else if (h != old_h) {
         set.window_scale.set(100 * (double(h) / VIC_II::FRAME_HEIGHT));
     }
+
+    /*
+    if (w != old_w && h != old_h) { // update aspect ratio
+        const auto window_scale = double(h) / VIC_II::FRAME_HEIGHT;
+        const auto aspect_ratio = double(w) / (window_scale * VIC_II::FRAME_WIDTH);
+        set.aspect_ratio.set(1000 * aspect_ratio);
+        set.window_scale.set(100 * window_scale);
+    } else if (w != old_w) { // keep aspect ratio
+        set.window_scale.set(100 * (double(w) / VIC_II::FRAME_WIDTH));
+    } else if (h != old_h) { // keep aspect ratio
+        set.window_scale.set(100 * (double(h) / VIC_II::FRAME_HEIGHT));
+    }
+    */
 
     upd_dimensions();
 }
