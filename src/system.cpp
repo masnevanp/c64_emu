@@ -578,8 +578,6 @@ void System::C64::output_frame() {
         };
 
         auto draw_disk_and_exp_names = [&]() {
-            static const int name_pos_y = 4;
-
             static const int width_chr = 39;
             static const int pos_x = VIC_II::BORDER_SZ_V + 4;
             static const int pad_px = 4;
@@ -589,16 +587,15 @@ void System::C64::output_frame() {
 
             PETSCII_Draw pd{rom.charr, s.vic.frame};
 
-            int pos_y = name_pos_y;
-
             if (!c1541.disk_carousel.no_disk()) {
+                static const int pos_y = 14;
                 pd.txt(std::string(width_chr, ' '), pos_x, pos_y, col_fg, col_bg);
                 const std::string txt = "8: " + c1541.disk_carousel.selected().disk_name;
                 pd.txt(txt, pos_x + pad_px, pos_y, col_fg, col_bg);
-                pos_y += (8 + 2);
             }
 
             if (s.exp.type != Expansion::Type::none) {
+                static const int pos_y = 4;
                 pd.txt(std::string(width_chr, ' '), pos_x, pos_y, col_fg, col_bg);
                 const std::string txt = "e: " + std::string(s.exp.name);
                 pd.txt(txt, pos_x + pad_px, pos_y, col_fg, col_bg);
