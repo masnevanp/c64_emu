@@ -123,21 +123,21 @@ Input::Input(Handlers& handlers_)
     // TODO: allow selection (for now just the first two found are attached)
     // TODO: joystick calibration/configuration...
     int open_joys = 0;
-    for (int j = 0; j < SDL_NumJoysticks() && open_joys < 2; ++j) {
+    /*for (int j = 0; j < SDL_NumJoysticks() && open_joys < 2; ++j) {
         SDL_Joystick* sj = SDL_JoystickOpen(j);
         if(!sj) Log::error("Unable to SDL_JoystickOpen: %s", SDL_GetError());
         else {
             sdl_joystick_id[open_joys] = SDL_JoystickInstanceID(sj);
             sdl_joystick[open_joys++] = sj;
         }
-    }
+    }*/
     Log::info("%d joysticks attached", open_joys);
 }
 
 
 void Input::poll() { // TODO: filtering?
     while (SDL_PollEvent(&sdl_ev)) {
-        switch (sdl_ev.type) {
+        switch (sdl_ev.type) {/*
             case SDL_KEYDOWN:       handle_key(true);      break;
             case SDL_KEYUP:         handle_key(false);     break;
             case SDL_JOYAXISMOTION: handle_joy_axis();     break;
@@ -145,6 +145,8 @@ void Input::poll() { // TODO: filtering?
             case SDL_JOYBUTTONUP:   handle_joy_btn(false); break;
             case SDL_WINDOWEVENT:   handle_win_ev();       break;
             case SDL_DROPFILE:      handle_dropfile();     break;
+            */
+           case SDL_EVENT_QUIT: handlers.sys(Key_code::System::shutdown, true);
         }
     }
 }
@@ -158,7 +160,7 @@ void Input::swap_joysticks() {
 }
 
 
-u8 Input::translate_sdl_key() {
+u8 Input::translate_sdl_key() {/*
     static const i32 MAX_KC             = SDLK_SLEEP;
     static const i32 LAST_CHAR_KC       = SDLK_DELETE;
     static const i32 FIRST_NON_CHAR_KC  = SDLK_CAPSLOCK;
@@ -181,7 +183,7 @@ u8 Input::translate_sdl_key() {
             return KC_LU_TBL[key_sym.sym - OFFSET_NON_CHAR_KC];
         else if (key_sym.scancode >= 0x2e && key_sym.scancode <= 0x35)
             return SC_LU_TBL[key_sym.scancode - 0x2e];
-    }
+    }*/
 
     return Key_code::System::nop;
 }
@@ -460,9 +462,12 @@ SDL_Texture* Video_out::create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SD
         exit(1);
     }
 
-    if (SDL_SetTextureBlendMode(t, bm) != 0) {
+    if (!SDL_SetTextureBlendMode(t, bm)) {
         Log::error("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
     }
+
+    // linear is the default mode
+    // SDL_SetTextureScaleMode(t, SDL_ScaleMode::SDL_SCALEMODE_LINEAR);
 
     return t;
 }
@@ -470,7 +475,7 @@ SDL_Texture* Video_out::create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SD
 
 void Video_out::upd_mode() {
     if (!window) {
-        window = SDL_CreateWindow("WIP #$40", 400, 100, 100, 100, SDL_WINDOW_RESIZABLE);
+        window = SDL_CreateWindow("WIP #$40", 100, 100, SDL_WINDOW_RESIZABLE);
         if (!window) {
             Log::error("Failed to SDL_CreateWindow: %s", SDL_GetError());
             exit(1);
@@ -481,18 +486,17 @@ void Video_out::upd_mode() {
 
     switch (set.mode) {
         case Mode::win:
-            if (SDL_SetWindowFullscreen(window, 0) != 0) {
-                Log::error("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
-                exit(1);
-            }
+            SDL_SetWindowFullscreen(window, false); // TODO: somehow check success?
+            SDL_SyncWindow(window);
             break;
         case Mode::fullscr_win:
-            if (SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP) != 0) {
-                Log::error("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
-                exit(1);
-            }
+            SDL_SetWindowFullscreen(window, true); // TODO: somehow check success?
+            SDL_SyncWindow(window);
             break;
-        case Mode::fullscr: { // TODO: cycle through supported modes?
+        case Mode::fullscr:
+            Log::info("TODO: Mode::fullscr");
+            break;
+        /*case Mode::fullscr: { // TODO: cycle through supported modes?
             auto fr = int(frame_rate_in);
             SDL_DisplayMode sdm = { pixel_format, 1920, 1080, fr, 0 };
             if (SDL_SetWindowDisplayMode(window, &sdm) != 0) {
@@ -504,22 +508,23 @@ void Video_out::upd_mode() {
                 exit(1);
             }
             break;
-        }
+        }*/
     }
 
-    const int disp_idx = SDL_GetWindowDisplayIndex(window);
-    if (SDL_GetCurrentDisplayMode(disp_idx, &sdl_mode) != 0) {
+    const auto disp_id = SDL_GetDisplayForWindow(window);
+    if (sdl_mode = SDL_GetCurrentDisplayMode(disp_id); !sdl_mode) {
         Log::error("Failed to SDL_GetCurrentDisplayMode: %s", SDL_GetError());
         exit(1);
     }
 
-    const u32 v_sync_flag = v_synced() ? SDL_RENDERER_PRESENTVSYNC : 0;
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | v_sync_flag);
+    // const u32 v_sync_flag = v_synced() ? SDL_RENDERER_PRESENTVSYNC : 0;
+    Log::info("TODO: vsync support");
+    renderer = SDL_CreateRenderer(window, nullptr);
     if (!renderer) {
         Log::error("Failed to SDL_CreateRenderer: %s", SDL_GetError());
         exit(1);
     }
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
+
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 
     frame.frame.connect(renderer);
@@ -529,7 +534,7 @@ void Video_out::upd_mode() {
 
     upd_dimensions();
 
-    SDL_ShowCursor(set.mode == Mode::win);
+    if(set.mode == Mode::win) SDL_ShowCursor(); else SDL_HideCursor();
 }
 
 
@@ -538,14 +543,14 @@ void Video_out::upd_dimensions() {
     const auto window_scale = set.window_scale / 100.0;
 
     if (set.mode == Mode::win) {
-        const int w = aspect_ratio * (window_scale * VIC_II::FRAME_WIDTH);
-        const int h = window_scale * VIC_II::FRAME_HEIGHT;
+        const float w = aspect_ratio * (window_scale * VIC_II::FRAME_WIDTH);
+        const float h = window_scale * VIC_II::FRAME_HEIGHT;
         SDL_SetWindowSize(window, w, h);
-        frame.frame.dstrect = SDL_Rect{0, 0, w, h};
-        mask.frame.srcrect = mask.frame.dstrect = SDL_Rect{0, 0, w, h};;
+        frame.frame.dstrect = SDL_FRect{0, 0, w, h};
+        mask.frame.srcrect = mask.frame.dstrect = SDL_FRect{0, 0, w, h};;
     } else {
         int win_w; int win_h;
-        SDL_GetRendererOutputSize(renderer, &win_w, &win_h);
+        SDL_GetCurrentRenderOutputSize(renderer, &win_w, &win_h);
         int w = aspect_ratio * (((double)win_h / VIC_II::FRAME_HEIGHT) * VIC_II::FRAME_WIDTH);
         if (w < win_w) {
             frame.frame.dstrect.x = (win_w - w) / 2;
@@ -560,7 +565,7 @@ void Video_out::upd_dimensions() {
             frame.frame.dstrect.h = h;
         }
 
-        mask.frame.srcrect = mask.frame.dstrect = SDL_Rect{0, 0, win_w, win_h};;
+        mask.frame.srcrect = mask.frame.dstrect = SDL_FRect{0, 0, float(win_w), float(win_h)};;
     }
 
     SDL_RenderClear(renderer);
@@ -603,7 +608,7 @@ void Video_out::resize_window(int w, int h) {
 
 
 u16 Audio_out::config(u16 buf_sz) {
-    SDL_AudioSpec want;
+    /*SDL_AudioSpec want;
     SDL_AudioSpec have;
 
     Log::info("Configuring audio device...");
@@ -629,7 +634,8 @@ u16 Audio_out::config(u16 buf_sz) {
 
     Log::info("Done.");
 
-    return have.samples;
+    return have.samples;*/
+    return 0;
 }
 
 
