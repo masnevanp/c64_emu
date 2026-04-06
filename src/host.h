@@ -33,8 +33,8 @@ public:
     Input(Handlers& handlers_);
 
     ~Input() {
-        //if (sdl_joystick[0]) SDL_JoystickClose(sdl_joystick[0]);
-        //if (sdl_joystick[1]) SDL_JoystickClose(sdl_joystick[1]);
+        if (sdl_joystick[0]) SDL_CloseJoystick(sdl_joystick[0]);
+        if (sdl_joystick[1]) SDL_CloseJoystick(sdl_joystick[1]);
     }
 
 private:

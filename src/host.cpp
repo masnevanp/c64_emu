@@ -122,36 +122,37 @@ Input::Input(Handlers& handlers_)
 
     // TODO: allow selection (for now just the first two found are attached)
     // TODO: joystick calibration/configuration...
+    int num_joys = 0;
     int open_joys = 0;
-    /*for (int j = 0; j < SDL_NumJoysticks() && open_joys < 2; ++j) {
-        SDL_Joystick* sj = SDL_JoystickOpen(j);
-        if(!sj) Log::error("Unable to SDL_JoystickOpen: %s", SDL_GetError());
+    SDL_JoystickID* joy_ids = SDL_GetJoysticks(&num_joys);
+    for (int j = 0; j < num_joys && open_joys < 2; ++j) {
+        SDL_Joystick* sj = SDL_OpenJoystick(joy_ids[j]);
+        if(!sj) Log::error("Unable to SDL_OpenJoystick: %s", SDL_GetError());
         else {
-            sdl_joystick_id[open_joys] = SDL_JoystickInstanceID(sj);
+            sdl_joystick_id[open_joys] = SDL_GetJoystickID(sj);
             sdl_joystick[open_joys++] = sj;
         }
-    }*/
+    }
     Log::info("%d joysticks attached", open_joys);
+    Log::info("TODO: test joys");
 }
 
 
 void Input::poll() {
     while (SDL_PollEvent(&sdl_ev)) {
         switch (sdl_ev.type) {
-            case SDL_EVENT_KEY_DOWN:       handle_key(true);      break;
-            case SDL_EVENT_KEY_UP:         handle_key(false);     break;
-            //case SDL_JOYAXISMOTION: handle_joy_axis();     break;
-            //case SDL_JOYBUTTONDOWN: handle_joy_btn(true);  break;
-            //case SDL_JOYBUTTONUP:   handle_joy_btn(false); break;
-            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-                handlers.sys(Key_code::System::shutdown, true);
-                break;
-            case SDL_EVENT_WINDOW_FOCUS_GAINED:
-                set_shift_lock();
-                break;
             case SDL_EVENT_WINDOW_RESIZED:
                 handlers.window_resized(sdl_ev.window.data1, sdl_ev.window.data2);
                 break;
+            case SDL_EVENT_WINDOW_FOCUS_GAINED:  set_shift_lock();      break;
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                handlers.sys(Key_code::System::shutdown, true);
+                break;
+            case SDL_EVENT_KEY_DOWN:             handle_key(true);      break;
+            case SDL_EVENT_KEY_UP:               handle_key(false);     break;
+            case SDL_EVENT_JOYSTICK_AXIS_MOTION: handle_joy_axis();     break;
+            case SDL_EVENT_JOYSTICK_BUTTON_DOWN: handle_joy_btn(true);  break;
+            case SDL_EVENT_JOYSTICK_BUTTON_UP:   handle_joy_btn(false); break;
             case SDL_EVENT_DROP_FILE:
                 handlers.filedrop(sdl_ev.drop.data);
                 break;
@@ -642,6 +643,8 @@ u16 Audio_out::config(u16 buf_sz) {
     Log::info("Done.");
 
     return have.samples;*/
+    Log::info("TODO: audio");
+
     return 0;
 }
 
