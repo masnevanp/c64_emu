@@ -135,18 +135,26 @@ Input::Input(Handlers& handlers_)
 }
 
 
-void Input::poll() { // TODO: filtering?
+void Input::poll() {
     while (SDL_PollEvent(&sdl_ev)) {
-        switch (sdl_ev.type) {/*
-            case SDL_KEYDOWN:       handle_key(true);      break;
-            case SDL_KEYUP:         handle_key(false);     break;
-            case SDL_JOYAXISMOTION: handle_joy_axis();     break;
-            case SDL_JOYBUTTONDOWN: handle_joy_btn(true);  break;
-            case SDL_JOYBUTTONUP:   handle_joy_btn(false); break;
-            case SDL_WINDOWEVENT:   handle_win_ev();       break;
-            case SDL_DROPFILE:      handle_dropfile();     break;
-            */
-           case SDL_EVENT_QUIT: handlers.sys(Key_code::System::shutdown, true);
+        switch (sdl_ev.type) {
+            case SDL_EVENT_KEY_DOWN:       handle_key(true);      break;
+            case SDL_EVENT_KEY_UP:         handle_key(false);     break;
+            //case SDL_JOYAXISMOTION: handle_joy_axis();     break;
+            //case SDL_JOYBUTTONDOWN: handle_joy_btn(true);  break;
+            //case SDL_JOYBUTTONUP:   handle_joy_btn(false); break;
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                handlers.sys(Key_code::System::shutdown, true);
+                break;
+            case SDL_EVENT_WINDOW_FOCUS_GAINED:
+                set_shift_lock();
+                break;
+            case SDL_EVENT_WINDOW_RESIZED:
+                handlers.window_resized(sdl_ev.window.data1, sdl_ev.window.data2);
+                break;
+            case SDL_EVENT_DROP_FILE:
+                handlers.filedrop(sdl_ev.drop.data);
+                break;
         }
     }
 }
@@ -160,30 +168,29 @@ void Input::swap_joysticks() {
 }
 
 
-u8 Input::translate_sdl_key() {/*
+u8 Input::translate_sdl_key() {
     static const i32 MAX_KC             = SDLK_SLEEP;
     static const i32 LAST_CHAR_KC       = SDLK_DELETE;
     static const i32 FIRST_NON_CHAR_KC  = SDLK_CAPSLOCK;
     static const i32 OFFSET_NON_CHAR_KC = FIRST_NON_CHAR_KC - (LAST_CHAR_KC + 1);
 
-    const SDL_Keysym key_sym = sdl_ev.key.keysym;
+    const auto& k = sdl_ev.key;
 
-    if (key_sym.mod & SDL_Keymod::KMOD_RALT) {
-        const auto sc = key_sym.scancode;
-        if (sc < std::size(SC_RALT_LU_TBL)) {
-            if (auto kc = SC_RALT_LU_TBL[sc]; kc != sy::nop) return kc;
+    if (k.mod & SDL_KMOD_RALT) {
+        if (k.scancode < std::size(SC_RALT_LU_TBL)) {
+            if (auto kc = SC_RALT_LU_TBL[k.scancode]; kc != sy::nop) return kc;
         }
     }
 
-    if (key_sym.sym <= MAX_KC) {
+    if (k.key <= MAX_KC) {
         // most mapped on keycode, some on scancode
-        if (key_sym.sym <= LAST_CHAR_KC)
-            return KC_LU_TBL[key_sym.sym];
-        else if (key_sym.sym >= FIRST_NON_CHAR_KC)
-            return KC_LU_TBL[key_sym.sym - OFFSET_NON_CHAR_KC];
-        else if (key_sym.scancode >= 0x2e && key_sym.scancode <= 0x35)
-            return SC_LU_TBL[key_sym.scancode - 0x2e];
-    }*/
+        if (k.key <= LAST_CHAR_KC)
+            return KC_LU_TBL[k.key];
+        else if (k.key >= FIRST_NON_CHAR_KC)
+            return KC_LU_TBL[k.key - OFFSET_NON_CHAR_KC];
+        else if (k.scancode >= 0x2e && k.scancode <= 0x35)
+            return SC_LU_TBL[k.scancode - 0x2e];
+    }
 
     return Key_code::System::nop;
 }

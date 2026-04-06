@@ -76,25 +76,6 @@ private:
         return *(joy_handler[joy_idx]);
     }
 
-    void handle_win_ev() {
-        /*switch (sdl_ev.window.event) {
-            case SDL_WINDOWEVENT_CLOSE:
-                handlers.sys(Key_code::System::shutdown, true);
-                break;
-            case SDL_WINDOWEVENT_FOCUS_GAINED:
-                set_shift_lock();
-                break;
-            case SDL_WINDOWEVENT_RESIZED:
-                handlers.window_resized(sdl_ev.window.data1, sdl_ev.window.data2);
-                break;
-        }*/
-    }
-
-    void handle_dropfile() {
-        /*handlers.filedrop(sdl_ev.drop.file);
-        SDL_free(sdl_ev.drop.file);*/
-    }
-
     void set_shift_lock() {
         const bool down = SDL_GetModState() & SDL_KMOD_CAPS;
         // disable/enable left shift
@@ -290,6 +271,19 @@ private:
             Log::error("Unable to initialize SDL: %s", SDL_GetError());
             exit(1);
         }
+
+        Log::info("Running on %s", SDL_GetPlatform());
+
+        const int compiled = SDL_VERSION;
+        const int linked = SDL_GetVersion();
+        Log::info("SDL version (compiled/linked): %d.%d.%d / %d.%d.%d",
+            SDL_VERSIONNUM_MAJOR(compiled),
+            SDL_VERSIONNUM_MINOR(compiled),
+            SDL_VERSIONNUM_MICRO(compiled),
+            SDL_VERSIONNUM_MAJOR(linked),
+            SDL_VERSIONNUM_MINOR(linked),
+            SDL_VERSIONNUM_MICRO(linked)
+        );
     }
     _SDL(const _SDL& ) = delete;
     void operator=(const _SDL& ) = delete;
