@@ -121,7 +121,7 @@ public:
 
     Menu::Group settings_menu() { return { "Video", menu_items, colodore_sub}; }
 
-    Video_out(const double& frame_rate_in_) : frame_rate_in(frame_rate_in_) {}
+    Video_out(const double& frame_rate_client_) : frame_rate_client(frame_rate_client_) {}
     ~Video_out();
 
     void put(const u8* vic_frame);
@@ -139,8 +139,7 @@ public:
 
     void reconfig() { upd_mode(); }
 
-    //bool v_synced() const { return double(sdl_mode.refresh_rate) == frame_rate_in; }
-    bool v_synced() const { return false; } // TODO
+    bool v_synced() const { return vsync; }
 
 private:
     struct SDL_frame {
@@ -201,11 +200,12 @@ private:
     void upd_dimensions();
     void resize_window(int w, int h);
 
-    const double& frame_rate_in;
+    const double& frame_rate_client;
 
     Settings set;
 
     const SDL_DisplayMode* sdl_mode = nullptr;
+    int vsync = 0;
 
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
@@ -240,23 +240,23 @@ class Audio_out {
 public:
     static constexpr int bytes_per_sample = 2;
 
-    ~Audio_out() { if (dev) SDL_CloseAudioDevice(dev); }
+    ~Audio_out() { if (stream) SDL_DestroyAudioStream(stream); }
 
     u16 config(u16 buf_sz);
 
     int put(const i16* chunk, u32 sz) {
-        if (dev) {
-            //SDL_QueueAudio(dev, chunk, sz * bytes_per_sample);
-            //return SDL_GetQueuedAudioSize(dev) / bytes_per_sample;
+        if (stream) {
+            SDL_PutAudioStreamData(stream, chunk, sz * bytes_per_sample);
+            return SDL_GetAudioStreamQueued(stream) / bytes_per_sample;
         }
 
         return 0;
     }
 
-    void flush() { /*SDL_ClearQueuedAudio(dev);*/ }
+    void flush() { SDL_FlushAudioStream(stream); }
 
 private:
-    SDL_AudioDeviceID dev = 0;
+    SDL_AudioStream* stream = nullptr;
 
 };
 

@@ -134,7 +134,6 @@ Input::Input(Handlers& handlers_)
         }
     }
     Log::info("%d joysticks attached", open_joys);
-    Log::info("TODO: test joys");
 }
 
 
@@ -483,14 +482,22 @@ SDL_Texture* Video_out::create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SD
 
 void Video_out::upd_mode() {
     if (!window) {
-        window = SDL_CreateWindow("WIP #$40", 100, 100, SDL_WINDOW_RESIZABLE);
-        if (!window) {
-            Log::error("Failed to SDL_CreateWindow: %s", SDL_GetError());
+        if (!SDL_CreateWindowAndRenderer(
+            "WIP #$40", 320, 200,
+            SDL_WINDOW_RESIZABLE, &window, &renderer
+        )) {
+            Log::error("Failed to SDL_CreateWindowAndRenderer: %s", SDL_GetError());
             exit(1);
         }
-    }
 
-    if (renderer) SDL_DestroyRenderer(renderer);
+        Log::info("Renderer: %s" ,SDL_GetRendererName(renderer));
+
+        SDL_SetWindowPosition(window, 350, 100); // TODO: center window
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+
+        frame.frame.connect(renderer);
+        mask.frame.connect(renderer);
+    }
 
     switch (set.mode) {
         case Mode::win:
@@ -525,18 +532,13 @@ void Video_out::upd_mode() {
         exit(1);
     }
 
-    // const u32 v_sync_flag = v_synced() ? SDL_RENDERER_PRESENTVSYNC : 0;
-    Log::info("TODO: vsync support");
-    renderer = SDL_CreateRenderer(window, nullptr);
-    if (!renderer) {
-        Log::error("Failed to SDL_CreateRenderer: %s", SDL_GetError());
-        exit(1);
-    }
+    vsync = // e.g. roughly we check if (60.000 == 60.000)... good enough?
+        int(1000 * sdl_mode->refresh_rate) == int(1000 * float(frame_rate_client))
+        ? 1 : 0;
+    SDL_SetRenderVSync(renderer, vsync);
 
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-
-    frame.frame.connect(renderer);
-    mask.frame.connect(renderer);
+    Log::info("Video out: %.3f Hz (in: %.3f Hz ==> vsync: %d)",
+                sdl_mode->refresh_rate, frame_rate_client, vsync);
 
     mask.upd(set);
 
@@ -616,36 +618,33 @@ void Video_out::resize_window(int w, int h) {
 
 
 u16 Audio_out::config(u16 buf_sz) {
-    /*SDL_AudioSpec want;
-    SDL_AudioSpec have;
-
+    UNUSED(buf_sz);
+    //Log::info("Configuring audio device. buf_sz=%d", buf_sz);
     Log::info("Configuring audio device...");
 
-    if (dev) {
-        flush();
-        SDL_CloseAudioDevice(dev);
-    }
+    if (stream) SDL_DestroyAudioStream(stream);
 
-    SDL_memset(&want, 0, sizeof(want));
-    want.freq = AUDIO_OUTPUT_FREQ;
-    want.format = AUDIO_S16LSB;
-    want.channels = 1;
-    want.samples = buf_sz;
+    // seems that this hint is ignored (on windows) ==> actual buf.sz always 441
+    // ==> ~10ms latency (too much?)
+    // SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, std::to_string(buf_sz).c_str());
 
-    dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
-    if (dev == 0) {
-        Log::error("Fail: '%s'", SDL_GetError());
+    const SDL_AudioSpec spec = { SDL_AUDIO_S16LE, 1, AUDIO_OUTPUT_FREQ };
+    stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+    if (!stream) {
+        Log::error("Audio fail: %s.", SDL_GetError());
         return 0;
     }
 
-    SDL_PauseAudioDevice(dev, 0);
+    const auto dev_id = SDL_GetAudioStreamDevice(stream);
 
-    Log::info("Done.");
+    SDL_AudioSpec dummy;
+    int samples;
+    SDL_GetAudioDeviceFormat(dev_id, &dummy, &samples);
 
-    return have.samples;*/
-    Log::info("TODO: audio");
+    Log::info("Audio configured (sample frames: %d).", samples);
+    SDL_ResumeAudioDevice(dev_id);
 
-    return 0;
+    return samples;
 }
 
 
