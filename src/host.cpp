@@ -618,33 +618,30 @@ void Video_out::resize_window(int w, int h) {
 
 
 u16 Audio_out::config(u16 buf_sz) {
-    UNUSED(buf_sz);
-    //Log::info("Configuring audio device. buf_sz=%d", buf_sz);
-    Log::info("Configuring audio device...");
+    Log::info("Configuring audio (requested buf_sz=%d)...", buf_sz);
 
     if (stream) SDL_DestroyAudioStream(stream);
 
-    // seems that this hint is ignored (on windows) ==> actual buf.sz always 441
-    // ==> ~10ms latency (too much?)
-    // SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, std::to_string(buf_sz).c_str());
+    // Sadly, this hint can be ignored, possible leading to noticable latency... :(
+    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, std::to_string(buf_sz).c_str());
 
-    const SDL_AudioSpec spec = { SDL_AUDIO_S16LE, 1, AUDIO_OUTPUT_FREQ };
-    stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+    SDL_AudioSpec audio_spec = { SDL_AUDIO_S16LE, 1, AUDIO_OUTPUT_FREQ };
+    stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audio_spec, nullptr, nullptr);
     if (!stream) {
         Log::error("Audio fail: %s.", SDL_GetError());
         return 0;
     }
 
+    int sample_frames;
     const auto dev_id = SDL_GetAudioStreamDevice(stream);
+    SDL_GetAudioDeviceFormat(dev_id, &audio_spec, &sample_frames);
 
-    SDL_AudioSpec dummy;
-    int samples;
-    SDL_GetAudioDeviceFormat(dev_id, &dummy, &samples);
-
-    Log::info("Audio configured (sample frames: %d).", samples);
+    const auto dev_name = SDL_GetAudioDeviceName(dev_id);
+    const auto dev_freq = audio_spec.freq;
+    Log::info("Audio: '%s' configured (rate: %d, buf_sz: %d).", dev_name, dev_freq, sample_frames);
     SDL_ResumeAudioDevice(dev_id);
 
-    return samples;
+    return sample_frames;
 }
 
 
