@@ -108,7 +108,7 @@ enum Color : u8 {
 namespace Log {
     template<typename... Args>
     void info(const char* fmt, Args... args) {
-        printf("[INF] ");
+        printf("[i] ");
         printf(fmt, args...);
         printf("\n");
         fflush(stdout);
@@ -116,7 +116,7 @@ namespace Log {
 
     template<typename... Args>
     void error(const char* fmt, Args... args) {
-        fprintf(stderr, "[ERR] ");
+        fprintf(stderr, "[#] ");
         fprintf(stderr, fmt, args...);
         fprintf(stderr, "\n");
         fflush(stderr);
