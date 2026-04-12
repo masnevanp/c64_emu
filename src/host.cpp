@@ -138,12 +138,12 @@ Input::Input(Handlers& handlers_)
 void Input::poll() { // TODO: filtering?
     while (SDL_PollEvent(&sdl_ev)) {
         switch (sdl_ev.type) {
+            case SDL_WINDOWEVENT:   handle_win_ev();       break;
             case SDL_KEYDOWN:       handle_key(true);      break;
             case SDL_KEYUP:         handle_key(false);     break;
             case SDL_JOYAXISMOTION: handle_joy_axis();     break;
             case SDL_JOYBUTTONDOWN: handle_joy_btn(true);  break;
             case SDL_JOYBUTTONUP:   handle_joy_btn(false); break;
-            case SDL_WINDOWEVENT:   handle_win_ev();       break;
             case SDL_DROPFILE:      handle_dropfile();     break;
         }
     }
@@ -493,7 +493,7 @@ void Video_out::upd_mode() {
             }
             break;
         case Mode::fullscr: { // TODO: cycle through supported modes?
-            auto fr = int(frame_rate_in);
+            auto fr = int(frame_rate_client);
             SDL_DisplayMode sdm = { pixel_format, 1920, 1080, fr, 0 };
             if (SDL_SetWindowDisplayMode(window, &sdm) != 0) {
                 Log::error("Failed to SDL_SetWindowDisplayMode: %s", SDL_GetError());
@@ -513,12 +513,21 @@ void Video_out::upd_mode() {
         exit(1);
     }
 
-    const u32 v_sync_flag = v_synced() ? SDL_RENDERER_PRESENTVSYNC : 0;
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | v_sync_flag);
+    const u32 vsync_flag = double(sdl_mode.refresh_rate) == frame_rate_client
+        ? SDL_RENDERER_PRESENTVSYNC : 0;
+    vsync = vsync_flag == SDL_RENDERER_PRESENTVSYNC;
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | vsync_flag);
     if (!renderer) {
         Log::error("Failed to SDL_CreateRenderer: %s", SDL_GetError());
         exit(1);
     }
+
+    SDL_RendererInfo ri;
+    if (SDL_GetRendererInfo(renderer, &ri) == 0) Log::info("Renderer: %s" , ri.name);
+
+    Log::info("Video out: %d Hz (in: %.3f Hz ==> vsync: %d)",
+                sdl_mode.refresh_rate, frame_rate_client, vsync);
+
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 
@@ -606,7 +615,7 @@ u16 Audio_out::config(u16 buf_sz) {
     SDL_AudioSpec want;
     SDL_AudioSpec have;
 
-    Log::info("Configuring audio device...");
+     Log::info("Configuring audio (requested buf_sz=%d)...", buf_sz);
 
     if (dev) {
         flush();
@@ -621,15 +630,18 @@ u16 Audio_out::config(u16 buf_sz) {
 
     dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
     if (dev == 0) {
-        Log::error("Fail: '%s'", SDL_GetError());
+        Log::error("Audio fail: %s.", SDL_GetError());
         return 0;
     }
 
+    const auto dev_name = SDL_GetCurrentAudioDriver(); // SDL_GetAudioDeviceName(dev_id);
+    const auto dev_freq = have.freq;
+    const auto dev_buf_sz = have.samples;
+    Log::info("Audio: '%s' configured (rate: %d, buf_sz: %d).", dev_name, dev_freq, dev_buf_sz);
+
     SDL_PauseAudioDevice(dev, 0);
 
-    Log::info("Done.");
-
-    return have.samples;
+    return dev_buf_sz;
 }
 
 

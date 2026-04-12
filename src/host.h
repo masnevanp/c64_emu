@@ -78,14 +78,14 @@ private:
 
     void handle_win_ev() {
         switch (sdl_ev.window.event) {
-            case SDL_WINDOWEVENT_CLOSE:
-                handlers.sys(Key_code::System::shutdown, true);
+            case SDL_WINDOWEVENT_RESIZED:
+                handlers.window_resized(sdl_ev.window.data1, sdl_ev.window.data2);
                 break;
             case SDL_WINDOWEVENT_FOCUS_GAINED:
                 set_shift_lock();
                 break;
-            case SDL_WINDOWEVENT_RESIZED:
-                handlers.window_resized(sdl_ev.window.data1, sdl_ev.window.data2);
+            case SDL_WINDOWEVENT_CLOSE:
+                handlers.sys(Key_code::System::shutdown, true);
                 break;
         }
     }
@@ -140,7 +140,7 @@ public:
 
     Menu::Group settings_menu() { return { "Video", menu_items, colodore_sub}; }
 
-    Video_out(const double& frame_rate_in_) : frame_rate_in(frame_rate_in_) {}
+    Video_out(const double& frame_rate_client_) : frame_rate_client(frame_rate_client_) {}
     ~Video_out();
 
     void put(const u8* vic_frame);
@@ -158,7 +158,7 @@ public:
 
     void reconfig() { upd_mode(); }
 
-    bool v_synced() const { return double(sdl_mode.refresh_rate) == frame_rate_in; }
+    bool v_synced() const { return vsync; }
 
     static SDL_Texture* create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SDL_BlendMode bm,
                                             int w, int h);
@@ -221,11 +221,12 @@ private:
     void upd_dimensions();
     void resize_window(int w, int h);
 
-    const double& frame_rate_in;
+    const double& frame_rate_client;
 
     Settings set;
 
     SDL_DisplayMode sdl_mode = { 0, 0, 0, 0, 0 };
+    bool vsync = false;
 
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
@@ -281,20 +282,33 @@ private:
 class _SDL { // classic...
 public:
     static _SDL& instance() { static _SDL _sdl; return _sdl; }
-    ~_SDL() { if (init) SDL_Quit(); }
+    ~_SDL() { SDL_Quit(); }
 private:
     _SDL() {
         if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO |  SDL_INIT_JOYSTICK) != 0) {
             Log::error("Unable to initialize SDL: %s", SDL_GetError());
             exit(1);
-        } else {
-            init = true;
         }
 
+        Log::info("Running on %s", SDL_GetPlatform());
+
+        SDL_version compiled;
+        SDL_version linked;
+
+        SDL_VERSION(&compiled);
+        SDL_GetVersion(&linked);
+
+        Log::info("SDL version (compiled/linked): %d.%d.%d / %d.%d.%d",
+            compiled.major,
+            compiled.minor,
+            compiled.patch,
+            linked.major,
+            linked.minor,
+            linked.patch
+        );
     }
     _SDL(const _SDL& ) = delete;
     void operator=(const _SDL& ) = delete;
-    bool init = false;
 };
 extern _SDL& _sdl;
 
