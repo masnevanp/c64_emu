@@ -532,12 +532,15 @@ void Video_out::upd_mode() {
         exit(1);
     }
 
-    vsync = // e.g. roughly we check if (60.000 == 60.000)... good enough?
+    const int new_vsync = // e.g. roughly we check if (60.000 == 60.000)... good enough?
         int(1000 * sdl_mode->refresh_rate) == int(1000 * float(frame_rate_client))
         ? 1 : 0;
-    SDL_SetRenderVSync(renderer, vsync);
+    if (new_vsync != vsync) {
+        if (SDL_SetRenderVSync(renderer, new_vsync)) vsync = new_vsync;
+    }
 
-    Log::info("Video out: %.3f Hz (in: %.3f Hz ==> vsync: %d)",
+    Log::info("Video out: %dx%d, %.3f Hz (in: %.3f Hz ==> vsync: %d)",
+                sdl_mode->w, sdl_mode->h,
                 sdl_mode->refresh_rate, frame_rate_client, vsync);
 
     mask.upd(set);
