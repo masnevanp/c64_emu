@@ -528,7 +528,9 @@ void Video_out::upd_mode() {
     }
 
     const int new_vsync = double(sdl_mode.refresh_rate) == frame_rate_client ? 1 : 0;
-    if (SDL_RenderSetVSync(renderer, new_vsync) == 0) vsync = new_vsync;
+    if (new_vsync != vsync) {
+        if (SDL_RenderSetVSync(renderer, new_vsync) == 0) vsync = new_vsync;
+    }
 
     Log::info("Video out: %dx%d, %d Hz (in: %.3f Hz ==> vsync: %d)",
                 sdl_mode.w, sdl_mode.h,
