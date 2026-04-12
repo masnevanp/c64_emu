@@ -226,7 +226,7 @@ private:
     Settings set;
 
     SDL_DisplayMode sdl_mode = { 0, 0, 0, 0, 0 };
-    bool vsync = false;
+    int vsync = 0;
 
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;

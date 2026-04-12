@@ -475,9 +475,23 @@ void Video_out::upd_mode() {
             Log::error("Failed to SDL_CreateWindow: %s", SDL_GetError());
             exit(1);
         }
-    }
 
-    if (renderer) SDL_DestroyRenderer(renderer);
+        renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+        if (!renderer) {
+            Log::error("Failed to SDL_CreateRenderer: %s", SDL_GetError());
+            exit(1);
+        }
+
+        SDL_RendererInfo ri;
+        if (SDL_GetRendererInfo(renderer, &ri) == 0) Log::info("Renderer: %s" , ri.name);
+
+        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+
+        frame.frame.connect(renderer);
+        mask.frame.connect(renderer);
+
+    }
 
     switch (set.mode) {
         case Mode::win:
@@ -513,26 +527,12 @@ void Video_out::upd_mode() {
         exit(1);
     }
 
-    const u32 vsync_flag = double(sdl_mode.refresh_rate) == frame_rate_client
-        ? SDL_RENDERER_PRESENTVSYNC : 0;
-    vsync = vsync_flag == SDL_RENDERER_PRESENTVSYNC;
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | vsync_flag);
-    if (!renderer) {
-        Log::error("Failed to SDL_CreateRenderer: %s", SDL_GetError());
-        exit(1);
-    }
+    const int new_vsync = double(sdl_mode.refresh_rate) == frame_rate_client ? 1 : 0;
+    if (SDL_RenderSetVSync(renderer, new_vsync) == 0) vsync = new_vsync;
 
-    SDL_RendererInfo ri;
-    if (SDL_GetRendererInfo(renderer, &ri) == 0) Log::info("Renderer: %s" , ri.name);
-
-    Log::info("Video out: %d Hz (in: %.3f Hz ==> vsync: %d)",
+    Log::info("Video out: %dx%d, %d Hz (in: %.3f Hz ==> vsync: %d)",
+                sdl_mode.w, sdl_mode.h,
                 sdl_mode.refresh_rate, frame_rate_client, vsync);
-
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-
-    frame.frame.connect(renderer);
-    mask.frame.connect(renderer);
 
     mask.upd(set);
 
