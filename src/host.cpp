@@ -639,9 +639,9 @@ u16 Audio_out::config(u16 buf_sz) {
     const auto dev_id = SDL_GetAudioStreamDevice(stream);
     SDL_GetAudioDeviceFormat(dev_id, &audio_spec, &sample_frames);
 
-    const auto dev_name = SDL_GetAudioDeviceName(dev_id);
+    const auto driver = SDL_GetCurrentAudioDriver();
     const auto dev_freq = audio_spec.freq;
-    Log::info("Audio: '%s' configured (rate: %d, buf_sz: %d).", dev_name, dev_freq, sample_frames);
+    Log::info("Audio: '%s' configured (rate: %d, buf_sz: %d).", driver, dev_freq, sample_frames);
     SDL_ResumeAudioDevice(dev_id);
 
     return sample_frames;
