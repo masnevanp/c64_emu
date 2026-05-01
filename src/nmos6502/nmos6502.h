@@ -59,7 +59,7 @@ struct Instruction {
     const std::string asm_format;
 };
 
-extern const Instruction instruction[256]; // TODO: move to 'nmos6502/'
+extern const Instruction instruction[256];
 
 } // namespace NMOS6502
 
