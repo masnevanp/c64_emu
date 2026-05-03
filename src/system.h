@@ -340,8 +340,8 @@ class Input_matrix {
 public:
     using State = State::System::Input_matrix;
 
-    Input_matrix(State& s_, IO::Port::PD_in& pa_in_, IO::Port::PD_in& pb_in_, VIC& vic_)
-        : s(s_), pa_in(pa_in_), pb_in(pb_in_), vic(vic_) {}
+    Input_matrix(State& s_, IO::Port::PD_in& pa_in_, IO::Port::PD_in& pb_in_, Sig1<u8>& lp_)
+        : s(s_), pa_in(pa_in_), pb_in(pb_in_), lp(lp_) {}
 
     void reset() {
         s.key_states = s.kb_matrix = 0;
@@ -386,7 +386,7 @@ private:
 
     IO::Port::PD_in& pa_in;
     IO::Port::PD_in& pb_in;
-    VIC& vic; // TODO: replace with a signal?
+    Sig1<u8>& lp;
 };
 
 
@@ -485,7 +485,7 @@ private:
 
     Int_hub int_hub{s.int_hub};
 
-    Input_matrix input_matrix{s.input_matrix, cia1.port_a.ext_in, cia1.port_b.ext_in, vic};
+    Input_matrix input_matrix{s.input_matrix, cia1.port_a.ext_in, cia1.port_b.ext_in, vic.lp_line};
 
     C1541::System c1541{s.c1541, cia2.port_a.ext_in, rom.c1541};
 

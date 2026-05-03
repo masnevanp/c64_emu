@@ -8,11 +8,6 @@
 namespace VIC_II {
 
 
-static constexpr u8 CIA1_PB_LP_BIT = 0x10;
-
-enum LP_src { cia = 0x1, ctrl_port = 0x2, };
-
-
 using VS = State::VIC_II;
 using R = State::VIC_II::R;
 
@@ -52,8 +47,6 @@ public:
           mobs(s, bus, ba, irq), gfx(s, bus, ba), border(s) {}
 
     void reset();
-
-    void set_lp(u8 src, u8 bit)   { lp.set(src, bit ^ CIA1_PB_LP_BIT); }
 
     void r(const u8& ri, u8& data) {
         switch (ri) {
@@ -107,17 +100,9 @@ public:
         }
     }
 
-    /* NOTE:
-        mobs.prep_dma/do_dma pair is done, so that it takes the specified
-        5 cycles in total. do_dma is done at the last moment possible, and
-        all the memory access is then done at once (which is not how it is
-        done in reality). Normally this is not an issue since the CPU is asleep
-        all the way through (and hence, cannot modify the memory). But...
-      TODO:
-        Might a cartridge modify the memory during these cycles? Surely not in
-        a 'safe' way since VIC has/uses the bus for both phases, right?
-        Anyway, the current MOB access would not be 100% cycle/memory accurate
-        in those cases. */
+    Sig1<u8> lp_line {
+        [this](bool low) { lp.set_line(low); }
+    };
 
     void tick();
 
@@ -178,30 +163,25 @@ private:
     class Light_pen {
     public:
         void reset() {
-            if (s.lp.triggered & ~per_frame) trigger();
-            else s.lp.triggered = 0;
+            if (s.lp.line_low) trigger();
+            else s.lp.triggered = false; // TODO: should this be cleared even if line is low?
         }
 
-        // TODO: set lp x/y (mouse event)
+        // TODO: support mouse as lightpen (set lp x/y)
         void tick() {
             if (s.lp.trigger_at_phi1) {
                 s.lp.trigger_at_phi1 = false;
                 trigger();
             }
         }
-        void set(u8 src, bool low) { // @phi2
-            if (low) {
-                if (!s.lp.triggered) s.lp.trigger_at_phi1 = true;
-                s.lp.triggered |= (src | per_frame);
-            } else {
-                s.lp.triggered &= ~src;
-            }
+
+        void set_line(bool low) { // @phi2
+            s.lp.line_low = low;
+            if (low && !s.lp.triggered) s.lp.triggered = s.lp.trigger_at_phi1 = true;
         }
 
         Light_pen(VS& s_, IRQ& irq_) : s(s_), irq(irq_) {}
     private:
-        static const u8 per_frame = 0x80;
-
         VS& s;
         IRQ& irq;
 
@@ -718,10 +698,14 @@ void Core<Bus>::reset() {
 template<typename Bus>
 void Core<Bus>::MOBs::do_dma(u8 mn)  { // do p&s -accesses
     VS::MOB& m = mob[mn];
-    // if dma_on, then cpu has already been stopped --> safe to read all at once (1p + 3s)
+
     if (!MOB{m}.dma_off()) {
         if (MOB{m}.dma_on()) {
             if (m.disp_on) {
+                // NOTE: The timing here is not accurate. All 4 reads are not actually done at once (during
+                // one half-cycle). But since the CPU is halted, it can not see it. But still, the state
+                // of the bus is not correct for these cycles --> can be observed e.g. by an expansion.
+                // TODO: maybe fix this... (at least if it becomes on issue...)
                 const u16 mb = ((reg[R::mptr] & MPTR::vm) << 6) | MP_BASE;
                 const u16 mp = bus.vic_access(mb | mn) << 6;
                 MOB{m}.load_data(
