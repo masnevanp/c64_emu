@@ -26,8 +26,9 @@ struct VIC_II {
 
     enum V_blank : u8 { vb_off = 0, vb_on = 63 };
 
-    struct Light_pen {
-        u8 triggered = 0;
+    struct Light_pen { // TODO: a single flags-reg? (universal --> all flags in system?)
+        u8 line_low = false;
+        u8 triggered = false;
         u8 trigger_at_phi1 = false;
     };
 

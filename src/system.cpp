@@ -221,7 +221,9 @@ void System::Input_matrix::output() {
     pa_in(0b11111111, pa);
     pb_in(0b11111111, pb);
 
-    vic.set_lp(VIC_II::LP_src::cia, pb & VIC_II::CIA1_PB_LP_BIT);
+    static constexpr u8 cia1_pb_lp_bit = 0b00010000;
+    const auto lp_low = !(pb & cia1_pb_lp_bit);
+    lp(lp_low);
 }
 
 
