@@ -197,13 +197,13 @@ public:
     uint64_t cn = 1;
     int tn = 0;
     void exec_cycle() {
-        if (cpu.mrw() == MC::RW::r) cpu.mdr() = mem[cpu.mar()];
-        else mem[cpu.mar()] = cpu.mdr();
+        if (cpu.s.bus_rw == MC::RW::r) cpu.s.bus_d = mem[cpu.s.bus_a];
+        else mem[cpu.s.bus_a] = cpu.s.bus_d;
         //if (cpu.mar() < 2) print_status(cpu, mem);
         cpu.tick();
         ++cn; ++tn;
         // BEWARE
-        if (cpu.mop().mopc >= MC::MOPC::dispatch_cli && cpu.mop().mopc <= MC::MOPC::dispatch_brk) tn = 0;
+        if (cpu.s.opc() >= OPC::dispatch_cli && cpu.s.opc() <= OPC::dispatch_brk) tn = 0;
     }
     void do_reset() { cpu.reset(); for (int i = 0; i < 7; ++i, ++cn) exec_cycle(); }
 

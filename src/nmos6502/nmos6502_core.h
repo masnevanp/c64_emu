@@ -11,24 +11,28 @@ namespace NMOS6502 {
 
 struct Core {
 public:
-    struct State {
-        Reg8 zp;
-        Reg8 zph{0x00};
-        Reg16 pc;
-        Reg8 d;
-        Reg8 ir;
-        Reg8 a1l;
-        Reg8 a1h;
-        Reg16 a2;
-        Reg16 sp{0x1ff};
-        Reg8 p;
-        Reg8 a;
-        Reg8 x;
-        Reg8 y;
-        Reg16 a3;
-        Reg16 a4;
+    using RW = NMOS6502::MC::RW;
 
-        u8 mcc; // micro-code counter
+    struct State {
+        u16 mcc; // micro-code counter
+
+        u16 pc;
+        /* Bus access params (addr, data, r/w).
+           The read/write is expected to happen between ticks, e.g.:
+           for (;;) {
+               do_access(core.s.bus_a, core.s.bus_d, core.s.bus_rw);
+               core.tick();
+           }
+        */
+        u16 bus_a;
+        u8 bus_d;
+        RW bus_rw;
+
+        u8 p;
+        u8 a;
+        u8 x;
+        u8 y;
+        u8 sp;
 
         u8 nmi_act;
         u8 nmi_timer;
@@ -36,17 +40,13 @@ public:
         u8 irq_timer;
         u8 brk_srcs;
 
-        Reg16& r16(Ri16 ri) const { return ((Reg16*)(&zp))[ri]; }
-        Reg8& r8(Ri8 ri) const { return ((Reg8*)(&zp))[ri]; }
+        void set_mcc(u16 opc) { mcc = opc << 3; } // bits 0-2 encode the cycle (0..7)
+        u16 opc() const { return mcc >> 3; }
 
         void set(Flag f, bool set = true) { p = set ? p | f : p & ~f; }
         void clr(Flag f) { p &= ~f; }
         bool is_set(Flag f) const { return p & f; }
         bool is_clr(Flag f) const { return !is_set(f); }
-
-        void set_sp(u8 v) { sp = 0x100 | v; }
-        void dec_sp() { set_sp((sp - 1) & 0xff); }
-        void inc_sp() { set_sp((sp + 1) & 0xff); }
     };
 
     State& s;
@@ -54,21 +54,6 @@ public:
     Core(State& s_, Sig& sig_halt_);
 
     void reset();
-
-    const MC::MOP& mop() const { return MC::code[s.mcc]; }
-
-    /* Address space access params (addr, data, r/w).
-       The read/write is expected to happen between ticks, e.g.:
-           for (;;) {
-               do_access(core.mar(), core.mdr(), core.mrw());
-               core.tick();
-           }
-    */
-    using RW = NMOS6502::MC::RW;
-
-    u16 mar() const { return s.r16(mop().ar); } // memory address reg
-    u8& mdr() const { return s.r8(mop().dr); }  // memory data reg
-    RW  mrw() const { return mop().rw; }        // memory read/write
 
     void set_nmi(bool act);
     void set_irq(bool act);
@@ -85,18 +70,14 @@ public:
             s.irq_timer <<= 1;
         }
 
-        s.pc += mop().pc_inc;
-
-        const auto mopc = mop().mopc;
-        ++s.mcc;
-        exec(mopc);
+        exec_cycle();
     }
 
-    bool halted() const { return mop().mopc == MC::hlt; }
-    void resume() { if (halted()) ++s.mcc; }
+    bool halted() const { /*return mop().mopc == MC::hlt;*/ return false; } // ### TODO ###
+    void resume() { /*if (halted()) ++s.mcc;*/ } // ### TODO ###
 
 private:
-    void exec(const u8 mop);
+    void exec_cycle();
 
     Sig& sig_halt;
 };

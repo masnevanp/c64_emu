@@ -21,8 +21,8 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     cpu.reset();
 
     for (int i = 0; i < 7; ++i) { // do reset...
-        if (cpu.mrw() == MC::RW::r) cpu.mdr() = mem[cpu.mar()];
-        else mem[cpu.mar()] = cpu.mdr();
+        if (cpu.s.bus_rw == MC::RW::r) cpu.s.bus_d = mem[cpu.s.bus_a];
+        else mem[cpu.s.bus_a] = cpu.s.bus_d;
         cpu.tick();
     }
     cpu.s.p = 0x00;
@@ -31,7 +31,7 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     Timer t;
     for (int prev_pc = cpu.s.pc, psc = 0, step = false, output = false; psc < 15; ++psc) {
         // BEWARE
-        if (cpu.mop().mopc >= MC::MOPC::dispatch_cli && cpu.mop().mopc <= MC::MOPC::dispatch_brk) {
+        if (cpu.s.opc()>= OPC::dispatch_cli && cpu.s.opc() <= OPC::dispatch_brk) {
             if (cpu.s.pc == step_from_pc) step = true;
             if (cpu.s.pc == output_from_pc) output = true;
             if (step || output) {
@@ -48,8 +48,8 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
             ++op_cnt;
         }
 
-        if (cpu.mrw() == MC::RW::r) cpu.mdr() = mem[cpu.mar()];
-        else mem[cpu.mar()] = cpu.mdr();
+        if (cpu.s.bus_rw == MC::RW::r) cpu.s.bus_d = mem[cpu.s.bus_a];
+        else mem[cpu.s.bus_a] = cpu.s.bus_d;
         cpu.tick();
     }
     int te = t.elapsed();
@@ -83,7 +83,7 @@ void run_test_suite()
         for (unsigned int i = 0, m = 0xff48; irq[i] != 0; ++i)
             mem[m + i] = irq[i];
 
-        sys.cpu.s.sp = 0x1fd;
+        sys.cpu.s.sp = 0xfd;
         sys.cpu.s.p = 0x04;
         sys.cpu.s.pc = 0x0801;
     };
@@ -118,10 +118,10 @@ void run_test_suite()
     };
 
     auto rts = [&]() {
-        sys.cpu.s.inc_sp();
-        sys.cpu.s.pc = mem[sys.cpu.s.sp];
-        sys.cpu.s.inc_sp();
-        sys.cpu.s.pc |= (mem[sys.cpu.s.sp] << 8);
+        sys.cpu.s.sp++;
+        sys.cpu.s.pc = mem[0x100 | sys.cpu.s.sp];
+        sys.cpu.s.sp++;
+        sys.cpu.s.pc |= (mem[0x100 | sys.cpu.s.sp] << 8);
         ++sys.cpu.s.pc;
     };
 

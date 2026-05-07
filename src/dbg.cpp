@@ -66,7 +66,7 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     std::cout << " [ " << print_u8(mem[cpu.s.pc]);
     std::cout << " " << print_u8(mem[(cpu.s.pc+1) & 0xffff]) << " " << print_u8(mem[(cpu.s.pc+2) & 0xffff]);
     std::cout << " ]";
-    std::cout << "\nsp: " << print_u16(cpu.s.sp);
+    std::cout << "\nsp: " << print_u8(cpu.s.sp);
     std::cout << " [";
     for (int sp = cpu.s.sp, i = 1; i < 9 && (sp + i) <= 0x1ff; ++i) {
         std::cout << " " << print_u8(mem[sp + i]);
@@ -78,18 +78,12 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     std::cout << "   p: " << print_u8(cpu.s.p);
     std::cout << " [" << flags_str(cpu.s.p) << "]";
     //// zpaf, a1, a2, a3, a4
-    std::cout << "\n\nzp: " << print_u16((cpu.s.zph <<8) | cpu.s.zp);
-    std::cout << " a1: " << print_u16((cpu.s.a1h << 8) | cpu.s.a1l);
-    std::cout << " a2: " << print_u16(cpu.s.a2);
-    std::cout << " a3: " << print_u16(cpu.s.a3);
-    std::cout << " a4: " << print_u16(cpu.s.a4);
-    std::cout << " d: " << print_u8(cpu.s.d);
-    std::cout << " ir: " << print_u8(cpu.s.ir);
+    std::cout << "\n\n";
+    std::cout << " op: " << print_u16(cpu.s.opc());
     std::cout << "\n";
-    std::cout << "\n==> mar: " << print_u16(cpu.mar()) << " (" << Ri16_str[cpu.mop().ar] << ")";
-    std::cout << "   mdr: " << (cpu.mrw() == MC::RW::w ? print_u8(cpu.mdr()) : "??");
-    std::cout << " (" << Ri8_str[cpu.mop().dr] << ")";
-    std::cout << "   r/w: " << MC::RW_str[cpu.mrw()];
+    std::cout << "\n==> ba: " << print_u16(cpu.s.bus_a);
+    std::cout << "   bd: " << print_u8(cpu.s.bus_d);
+    std::cout << "   r/w: " << print_u8(cpu.s.bus_rw);
     std::cout << std::endl;
     /*
     operator std::string() const {
@@ -101,9 +95,11 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
 
 // TODO: still working? (reg. indices changed....)
 void Dbg::reg_diff(const Core& cpu) {
-    static Reg16 r16_snap[Ri16::_cnt16];
-    static Reg8 r8_snap[Ri8::_cnt8];
+    (void)cpu;
+    //static Reg16 r16_snap[Ri16::_cnt16];
+    //static Reg8 r8_snap[Ri8::_cnt8];
 
+    /*
     std::cout << "\n\n";
     for (int r = 0; r < Ri16::_cnt16; ++r) {
         if (r == Ri16::pc || r == Ri16::sp16 || r >= Ri16::a1) {
@@ -122,6 +118,7 @@ void Dbg::reg_diff(const Core& cpu) {
         }
     }
     std::cout << std::endl;
+    */
 }
 
 
@@ -137,7 +134,7 @@ void Dbg::step(System& sys, u16 until_pc)
         } else std::cout << "----------------------------------------------------------";
 
         //getchar();
-        std::cout << std::dec << "C" << (int)sys.cn << " T" << (int)sys.tn << ": " << std::string(sys.cpu.mop());
+        std::cout << std::dec << "C" << (int)sys.cn << " T" << (int)sys.tn << ": TODO";
 
         sys.exec_cycle();
         reg_diff(sys.cpu);

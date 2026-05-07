@@ -589,13 +589,14 @@ private:
         [this]() {
             bool proceed = true;
 
-            const auto trap_opc = cpu.s.ir;
+            const auto trap_opc = cpu.s.opc();
             switch (trap_opc) {
                 /*case Trap_OPC::IEC_virtual_routine:
                     handled = IEC_virtual::on_trap(c64.cpu, c64.s.ram, iec_ctrl);
                     break;*/
                 case Trap_OPC::tape_routine: {
-                    const auto routine_id = cpu.s.d;
+                    const auto routine_id = 0x00; // cpu.s.d;
+                    Log::info("TODO: trap routine id (system.h)");
 
                     switch (routine_id) {
                         case Trap_ID::load: do_load(); break;
@@ -721,14 +722,14 @@ inline
 void C64::run_cycle() {
     vic.tick();
 
-    const auto rw = cpu.mrw();
+    const auto rw = cpu.s.bus_rw;
     const auto rdy = s.ba || s.dma;
     if (rdy && rw == NMOS6502::MC::RW::r) {
         c1541.tick();
     } else {
         // 'Slip in' the C1541 cycle
         if (rw == NMOS6502::MC::RW::w) c1541.tick();
-        bus.access(cpu.mar(), cpu.mdr(), rw);
+        bus.access(cpu.s.bus_a, cpu.s.bus_d, rw);
         cpu.tick();
         if (rw == NMOS6502::MC::RW::r) c1541.tick();
     }

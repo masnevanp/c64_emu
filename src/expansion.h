@@ -414,7 +414,7 @@ struct T3 : public Base { // T3 Action_Replay
     void reset() { upd_ctrl(0); }
 
     void tick_frz() {
-        const auto rw = NMOS6502::MC::code[s.cpu.mcc].rw;
+        /*const auto rw = NMOS6502::MC::code[s.cpu.mcc].rw;
         const auto mopc = NMOS6502::MC::code[s.cpu.mcc].mopc;
 
         // Wait for return address to be pushed before switching...
@@ -422,7 +422,8 @@ struct T3 : public Base { // T3 Action_Replay
         if (rw == NMOS6502::MC::RW::w && mopc == NMOS6502::MC::MOPC::brk) {
             s.exp.ticker = Ticker::idle;
             System::set_exrom_game(true, false, s);
-        }
+        }*/
+        Log::info("TODO: tick_frz() (expansion.h)");
     }
 
 private:

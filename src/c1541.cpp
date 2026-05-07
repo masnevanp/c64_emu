@@ -199,7 +199,7 @@ void C1541::System::reset() {
 
 
 void C1541::System::tick() {
-    address_space_op(cpu.mar(), cpu.mdr(), cpu.mrw());
+    address_space_op(cpu.s.bus_a, cpu.s.bus_d, cpu.s.bus_rw);
     cpu.tick();
     iec.tick();
     dc.tick();

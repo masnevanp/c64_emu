@@ -269,6 +269,7 @@ void System::C64::check_deferred() {
 
 
 void System::C64::log_status() {
+    /*
     using RW = State::System::Bus::RW;
 
     char buffer[128];
@@ -392,6 +393,8 @@ void System::C64::log_status() {
     line_2();
     line_3();
     line_4();
+    */
+    Log::info("TODO: log_status() (system.cpp)");
 }
 
 
@@ -487,9 +490,10 @@ void System::C64::step_forward(u8 key_code) {
             run_cycle();
             break;
         case kc::step_instr:
-            if (!cpu.halted()) {
+            /*if (!cpu.halted()) {
                 do run_cycle(); while (cpu.mop().dr != NMOS6502::Ri8::ir);
-            }
+            }*/
+            Log::info("TODO: step_instr (system.cpp)");
             break;
         case kc::step_line:
             do run_cycle(); while (s.vic.line_cycle() < (LINE_CYCLE_COUNT - 1));

@@ -5,25 +5,7 @@
 using namespace NMOS6502;
 
 
-const std::string MC::MOPC_str[] = {
-    "abs_x", "inc_zp", "abs_y", "rm_zp_x", "rm_zp_y", "rm_x", "rm_y",
-    "rm_idx_ind", "a_nz", "do_op", "st_zp_x", "st_zp_y", "st_idx_ind", "st_reg",
-    "jmp_ind", "bra", "hold_ints", "php", "pha", "jsr", "jmp_abs", "rti", "rts", "inc_sp", "brk",
-    "dispatch_cli", "dispatch_sei", "dispatch", "dispatch_brk",
-    "sig_hlt", "hlt", "reset", "nmop"
-};
-
-const std::string MC::PC_inc_str[] = { "0", "1" };
-
-const std::string MC::RW_str[] = { "w", "r" };
-
-
-using MC::MOP;
-using MC::MOPC;
-using MC::PC_inc;
-using MC::RW;
-using MC::PC_inc;
-
+/*
 const MOP MC::code[] = {
     MOP(Ri16::pc,   Ri8::d,   RW::r, PC_inc(0), MOPC::nmop        ), // 0
     MOP(Ri16::a2,   Ri8::a1h, RW::w, PC_inc(0), MOPC::nmop        ), // 1
@@ -265,3 +247,4 @@ const u8 MC::opc_addr[] = {
     52, 59, 13, 67, 75, 75, 79, 79, 40, 85, 40, 92, 99, 99, 106, 106,
     211,
 };
+*/
