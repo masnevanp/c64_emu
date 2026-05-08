@@ -69,7 +69,6 @@ void run_test_suite()
 {
     u8 mem[0x10000];
     Dbg::System sys{mem};
-    sys.do_reset();
 
     auto init = [&]() {
         static u8 irq[] = {
@@ -161,7 +160,7 @@ void run_test_suite()
                     std::cout << "\n[FAILED]"; goto exit;
             }
         }
-        sys.exec_cycle();
+        sys.tick();
     }
 
 exit:

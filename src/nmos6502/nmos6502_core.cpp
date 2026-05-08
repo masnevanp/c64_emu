@@ -300,6 +300,34 @@ void NMOS6502::Core::exec_cycle() {
             s.set_mcc(OPC::dispatch_brk);
             break;
 
+        case mc(0x58, 0): // cli
+            s.set_mcc(OPC::dispatch_cli);
+            break;
+
+        case mc(0x78, 0): // sei
+            s.set_mcc(OPC::dispatch_sei);
+            break;
+
+        case mc(0x88, 0): // dey
+            Do{s}.set_nz(--s.y);
+            s.set_mcc(OPC::dispatch);
+            break;
+
+        case mc(0xc8, 0): // iny
+            Do{s}.set_nz(++s.y);
+            s.set_mcc(OPC::dispatch);
+            break;
+
+        case mc(0xca, 0): // dex
+            Do{s}.set_nz(--s.x);
+            s.set_mcc(OPC::dispatch);
+            break;
+
+        case mc(0xe8, 0): // inx
+            Do{s}.set_nz(++s.x);
+            s.set_mcc(OPC::dispatch);
+            break;
+
         case mc(OPC::reset, 0): s.bus_a += 1; break;
         case mc(OPC::reset, 1): s.bus_a = sp16(0xff); break;
         case mc(OPC::reset, 2): s.bus_a = sp16(0xfe); break;
@@ -316,6 +344,9 @@ void NMOS6502::Core::exec_cycle() {
             s.set_mcc(OPC::dispatch_brk);
             break;
 
+        /* cli&sei feature: change not be visible at next T0 (dispatch)
+            (http://visual6502.org/wiki/index.php?title=6502_Timing_of_Interrupt_Handling)
+        */
         case mc(OPC::dispatch_cli): // post cli dispatch
             Do{s}.check_irq();
             s.clr(Flag::I);

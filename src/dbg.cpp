@@ -66,82 +66,56 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     std::cout << " [ " << print_u8(mem[cpu.s.pc]);
     std::cout << " " << print_u8(mem[(cpu.s.pc+1) & 0xffff]) << " " << print_u8(mem[(cpu.s.pc+2) & 0xffff]);
     std::cout << " ]";
-    std::cout << "\nsp: " << print_u8(cpu.s.sp);
+
+    std::cout << "   sp: " << print_u16(0x0100 | cpu.s.sp);
     std::cout << " [";
-    for (int sp = cpu.s.sp, i = 1; i < 9 && (sp + i) <= 0x1ff; ++i) {
+    for (int sp = cpu.s.sp + 0x100, i = 1; i < 9 && (sp + i) <= 0x1ff; ++i) {
         std::cout << " " << print_u8(mem[sp + i]);
     }
     std::cout << " ]";
+
     std::cout << "\n a: " << print_u8(cpu.s.a);
     std::cout << "   x: " << print_u8(cpu.s.x);
     std::cout << "   y: " << print_u8(cpu.s.y);
     std::cout << "   p: " << print_u8(cpu.s.p);
     std::cout << " [" << flags_str(cpu.s.p) << "]";
-    //// zpaf, a1, a2, a3, a4
-    std::cout << "\n\n";
-    std::cout << " op: " << print_u16(cpu.s.opc());
+
     std::cout << "\n";
-    std::cout << "\n==> ba: " << print_u16(cpu.s.bus_a);
+    std::cout << "\n    ba: " << print_u16(cpu.s.bus_a);
     std::cout << "   bd: " << print_u8(cpu.s.bus_d);
     std::cout << "   r/w: " << print_u8(cpu.s.bus_rw);
-    std::cout << std::endl;
-    /*
-    operator std::string() const {
-            return "(" + R16_str[ar] + ") " + R8_str[dr] + " " + RW_str[rw]
-                    + PC_inc_str[pc_inc] + " " + MOPC_str[mopc];
-        }*/
 }
 
 
-// TODO: still working? (reg. indices changed....)
-void Dbg::reg_diff(const Core& cpu) {
-    (void)cpu;
-    //static Reg16 r16_snap[Ri16::_cnt16];
-    //static Reg8 r8_snap[Ri8::_cnt8];
+void Dbg::System::tick(u32 cycles) {
+    while (cycles--) {
+        if (cpu.s.bus_rw == MC::RW::r) cpu.s.bus_d = mem[cpu.s.bus_a];
+        else mem[cpu.s.bus_a] = cpu.s.bus_d;
 
-    /*
-    std::cout << "\n\n";
-    for (int r = 0; r < Ri16::_cnt16; ++r) {
-        if (r == Ri16::pc || r == Ri16::sp16 || r >= Ri16::a1) {
-            if (r16_snap[r] != cpu.s.r16((Ri16)r)) {
-                std::cout << Ri16_str[r] << ": ";
-                std::cout << print_u16(r16_snap[r]) << " --> " << print_u16(cpu.s.r16((Ri16)r)) << ", ";
-                r16_snap[r] = cpu.s.r16((Ri16)r);
-            }
-        } else if (r <= Ri16::zp16) {
-            int r8 = r * 2;
-            if (r8_snap[r8] != cpu.s.r8((Ri8)r8)) {
-                std::cout << Ri8_str[r8] << ": ";
-                std::cout << print_u8(r8_snap[r8]) << " --> " << print_u8(cpu.s.r8((Ri8)r8)) << ", ";
-                r8_snap[r8] = cpu.s.r8((Ri8)r8);
-            }
+        // BEWARE
+        if (cpu.s.opc() >= OPC::dispatch_cli && cpu.s.opc() <= OPC::dispatch_brk) {
+            tn = 0;
         }
+
+        std::string sep = tn == 0 ? "============" : "------------";
+        std::cout << std::dec
+            << "\n" << sep << " c:" << (int)cn
+            << " op:" << print_u16(cpu.s.opc())
+            << " t:" << tn
+            << sep << "\n";
+
+        print_status(cpu, mem);
+
+        if (tn == 0) {
+            const auto bytes = Bytes{{mem[cpu.s.bus_a], mem[u16(cpu.s.bus_a + 1)], mem[u16(cpu.s.bus_a + 2)]}};
+            std::cout << "   [" + disasm_first(bytes, cpu.s.bus_a).text + "]";
+            cpu.s.pc = cpu.s.bus_a;
+        }
+
+        std::cout << std::endl;
+
+        cpu.tick();
+        ++cn;
+        ++tn;
     }
-    std::cout << std::endl;
-    */
-}
-
-
-void Dbg::step(System& sys, u16 until_pc)
-{
-    reg_diff(sys.cpu);
-
-    print_status(sys.cpu, sys.mem);
-    for (;;) {
-        if (sys.tn == 0) {
-            std::cout << "==========================================================";
-            if (sys.cpu.s.pc == until_pc) break;
-        } else std::cout << "----------------------------------------------------------";
-
-        //getchar();
-        std::cout << std::dec << "C" << (int)sys.cn << " T" << (int)sys.tn << ": TODO";
-
-        sys.exec_cycle();
-        reg_diff(sys.cpu);
-        print_status(sys.cpu, sys.mem);
-
-        if (sys.cpu.halted()) { std::cout << "\n[HALTED]"; break; }
-    }
-    std::cout << "\n\n=================== DONE (" << sys.cn << " cycles) ======================";
-    print_status(sys.cpu, sys.mem);
 }
