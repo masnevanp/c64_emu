@@ -11,23 +11,29 @@ namespace NMOS6502 {
 
 struct Core {
 public:
-    using RW = NMOS6502::MC::RW;
 
     struct State {
+        struct Bus {
+            enum RW : u8 { w = 0, r = 1 };
+
+            /* Bus access params (addr, data, r/w).
+                The read/write is expected to happen between ticks, e.g.:
+                for (;;) {
+                    do_access(core.s.bus_a, core.s.bus_d, core.s.bus_rw);
+                    core.tick();
+                }
+            */
+            u16 a;
+            u8 d;
+            RW rw;
+        };
+
         u16 mcc; // micro-code counter
 
         u16 pc;
-        /* Bus access params (addr, data, r/w).
-           The read/write is expected to happen between ticks, e.g.:
-           for (;;) {
-               do_access(core.s.bus_a, core.s.bus_d, core.s.bus_rw);
-               core.tick();
-           }
-        */
-        u16 bus_a;
-        u8 bus_d;
-        RW bus_rw;
 
+        Bus bus;
+    
         u8 p;
         u8 a;
         u8 x;

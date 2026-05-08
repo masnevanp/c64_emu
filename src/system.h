@@ -720,18 +720,20 @@ private:
 
 inline
 void C64::run_cycle() {
+    using RW = NMOS6502::Core::State::Bus::RW;
+
     vic.tick();
 
-    const auto rw = cpu.s.bus_rw;
+    const auto& rw{cpu.s.bus.rw};
     const auto rdy = s.ba || s.dma;
-    if (rdy && rw == NMOS6502::MC::RW::r) {
+    if (rdy && rw == RW::r) {
         c1541.tick();
     } else {
         // 'Slip in' the C1541 cycle
-        if (rw == NMOS6502::MC::RW::w) c1541.tick();
-        bus.access(cpu.s.bus_a, cpu.s.bus_d, rw);
+        if (rw == RW::w) c1541.tick();
+        bus.access(cpu.s.bus.a, cpu.s.bus.d, rw);
         cpu.tick();
-        if (rw == NMOS6502::MC::RW::r) c1541.tick();
+        if (rw == RW::r) c1541.tick();
     }
 
     Expansion::tick(s, bus);

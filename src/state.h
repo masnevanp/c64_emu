@@ -278,7 +278,7 @@ struct System {
     };
 
     struct Bus {
-        using RW = NMOS6502::MC::RW;
+        using RW = NMOS6502::Core::State::Bus::RW;
 
         u16 addr;
         u8 data;

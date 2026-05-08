@@ -81,16 +81,16 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     std::cout << " [" << flags_str(cpu.s.p) << "]";
 
     std::cout << "\n";
-    std::cout << "\n    ba: " << print_u16(cpu.s.bus_a);
-    std::cout << "   bd: " << print_u8(cpu.s.bus_d);
-    std::cout << "   r/w: " << print_u8(cpu.s.bus_rw);
+    std::cout << "\n    ba: " << print_u16(cpu.s.bus.a);
+    std::cout << "   bd: " << print_u8(cpu.s.bus.d);
+    std::cout << "   r/w: " << print_u8(cpu.s.bus.rw);
 }
 
 
 void Dbg::System::tick(u32 cycles) {
     while (cycles--) {
-        if (cpu.s.bus_rw == MC::RW::r) cpu.s.bus_d = mem[cpu.s.bus_a];
-        else mem[cpu.s.bus_a] = cpu.s.bus_d;
+        if (cpu.s.bus.rw == Core::State::Bus::RW::r) cpu.s.bus.d = mem[cpu.s.bus.a];
+        else mem[cpu.s.bus.a] = cpu.s.bus.d;
 
         // BEWARE
         if (cpu.s.opc() >= OPC::dispatch_cli && cpu.s.opc() <= OPC::dispatch_brk) {
@@ -107,9 +107,9 @@ void Dbg::System::tick(u32 cycles) {
         print_status(cpu, mem);
 
         if (tn == 0) {
-            const auto bytes = Bytes{{mem[cpu.s.bus_a], mem[u16(cpu.s.bus_a + 1)], mem[u16(cpu.s.bus_a + 2)]}};
-            std::cout << "   [" + disasm_first(bytes, cpu.s.bus_a).text + "]";
-            cpu.s.pc = cpu.s.bus_a;
+            const auto bytes = Bytes{{mem[cpu.s.bus.a], mem[u16(cpu.s.bus.a + 1)], mem[u16(cpu.s.bus.a + 2)]}};
+            std::cout << "   [" + disasm_first(bytes, cpu.s.bus.a).text + "]";
+            //cpu.s.pc = cpu.s.bus.a;
         }
 
         std::cout << std::endl;

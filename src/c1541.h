@@ -826,15 +826,19 @@ private:
         { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, //0xB000..
     };
 
-    void address_space_op(const u16& addr, u8& data, const u8& rw) {
-        switch (addr_map[u16(addr + 0x4000) >> 10][rw]) {
-            case rom_r:  data = rom[addr & 0x3fff];   return;
-            case ram_w:  s.ram[addr & 0x07ff] = data; return;
-            case ram_r:  data = s.ram[addr & 0x07ff]; return;
-            case via1_w: iec.via_w(addr & 0xf, data); return;
-            case via1_r: iec.via_r(addr & 0xf, data); return;
-            case via2_w: dc.via_w(addr & 0xf, data);  return;
-            case via2_r: dc.via_r(addr & 0xf, data);  return;
+    void bus_access() {
+        const auto& a{cpu.s.bus.a};
+        auto& d{cpu.s.bus.d};
+        const auto& rw{cpu.s.bus.rw};
+
+        switch (addr_map[u16(a + 0x4000) >> 10][rw]) {
+            case rom_r:  d = rom[a & 0x3fff];   return;
+            case ram_w:  s.ram[a & 0x07ff] = d; return;
+            case ram_r:  d = s.ram[a & 0x07ff]; return;
+            case via1_w: iec.via_w(a & 0xf, d); return;
+            case via1_r: iec.via_r(a & 0xf, d); return;
+            case via2_w: dc.via_w(a & 0xf, d);  return;
+            case via2_r: dc.via_r(a & 0xf, d);  return;
             case none: return;
         }
     }

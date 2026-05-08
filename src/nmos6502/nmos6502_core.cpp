@@ -9,7 +9,7 @@ void NMOS6502::Core::reset() {
     s.brk_srcs = 0;
     s.nmi_timer = s.irq_timer = 0;
     s.nmi_act = s.irq_act = false;
-    s.bus_rw = RW::r;
+    s.bus.rw = State::Bus::r;
     s.set_mcc(OPC::reset);
 }
 
@@ -264,38 +264,38 @@ void NMOS6502::Core::exec_cycle() {
     switch (s.mcc++) {
 
         case mc(OPC::brk, 0):
-            s.pc = s.bus_a;
+            s.pc = s.bus.a;
             if (s.brk_srcs == Brk_src::sw) s.pc += 1;
-            s.bus_a = sp16(s.sp);
-            s.bus_d = s.pc >> 8;
-            s.bus_rw = RW::w;
+            s.bus.a = sp16(s.sp);
+            s.bus.d = s.pc >> 8;
+            s.bus.rw = State::Bus::w;
             break;
         case mc(OPC::brk, 1):
-            s.bus_a = dec_sp16(s.bus_a);
-            s.bus_d = s.pc;
+            s.bus.a = dec_sp16(s.bus.a);
+            s.bus.d = s.pc;
             break;
         case mc(OPC::brk, 2):
-            s.bus_a = dec_sp16(s.bus_a);
-            s.sp = s.bus_a - 1;
-            s.bus_d = s.p | Flag::u;
-            if (s.brk_srcs == Brk_src::sw) s.bus_d |= Flag::B;
+            s.bus.a = dec_sp16(s.bus.a);
+            s.sp = s.bus.a - 1;
+            s.bus.d = s.p | Flag::u;
+            if (s.brk_srcs == Brk_src::sw) s.bus.d |= Flag::B;
             break;
         case mc(OPC::brk, 3):
             if (s.nmi_timer & 0b11) { // Potential hijacking by nmi
                 s.brk_srcs = Brk_src::nmi;
                 s.nmi_timer = nmi_timer_handled;
             }
-            s.bus_a = (s.brk_srcs & Brk_src::nmi) ? Vec::nmi : Vec::irq;
+            s.bus.a = (s.brk_srcs & Brk_src::nmi) ? Vec::nmi : Vec::irq;
             s.brk_srcs = 0;
-            s.bus_rw = RW::r;
+            s.bus.rw = State::Bus::r;
             break;
         case mc(OPC::brk, 4):
-            s.pc = s.bus_d;
-            s.bus_a += 1;
+            s.pc = s.bus.d;
+            s.bus.a += 1;
             break;
         case mc(OPC::brk, 5):
-            s.pc |= (s.bus_d << 8);
-            s.bus_a = s.pc;
+            s.pc |= (s.bus.d << 8);
+            s.bus.a = s.pc;
             s.set(Flag::I);
             s.set_mcc(OPC::dispatch_brk);
             break;
@@ -328,18 +328,18 @@ void NMOS6502::Core::exec_cycle() {
             s.set_mcc(OPC::dispatch);
             break;
 
-        case mc(OPC::reset, 0): s.bus_a += 1; break;
-        case mc(OPC::reset, 1): s.bus_a = sp16(0xff); break;
-        case mc(OPC::reset, 2): s.bus_a = sp16(0xfe); break;
-        case mc(OPC::reset, 3): s.bus_a = sp16(0xfd); s.sp = 0xfc; break;
-        case mc(OPC::reset, 4): s.bus_a = Vec::rst; break;
+        case mc(OPC::reset, 0): s.bus.a += 1; break;
+        case mc(OPC::reset, 1): s.bus.a = sp16(0xff); break;
+        case mc(OPC::reset, 2): s.bus.a = sp16(0xfe); break;
+        case mc(OPC::reset, 3): s.bus.a = sp16(0xfd); s.sp = 0xfc; break;
+        case mc(OPC::reset, 4): s.bus.a = Vec::rst; break;
         case mc(OPC::reset, 5):
-            s.pc = s.bus_d;
-            s.bus_a += 1;
+            s.pc = s.bus.d;
+            s.bus.a += 1;
             break;
         case mc(OPC::reset, 6):
-            s.pc |= (s.bus_d << 8);
-            s.bus_a = s.pc;
+            s.pc |= (s.bus.d << 8);
+            s.bus.a = s.pc;
             s.set(Flag::I);
             s.set_mcc(OPC::dispatch_brk);
             break;
@@ -372,13 +372,13 @@ void NMOS6502::Core::exec_cycle() {
             }
             // fall through
         case mc(OPC::dispatch_brk):
-            if (s.bus_d == OPC::brk) s.brk_srcs |= Brk_src::sw;
+            if (s.bus.d == OPC::brk) s.brk_srcs |= Brk_src::sw;
 
             if (s.brk_srcs) {
                 s.set_mcc(OPC::brk);
             } else {
-                s.set_mcc(s.bus_d);
-                s.bus_a += 1; // inc pc
+                s.set_mcc(s.bus.d);
+                s.bus.a += 1; // inc pc
             }
 
             break;

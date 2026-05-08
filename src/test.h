@@ -21,8 +21,8 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     cpu.reset();
 
     for (int i = 0; i < 7; ++i) { // do reset...
-        if (cpu.s.bus_rw == MC::RW::r) cpu.s.bus_d = mem[cpu.s.bus_a];
-        else mem[cpu.s.bus_a] = cpu.s.bus_d;
+        if (cpu.s.bus.rw == Core::State::Bus::r) cpu.s.bus.d = mem[cpu.s.bus.a];
+        else mem[cpu.s.bus.a] = cpu.s.bus.d;
         cpu.tick();
     }
     cpu.s.p = 0x00;
@@ -48,8 +48,8 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
             ++op_cnt;
         }
 
-        if (cpu.s.bus_rw == MC::RW::r) cpu.s.bus_d = mem[cpu.s.bus_a];
-        else mem[cpu.s.bus_a] = cpu.s.bus_d;
+        if (cpu.s.bus.rw == Core::State::Bus::r) cpu.s.bus.d = mem[cpu.s.bus.a];
+        else mem[cpu.s.bus.a] = cpu.s.bus.d;
         cpu.tick();
     }
     int te = t.elapsed();
