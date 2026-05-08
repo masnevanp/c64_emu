@@ -191,10 +191,10 @@ public:
     int cn = 0;
     int tn = 0;
 
-    void tick(u32 cycles = 1);
+    void tick(u32 cycles = 1, bool verbose = true);
 
 private:
-    void do_reset() { cpu.reset(); for (int i = 0; i < 7; ++i) tick(); }
+    void do_reset() { cpu.reset(); tick(7, false); }
 
     NMOS6502::Sig cpu_trap {
         [this]() {

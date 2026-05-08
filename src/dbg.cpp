@@ -87,7 +87,7 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
 }
 
 
-void Dbg::System::tick(u32 cycles) {
+void Dbg::System::tick(u32 cycles, bool verbose) {
     while (cycles--) {
         if (cpu.s.bus.rw == Core::State::Bus::RW::r) cpu.s.bus.d = mem[cpu.s.bus.a];
         else mem[cpu.s.bus.a] = cpu.s.bus.d;
@@ -97,22 +97,24 @@ void Dbg::System::tick(u32 cycles) {
             tn = 0;
         }
 
-        std::string sep = tn == 0 ? "============" : "------------";
-        std::cout << std::dec
-            << "\n" << sep << " c:" << (int)cn
-            << " op:" << print_u16(cpu.s.opc())
-            << " t:" << tn
-            << sep << "\n";
+        if (verbose) {
+            std::string sep = tn == 0 ? "============" : "------------";
+            std::cout << std::dec
+                << "\n" << sep << " c:" << (int)cn
+                << " op:" << print_u16(cpu.s.opc())
+                << " t:" << tn
+                << sep << "\n";
 
-        print_status(cpu, mem);
+            print_status(cpu, mem);
 
-        if (tn == 0) {
-            const auto bytes = Bytes{{mem[cpu.s.bus.a], mem[u16(cpu.s.bus.a + 1)], mem[u16(cpu.s.bus.a + 2)]}};
-            std::cout << "   [" + disasm_first(bytes, cpu.s.bus.a).text + "]";
-            //cpu.s.pc = cpu.s.bus.a;
+            if (tn == 0) {
+                const auto bytes = Bytes{{mem[cpu.s.bus.a], mem[u16(cpu.s.bus.a + 1)], mem[u16(cpu.s.bus.a + 2)]}};
+                std::cout << "   [" + disasm_first(bytes, cpu.s.bus.a).text + "]";
+                //cpu.s.pc = cpu.s.bus.a;
+            }
+
+            std::cout << std::endl;
         }
-
-        std::cout << std::endl;
 
         cpu.tick();
         ++cn;

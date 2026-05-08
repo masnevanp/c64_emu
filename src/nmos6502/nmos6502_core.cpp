@@ -46,6 +46,9 @@ namespace NMOS6502 {
 
         void check_irq() { if (s.irq_act && s.is_clr(Flag::I)) s.brk_srcs |= Brk_src::irq; }
 
+        void read_pcl() { s.pc = s.bus.d; s.bus.a += 1; }
+        void read_pch() { s.pc |= (s.bus.d << 8); s.bus.a = s.pc; }
+
         void asl(u8& d) { s.set(Flag::C, d & 0x80); set_nz(d <<= 1); }
         void lsr(u8& d) { s.clr(Flag::N); s.set(Flag::C, d & 0x01); s.set(Flag::Z, !(d >>= 1)); }
         void rol(u8& d) {
@@ -289,12 +292,10 @@ void NMOS6502::Core::exec_cycle() {
             s.bus.rw = State::Bus::r;
             break;
         case mc(OPC::brk, 4):
-            s.pc = s.bus.d;
-            s.bus.a += 1;
+            Do{s}.read_pcl();
             break;
         case mc(OPC::brk, 5):
-            s.pc |= (s.bus.d << 8);
-            s.bus.a = s.pc;
+            Do{s}.read_pch();
             s.set(Flag::I);
             schedule(OPC::dispatch_brk);
             break;
@@ -328,6 +329,14 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
+        case mc(0x4c, 0): // jmp abs
+            Do{s}.read_pcl();
+            break;
+        case mc(0x4c, 1):
+            Do{s}.read_pch();
+            schedule(OPC::dispatch);
+            break;
+
         case mc(0x58, 0): // cli
             schedule(OPC::dispatch_cli);
             break;
@@ -338,6 +347,20 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0x6a, 0): // ror
             Do{s}.ror(s.a);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x6c, 0): // jmp ind
+            Do{s}.read_pcl();
+            break;
+        case mc(0x6c, 1):
+            Do{s}.read_pch();
+            break;
+        case mc(0x6c, 2):
+            Do{s}.read_pcl();
+            break;
+        case mc(0x6c, 3):
+            Do{s}.read_pch();
             schedule(OPC::dispatch);
             break;
 
@@ -420,12 +443,10 @@ void NMOS6502::Core::exec_cycle() {
         case mc(OPC::reset, 3): s.bus.a = sp16(0xfd); s.sp = 0xfc; break;
         case mc(OPC::reset, 4): s.bus.a = Vec::rst; break;
         case mc(OPC::reset, 5):
-            s.pc = s.bus.d;
-            s.bus.a += 1;
+            Do{s}.read_pcl();
             break;
         case mc(OPC::reset, 6):
-            s.pc |= (s.bus.d << 8);
-            s.bus.a = s.pc;
+            Do{s}.read_pch();
             s.set(Flag::I);
             schedule(OPC::dispatch_brk);
             break;
