@@ -10,7 +10,7 @@ void NMOS6502::Core::reset() {
     s.nmi_timer = s.irq_timer = 0;
     s.nmi_act = s.irq_act = false;
     s.bus.rw = State::Bus::r;
-    s.set_mcc(OPC::reset);
+    schedule(OPC::reset);
 }
 
 
@@ -32,10 +32,9 @@ void NMOS6502::Core::set_irq(bool act) {
 namespace NMOS6502 {
     enum Brk_src : u8 { sw = 0b001, nmi = 0b010, irq = 0b100, };
 
-    u16 sp16(u8 sp8) { return 0x100 | sp8; }
+    inline u16 sp16(u8 sp8) { return 0x100 | sp8; }
 
-    u16 dec_sp16(u16 sp) { return sp16(sp - 1); }
-    //void inc_sp() { set_sp((sp + 1) & 0xff); }
+    inline u16 dec_sp16(u16 sp) { return sp16(sp - 1); }
 
     struct Do {
         Core::State& s;
@@ -297,35 +296,122 @@ void NMOS6502::Core::exec_cycle() {
             s.pc |= (s.bus.d << 8);
             s.bus.a = s.pc;
             s.set(Flag::I);
-            s.set_mcc(OPC::dispatch_brk);
+            schedule(OPC::dispatch_brk);
+            break;
+
+        case mc(0x0a, 0): // asl
+            Do{s}.asl(s.a);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x18, 0): // clc
+            s.clr(Flag::C);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x2a, 0): // rol
+            Do{s}.rol(s.a);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x38, 0): // sec
+            s.set(Flag::C);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x3a, 0): // nop
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x4a, 0): // lsr
+            Do{s}.lsr(s.a);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x58, 0): // cli
-            s.set_mcc(OPC::dispatch_cli);
+            schedule(OPC::dispatch_cli);
+            break;
+
+        case mc(0x5a, 0): // nop
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x6a, 0): // ror
+            Do{s}.ror(s.a);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x78, 0): // sei
-            s.set_mcc(OPC::dispatch_sei);
+            schedule(OPC::dispatch_sei);
             break;
 
         case mc(0x88, 0): // dey
             Do{s}.set_nz(--s.y);
-            s.set_mcc(OPC::dispatch);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x8a, 0): // txa
+            Do{s}.set_nz(s.a = s.x);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x98, 0): // tya
+            Do{s}.set_nz(s.a = s.y);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x9a, 0): // txs
+            s.sp = s.x;
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0xa8, 0): // tay
+            Do{s}.set_nz(s.y = s.a);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0xaa, 0): // tax
+            Do{s}.set_nz(s.x = s.a);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0xb8, 0): // clv
+            s.clr(Flag::V);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0xba, 0): // tsx
+            Do{s}.set_nz(s.x = s.sp);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0xc8, 0): // iny
             Do{s}.set_nz(++s.y);
-            s.set_mcc(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0xca, 0): // dex
             Do{s}.set_nz(--s.x);
-            s.set_mcc(OPC::dispatch);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0xd8, 0): // cld
+            s.clr(Flag::D);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0xe8, 0): // inx
             Do{s}.set_nz(++s.x);
-            s.set_mcc(OPC::dispatch);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0xea, 0): // nop
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0xf8, 0): // sed
+            s.set(Flag::D);
+            schedule(OPC::dispatch);
             break;
 
         case mc(OPC::reset, 0): s.bus.a += 1; break;
@@ -341,7 +427,7 @@ void NMOS6502::Core::exec_cycle() {
             s.pc |= (s.bus.d << 8);
             s.bus.a = s.pc;
             s.set(Flag::I);
-            s.set_mcc(OPC::dispatch_brk);
+            schedule(OPC::dispatch_brk);
             break;
 
         /* cli&sei feature: change not be visible at next T0 (dispatch)
@@ -375,9 +461,9 @@ void NMOS6502::Core::exec_cycle() {
             if (s.bus.d == OPC::brk) s.brk_srcs |= Brk_src::sw;
 
             if (s.brk_srcs) {
-                s.set_mcc(OPC::brk);
+                schedule(OPC::brk);
             } else {
-                s.set_mcc(s.bus.d);
+                schedule(s.bus.d);
                 s.bus.a += 1; // inc pc
             }
 

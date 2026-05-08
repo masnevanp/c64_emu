@@ -46,7 +46,6 @@ public:
         u8 irq_timer;
         u8 brk_srcs;
 
-        void set_mcc(u16 opc) { mcc = opc << 3; } // bits 0-2 encode the cycle (0..7)
         u16 opc() const { return mcc >> 3; }
 
         void set(Flag f, bool set = true) { p = set ? p | f : p & ~f; }
@@ -84,6 +83,8 @@ public:
 
 private:
     void exec_cycle();
+
+    void schedule(u16 opc) { s.mcc = opc << 3; } // bits 0-2 encode the cycle (0..7)
 
     Sig& sig_halt;
 };
