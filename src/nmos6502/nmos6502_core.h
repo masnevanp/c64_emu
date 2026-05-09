@@ -26,6 +26,12 @@ public:
             u16 a;
             u8 d;
             RW rw;
+
+            void operator()(const u16 a_, const u8 d_, const RW rw_) { a = a_; d = d_; rw = rw_; }
+            void operator()(const u16 a_, const u8 d_) { a = a_; d = d_; }
+            void operator()(const u16 a_, const RW rw_) { a = a_; rw = rw_; }
+            void operator()(const u16 a_) { a = a_; }
+            void operator()(const RW rw_) { rw = rw_; }
         };
 
         u16 mcc; // micro-code counter

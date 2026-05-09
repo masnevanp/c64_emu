@@ -62,7 +62,11 @@ void Dbg::print_mem(u8* mem, u16 page) {
 
 
 void Dbg::print_status(const Core& cpu, u8* mem) {
-    std::cout << "\npc: " << print_u16(cpu.s.pc);
+    std::cout << "\n    ba: " << print_u16(cpu.s.bus.a);
+    std::cout << "   bd: " << print_u8(cpu.s.bus.d);
+    std::cout << (cpu.s.bus.rw ? "   [r]" : "   [W]");
+
+    std::cout << "\n\n    pc: " << print_u16(cpu.s.pc);
     std::cout << " [ " << print_u8(mem[cpu.s.pc]);
     std::cout << " " << print_u8(mem[(cpu.s.pc+1) & 0xffff]) << " " << print_u8(mem[(cpu.s.pc+2) & 0xffff]);
     std::cout << " ]";
@@ -74,16 +78,11 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     }
     std::cout << " ]";
 
-    std::cout << "\n a: " << print_u8(cpu.s.a);
+    std::cout << "\n     a: " << print_u8(cpu.s.a);
     std::cout << "   x: " << print_u8(cpu.s.x);
     std::cout << "   y: " << print_u8(cpu.s.y);
     std::cout << "   p: " << print_u8(cpu.s.p);
     std::cout << " [" << flags_str(cpu.s.p) << "]";
-
-    std::cout << "\n";
-    std::cout << "\n    ba: " << print_u16(cpu.s.bus.a);
-    std::cout << "   bd: " << print_u8(cpu.s.bus.d);
-    std::cout << "   r/w: " << print_u8(cpu.s.bus.rw);
 }
 
 
@@ -98,9 +97,9 @@ void Dbg::System::tick(u32 cycles, bool verbose) {
         }
 
         if (verbose) {
-            std::string sep = tn == 0 ? "============" : "------------";
+            std::string sep = tn == 0 ? " ====================== " : " ---------------------- ";
             std::cout << std::dec
-                << "\n" << sep << " c:" << (int)cn
+                << "\n" << sep << "c:" << (int)cn
                 << " op:" << print_u16(cpu.s.opc())
                 << " t:" << tn
                 << sep << "\n";

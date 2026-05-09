@@ -2,6 +2,9 @@
 #include "nmos6502_core.h"
 
 
+using RW = NMOS6502::Core::State::Bus::RW;
+
+
 NMOS6502::Core::Core(State& s_, Sig& sig_halt_) : s(s_), sig_halt(sig_halt_) {}
 
 
@@ -9,7 +12,7 @@ void NMOS6502::Core::reset() {
     s.brk_srcs = 0;
     s.nmi_timer = s.irq_timer = 0;
     s.nmi_act = s.irq_act = false;
-    s.bus.rw = State::Bus::r;
+    s.bus(RW::r);
     schedule(OPC::reset);
 }
 
@@ -32,11 +35,10 @@ void NMOS6502::Core::set_irq(bool act) {
 namespace NMOS6502 {
     enum Brk_src : u8 { sw = 0b001, nmi = 0b010, irq = 0b100, };
 
-    inline u16 sp16(u8 sp8) { return 0x100 | sp8; }
+    static u16 sp16(u8 sp8)       { return 0x100 | sp8; }
+    static u16 dec_sp16(u16& sp)  { sp = sp16(sp - 1); return sp; }
 
-    inline u16 dec_sp16(u16 sp) { return sp16(sp - 1); }
-
-    struct Do {
+    struct S {
         Core::State& s;
 
         void set_nz(const u8& res) { s.set(Flag::N, res & 0x80); s.set(Flag::Z, res == 0x00); }
@@ -167,7 +169,7 @@ namespace NMOS6502 {
         }
     };
 
-    void Do::adc() {
+    void S::adc() {
         if (s.is_set(Flag::D)) {
             /* "The Z flag is computed before performing any decimal adjust. In other words,
                 the Z flag reflects the result of a binary addition. The N and V flags are
@@ -199,7 +201,7 @@ namespace NMOS6502 {
         }
     }
 
-    void Do::sbc() {/*
+    void S::sbc() {/*
         if (s.is_set(Flag::D)) {
             auto sbc_dec_nib = [](u8 res, u8& co) -> u8 {
                 if (res > 0xf) { co = 0x1; return (res - 0x6) & 0xf; }
@@ -223,7 +225,7 @@ namespace NMOS6502 {
         }*/
     }
 
-    //void Do::ud_arr() {
+    //void S::ud_arr() {
         /* Totally based on c64doc.txt by John West & Marko Mäkelä.
             (http://www.6502.org/users/andre/petindex/local/64doc.txt)
         */
@@ -268,20 +270,16 @@ void NMOS6502::Core::exec_cycle() {
         case mc(OPC::brk, 0):
             s.pc = s.bus.a;
             if (s.brk_srcs == Brk_src::sw) s.pc += 1;
-            s.bus.a = sp16(s.sp);
-            s.bus.d = s.pc >> 8;
-            s.bus.rw = State::Bus::w;
+            s.bus(sp16(s.sp), (s.pc >> 8), RW::w);
             break;
         case mc(OPC::brk, 1):
-            s.bus.a = dec_sp16(s.bus.a);
-            s.bus.d = s.pc;
+            s.bus(dec_sp16(s.bus.a), s.pc);
             break;
-        case mc(OPC::brk, 2):
-            s.bus.a = dec_sp16(s.bus.a);
+        case mc(OPC::brk, 2): {
+            const auto p = s.p | Flag::u | (s.brk_srcs == Brk_src::sw ? Flag::B : 0x00);
+            s.bus(dec_sp16(s.bus.a), p);
             s.sp = s.bus.a - 1;
-            s.bus.d = s.p | Flag::u;
-            if (s.brk_srcs == Brk_src::sw) s.bus.d |= Flag::B;
-            break;
+            break; }
         case mc(OPC::brk, 3):
             if (s.nmi_timer & 0b11) { // Potential hijacking by nmi
                 s.brk_srcs = Brk_src::nmi;
@@ -289,19 +287,29 @@ void NMOS6502::Core::exec_cycle() {
             }
             s.bus.a = (s.brk_srcs & Brk_src::nmi) ? Vec::nmi : Vec::irq;
             s.brk_srcs = 0;
-            s.bus.rw = State::Bus::r;
+            s.bus(RW::r);
             break;
         case mc(OPC::brk, 4):
-            Do{s}.read_pcl();
+            S{s}.read_pcl();
             break;
         case mc(OPC::brk, 5):
-            Do{s}.read_pch();
+            S{s}.read_pch();
             s.set(Flag::I);
             schedule(OPC::dispatch_brk);
             break;
 
+        case mc(0x08, 0): // php
+            s.pc = s.bus.a;
+            s.bus(sp16(s.sp), s.p, RW::w);
+            s.sp -= 1;
+            break;
+        case mc(0x08, 1):
+            s.bus(s.pc, RW::r);
+            schedule(OPC::dispatch);
+            break;
+
         case mc(0x0a, 0): // asl
-            Do{s}.asl(s.a);
+            S{s}.asl(s.a);
             schedule(OPC::dispatch);
             break;
 
@@ -311,7 +319,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0x2a, 0): // rol
-            Do{s}.rol(s.a);
+            S{s}.rol(s.a);
             schedule(OPC::dispatch);
             break;
 
@@ -324,16 +332,26 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
+        case mc(0x48, 0): // pha
+            s.pc = s.bus.a;
+            s.bus(sp16(s.sp), s.a, RW::w);
+            s.sp -= 1;
+            break;
+        case mc(0x48, 1):
+            s.bus(s.pc, RW::r);
+            schedule(OPC::dispatch);
+            break;
+
         case mc(0x4a, 0): // lsr
-            Do{s}.lsr(s.a);
+            S{s}.lsr(s.a);
             schedule(OPC::dispatch);
             break;
 
         case mc(0x4c, 0): // jmp abs
-            Do{s}.read_pcl();
+            S{s}.read_pcl();
             break;
         case mc(0x4c, 1):
-            Do{s}.read_pch();
+            S{s}.read_pch();
             schedule(OPC::dispatch);
             break;
 
@@ -346,21 +364,21 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0x6a, 0): // ror
-            Do{s}.ror(s.a);
+            S{s}.ror(s.a);
             schedule(OPC::dispatch);
             break;
 
         case mc(0x6c, 0): // jmp ind
-            Do{s}.read_pcl();
+            S{s}.read_pcl();
             break;
         case mc(0x6c, 1):
-            Do{s}.read_pch();
+            S{s}.read_pch();
             break;
         case mc(0x6c, 2):
-            Do{s}.read_pcl();
+            S{s}.read_pcl();
             break;
         case mc(0x6c, 3):
-            Do{s}.read_pch();
+            S{s}.read_pch();
             schedule(OPC::dispatch);
             break;
 
@@ -369,17 +387,17 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0x88, 0): // dey
-            Do{s}.set_nz(--s.y);
+            S{s}.set_nz(--s.y);
             schedule(OPC::dispatch);
             break;
 
         case mc(0x8a, 0): // txa
-            Do{s}.set_nz(s.a = s.x);
+            S{s}.set_nz(s.a = s.x);
             schedule(OPC::dispatch);
             break;
 
         case mc(0x98, 0): // tya
-            Do{s}.set_nz(s.a = s.y);
+            S{s}.set_nz(s.a = s.y);
             schedule(OPC::dispatch);
             break;
 
@@ -389,12 +407,12 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0xa8, 0): // tay
-            Do{s}.set_nz(s.y = s.a);
+            S{s}.set_nz(s.y = s.a);
             schedule(OPC::dispatch);
             break;
 
         case mc(0xaa, 0): // tax
-            Do{s}.set_nz(s.x = s.a);
+            S{s}.set_nz(s.x = s.a);
             schedule(OPC::dispatch);
             break;
 
@@ -404,17 +422,17 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0xba, 0): // tsx
-            Do{s}.set_nz(s.x = s.sp);
+            S{s}.set_nz(s.x = s.sp);
             schedule(OPC::dispatch);
             break;
 
         case mc(0xc8, 0): // iny
-            Do{s}.set_nz(++s.y);
+            S{s}.set_nz(++s.y);
             schedule(OPC::dispatch);
             break;
 
         case mc(0xca, 0): // dex
-            Do{s}.set_nz(--s.x);
+            S{s}.set_nz(--s.x);
             schedule(OPC::dispatch);
             break;
 
@@ -424,7 +442,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0xe8, 0): // inx
-            Do{s}.set_nz(++s.x);
+            S{s}.set_nz(++s.x);
             schedule(OPC::dispatch);
             break;
 
@@ -438,15 +456,15 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(OPC::reset, 0): s.bus.a += 1; break;
-        case mc(OPC::reset, 1): s.bus.a = sp16(0xff); break;
-        case mc(OPC::reset, 2): s.bus.a = sp16(0xfe); break;
-        case mc(OPC::reset, 3): s.bus.a = sp16(0xfd); s.sp = 0xfc; break;
+        case mc(OPC::reset, 1): s.bus.a = 0x01ff; break;
+        case mc(OPC::reset, 2): s.bus.a = 0x01fe; break;
+        case mc(OPC::reset, 3): s.bus.a = 0x01fd; s.sp = 0xfc; break;
         case mc(OPC::reset, 4): s.bus.a = Vec::rst; break;
         case mc(OPC::reset, 5):
-            Do{s}.read_pcl();
+            S{s}.read_pcl();
             break;
         case mc(OPC::reset, 6):
-            Do{s}.read_pch();
+            S{s}.read_pch();
             s.set(Flag::I);
             schedule(OPC::dispatch_brk);
             break;
@@ -455,11 +473,11 @@ void NMOS6502::Core::exec_cycle() {
             (http://visual6502.org/wiki/index.php?title=6502_Timing_of_Interrupt_Handling)
         */
         case mc(OPC::dispatch_cli): // post cli dispatch
-            Do{s}.check_irq();
+            S{s}.check_irq();
             s.clr(Flag::I);
             goto dispatch_post_cli_sei;
         case mc(OPC::dispatch_sei): // post sei dispatch
-            Do{s}.check_irq();
+            S{s}.check_irq();
             s.set(Flag::I);
             goto dispatch_post_cli_sei;
         case mc(OPC::dispatch): // 'normal' T0 case (all interrupts taken normally)
@@ -469,7 +487,7 @@ void NMOS6502::Core::exec_cycle() {
                - T0&T1 PC, and pushed b-flag according to the former (lower prio)
                - vector address according to the latter (higher prio)
             */
-            Do{s}.check_irq();
+            S{s}.check_irq();
         
         dispatch_post_cli_sei: // irq has been taken based on 'old' i-flag value (still can hijack a sw brk!)
             if (s.nmi_act) {
@@ -516,12 +534,12 @@ void NMOS6502::Core::exec(const u8 mopc) {
             if (s.a1l < s.y) { s.a2 = a1() + 0x0100; s.mcc += 2; }
             return;
         case rm_idx_ind: s.zp += s.x; s.a2 = (u8)(s.zp + 0x01); return;
-        case a_nz: Do{s}.set_nz(s.a); return;
-        case do_op: Do{s}.op(); return;
-        case st_zp_x: s.zp += s.x; Do{s}.st_reg_sel(); return;
-        case st_zp_y: s.zp += s.y; Do{s}.st_reg_sel(); return;
+        case a_nz: S{s}.set_nz(s.a); return;
+        case do_op: S{s}.op(); return;
+        case st_zp_x: s.zp += s.x; S{s}.st_reg_sel(); return;
+        case st_zp_y: s.zp += s.y; S{s}.st_reg_sel(); return;
         case st_idx_ind: s.zp += s.x; s.a2 = (u8)(s.zp + 0x01); // fall through
-        case st_reg: Do{s}.st_reg_sel(); return;
+        case st_reg: S{s}.st_reg_sel(); return;
         case jmp_ind: ++s.a1l; return;
         case bra: {
             // mapping: condition code -> flag bit position
@@ -555,11 +573,11 @@ void NMOS6502::Core::exec(const u8 mopc) {
         case inc_sp: s.inc_sp(); return;
 
         case dispatch_cli: // post cli dispatch
-            Do{s}.check_irq();
+            S{s}.check_irq();
             s.clr(Flag::I);
             goto dispatch_post_cli_sei;
         case dispatch_sei: // post sei dispatch
-            Do{s}.check_irq();
+            S{s}.check_irq();
             s.set(Flag::I);
             goto dispatch_post_cli_sei;
         case sig_hlt: sig_halt(); return;
