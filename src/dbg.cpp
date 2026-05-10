@@ -71,9 +71,9 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     std::cout << " " << print_u8(mem[(cpu.s.pc+1) & 0xffff]) << " " << print_u8(mem[(cpu.s.pc+2) & 0xffff]);
     std::cout << " ]";
 
-    std::cout << "   sp: " << print_u16(0x0100 | cpu.s.sp);
+    std::cout << "   sp: " << print_u16(cpu.s.sp);
     std::cout << " [";
-    for (int sp = cpu.s.sp + 0x100, i = 1; i < 9 && (sp + i) <= 0x1ff; ++i) {
+    for (int sp = cpu.s.sp, i = 1; i < 9 && (sp + i) <= 0x1ff; ++i) {
         std::cout << " " << print_u8(mem[sp + i]);
     }
     std::cout << " ]";

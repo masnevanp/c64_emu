@@ -35,8 +35,7 @@ void NMOS6502::Core::set_irq(bool act) {
 namespace NMOS6502 {
     enum Brk_src : u8 { sw = 0b001, nmi = 0b010, irq = 0b100, };
 
-    static u16 sp16(u8 sp8)       { return 0x100 | sp8; }
-    static u16 dec_sp16(u16& sp)  { sp = sp16(sp - 1); return sp; }
+    static u16 sp(u16 a) { return (a & 0xff) | 0x0100; }
 
     struct S {
         Core::State& s;
@@ -270,15 +269,15 @@ void NMOS6502::Core::exec_cycle() {
         case mc(OPC::brk, 0):
             s.pc = s.bus.a;
             if (s.brk_srcs == Brk_src::sw) s.pc += 1;
-            s.bus(sp16(s.sp), (s.pc >> 8), RW::w);
+            s.bus(s.sp, (s.pc >> 8), RW::w);
             break;
         case mc(OPC::brk, 1):
-            s.bus(dec_sp16(s.bus.a), s.pc);
+            s.bus(sp(s.bus.a - 1), s.pc);
             break;
         case mc(OPC::brk, 2): {
             const auto p = s.p | Flag::u | (s.brk_srcs == Brk_src::sw ? Flag::B : 0x00);
-            s.bus(dec_sp16(s.bus.a), p);
-            s.sp = s.bus.a - 1;
+            s.bus(sp(s.bus.a - 1), p);
+            s.sp = sp(s.bus.a - 1);
             break; }
         case mc(OPC::brk, 3):
             if (s.nmi_timer & 0b11) { // Potential hijacking by nmi
@@ -300,8 +299,8 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0x08, 0): // php
             s.pc = s.bus.a;
-            s.bus(sp16(s.sp), s.p, RW::w);
-            s.sp -= 1;
+            s.bus(s.sp, s.p, RW::w);
+            s.sp = sp(s.sp - 1);
             break;
         case mc(0x08, 1):
             s.bus(s.pc, RW::r);
@@ -315,6 +314,45 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0x18, 0): // clc
             s.clr(Flag::C);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x20, 0): { // jsr
+            s.pc = s.bus.d; // sr addr lo
+            const auto sp = s.sp;
+            s.sp = s.bus.a; // borrow sp for pc
+            s.bus.a = sp;
+            break; }
+        case mc(0x20, 1):
+            s.bus.d = (s.sp >> 8); // pch (sph) @ sp (bus.a)
+            s.bus(RW::w);
+            break;
+        case mc(0x20, 2):
+            s.bus(sp(s.bus.a - 1), u8(s.sp)); // pcl (spl) @ sp-1 (bus.a-1)
+            break;
+        case mc(0x20, 3): {
+            const auto pc = s.sp + 1; // 'pc + 1'
+            s.sp = sp(s.bus.a - 1); // restore sp
+            s.bus.a = pc;
+            s.bus(RW::r);
+            break; }
+        case mc(0x20, 4):
+            s.pc |= (s.bus.d << 8); // sr addr hi
+            s.bus.a = s.pc; // sr addr
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x28, 0): // plp
+            s.pc = s.bus.a;
+            s.bus.a = s.sp;
+            break;
+        case mc(0x28, 1):
+            s.sp = sp(s.sp + 1);
+            s.bus.a = s.sp;
+            break;
+        case mc(0x28, 2):
+            s.p = s.bus.d;
+            s.bus.a = s.pc;
             schedule(OPC::dispatch);
             break;
 
@@ -334,8 +372,8 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0x48, 0): // pha
             s.pc = s.bus.a;
-            s.bus(sp16(s.sp), s.a, RW::w);
-            s.sp -= 1;
+            s.bus(s.sp, s.a, RW::w);
+            s.sp = sp(s.sp - 1);
             break;
         case mc(0x48, 1):
             s.bus(s.pc, RW::r);
@@ -360,6 +398,20 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0x5a, 0): // nop
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x68, 0): // pla
+            s.pc = s.bus.a;
+            s.bus.a = s.sp;
+            break;
+        case mc(0x68, 1):
+            s.sp = sp(s.sp + 1);
+            s.bus.a = s.sp;
+            break;
+        case mc(0x68, 2):
+            S{s}.set_nz(s.a = s.bus.d);
+            s.bus.a = s.pc;
             schedule(OPC::dispatch);
             break;
 
@@ -402,7 +454,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0x9a, 0): // txs
-            s.sp = s.x;
+            s.sp = sp(s.x);
             schedule(OPC::dispatch);
             break;
 
@@ -422,7 +474,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0xba, 0): // tsx
-            S{s}.set_nz(s.x = s.sp);
+            S{s}.set_nz(s.x = u8(s.sp));
             schedule(OPC::dispatch);
             break;
 
@@ -458,7 +510,7 @@ void NMOS6502::Core::exec_cycle() {
         case mc(OPC::reset, 0): s.bus.a += 1; break;
         case mc(OPC::reset, 1): s.bus.a = 0x01ff; break;
         case mc(OPC::reset, 2): s.bus.a = 0x01fe; break;
-        case mc(OPC::reset, 3): s.bus.a = 0x01fd; s.sp = 0xfc; break;
+        case mc(OPC::reset, 3): s.bus.a = 0x01fd; s.sp = 0x01fc; break;
         case mc(OPC::reset, 4): s.bus.a = Vec::rst; break;
         case mc(OPC::reset, 5):
             S{s}.read_pcl();

@@ -37,6 +37,7 @@ public:
         u16 mcc; // micro-code counter
 
         u16 pc;
+        u16 sp;
 
         Bus bus;
     
@@ -44,7 +45,6 @@ public:
         u8 a;
         u8 x;
         u8 y;
-        u8 sp;
 
         u8 nmi_act;
         u8 nmi_timer;
