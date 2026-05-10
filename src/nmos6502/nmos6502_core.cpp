@@ -320,7 +320,7 @@ void NMOS6502::Core::exec_cycle() {
         case mc(0x20, 0): { // jsr
             s.pc = s.bus.d; // sr addr lo
             const auto sp = s.sp;
-            s.sp = s.bus.a; // borrow sp for pc
+            s.sp = s.bus.a + 1; // borrow sp for pc
             s.bus.a = sp;
             break; }
         case mc(0x20, 1):
@@ -331,7 +331,7 @@ void NMOS6502::Core::exec_cycle() {
             s.bus(sp(s.bus.a - 1), u8(s.sp)); // pcl (spl) @ sp-1 (bus.a-1)
             break;
         case mc(0x20, 3): {
-            const auto pc = s.sp + 1; // 'pc + 1'
+            const auto pc = s.sp;
             s.sp = sp(s.bus.a - 1); // restore sp
             s.bus.a = pc;
             s.bus(RW::r);
@@ -398,6 +398,25 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0x5a, 0): // nop
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x60, 0): // rts
+            s.bus.a = s.sp;
+            break;
+        case mc(0x60, 1):
+            s.bus.a = sp(s.bus.a + 1);
+            break;
+        case mc(0x60, 2):
+            s.pc = s.bus.d;
+            s.bus.a = sp(s.bus.a + 1);
+            break;
+        case mc(0x60, 3):
+            s.bus.a = s.pc | (s.bus.d << 8);
+            s.sp = sp(s.sp + 2);
+            break;
+        case mc(0x60, 4):
+            s.bus.a += 1; // pc + 1
             schedule(OPC::dispatch);
             break;
 

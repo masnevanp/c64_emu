@@ -61,28 +61,31 @@ void Dbg::print_mem(u8* mem, u16 page) {
 }
 
 
-void Dbg::print_status(const Core& cpu, u8* mem) {
-    std::cout << "\n    ba: " << print_u16(cpu.s.bus.a);
-    std::cout << "   bd: " << print_u8(cpu.s.bus.d);
-    std::cout << (cpu.s.bus.rw ? "   [r]" : "   [W]");
+void print_bus_status(const Core& cpu) {
+    std::cout << "b:" << Dbg::print_u16(cpu.s.bus.a);
+    std::cout << (cpu.s.bus.rw ? " > " : " < ");
+    std::cout << Dbg::print_u8(cpu.s.bus.d);
+}
 
-    std::cout << "\n\n    pc: " << print_u16(cpu.s.pc);
+
+void Dbg::print_status(const Core& cpu, u8* mem) {
+    std::cout << "  pc:" << print_u16(cpu.s.pc);
     std::cout << " [ " << print_u8(mem[cpu.s.pc]);
     std::cout << " " << print_u8(mem[(cpu.s.pc+1) & 0xffff]) << " " << print_u8(mem[(cpu.s.pc+2) & 0xffff]);
     std::cout << " ]";
 
-    std::cout << "   sp: " << print_u16(cpu.s.sp);
+    std::cout << " a:" << print_u8(cpu.s.a);
+    std::cout << " x:" << print_u8(cpu.s.x);
+    std::cout << " y:" << print_u8(cpu.s.y);
+    std::cout << " p:" << print_u8(cpu.s.p);
+    std::cout << " [" << flags_str(cpu.s.p) << "]";
+
+    std::cout << " s:" << print_u16(cpu.s.sp);
     std::cout << " [";
-    for (int sp = cpu.s.sp, i = 1; i < 9 && (sp + i) <= 0x1ff; ++i) {
+    for (int sp = cpu.s.sp, i = 1; i < 4 && (sp + i) <= 0x1ff; ++i) {
         std::cout << " " << print_u8(mem[sp + i]);
     }
     std::cout << " ]";
-
-    std::cout << "\n     a: " << print_u8(cpu.s.a);
-    std::cout << "   x: " << print_u8(cpu.s.x);
-    std::cout << "   y: " << print_u8(cpu.s.y);
-    std::cout << "   p: " << print_u8(cpu.s.p);
-    std::cout << " [" << flags_str(cpu.s.p) << "]";
 }
 
 
@@ -104,6 +107,8 @@ void Dbg::System::tick(u32 cycles, bool verbose) {
                 << " t:" << tn
                 << sep << "\n";
 
+            std::cout << "\n    ";
+            print_bus_status(cpu);
             print_status(cpu, mem);
 
             if (tn == 0) {
@@ -112,10 +117,16 @@ void Dbg::System::tick(u32 cycles, bool verbose) {
                 //cpu.s.pc = cpu.s.bus.a;
             }
 
-            std::cout << std::endl;
         }
 
         cpu.tick();
+
+        if (verbose) {
+            std::cout << "  ";
+            print_bus_status(cpu);
+            std::cout << std::endl;
+        }
+
         ++cn;
         ++tn;
     }
