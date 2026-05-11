@@ -527,10 +527,10 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(OPC::reset, 0): s.bus.a += 1; break;
-        case mc(OPC::reset, 1): s.bus.a = 0x01ff; break;
-        case mc(OPC::reset, 2): s.bus.a = 0x01fe; break;
-        case mc(OPC::reset, 3): s.bus.a = 0x01fd; s.sp = 0x01fc; break;
-        case mc(OPC::reset, 4): s.bus.a = Vec::rst; break;
+        case mc(OPC::reset, 1): s.bus.a = 0x0100; break;
+        case mc(OPC::reset, 2): s.bus.a = 0x01ff; break;
+        case mc(OPC::reset, 3): s.bus.a = 0x01fe; break;
+        case mc(OPC::reset, 4): s.bus.a = Vec::rst; s.sp = 0x01fd; break;
         case mc(OPC::reset, 5):
             S{s}.read_pcl();
             break;
