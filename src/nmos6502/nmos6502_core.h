@@ -38,7 +38,8 @@ public:
 
         u16 pc;
         u16 sp;
-
+        u16 ad; // TODO: is the high-byte really needed?
+    
         Bus bus;
     
         u8 p;

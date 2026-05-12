@@ -91,7 +91,7 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
 
 void Dbg::System::tick(u32 cycles, bool verbose) {
     if (verbose) {
-        std::cout << "  cn  t  ab  db r/w  pc  ac xr yr  sp  ps ps-flags mcop/n";
+        std::cout << "  cn   ab  db w  pc  ac xr yr  sp  ps ps-flags mcop/n t";
         std::cout << std::endl;
     }
 
@@ -101,28 +101,20 @@ void Dbg::System::tick(u32 cycles, bool verbose) {
 
         // BEWARE
         if (cpu.s.opc() >= OPC::dispatch_cli && cpu.s.opc() <= OPC::dispatch_brk) {
-            tn = 0;
+            tn = 1;
         }
 
         if (verbose) {
-            //std::string sep = tn == 0 ? " ====================== " : " ---------------------- ";
-            /*std::cout << std::dec
-                << "\n" << sep << "c:" << (int)cn
-                << " op:" << print_u16(cpu.s.opc())
-                << " t:" << tn
-                << sep << "\n";*/
-
-            std::cout << ' ' << print_u16(cn) << ' ' << tn << ' '
+            std::cout << ' ' << print_u16(cn) << ' '
                     << print_u16(cpu.s.bus.a) << ' ' << print_u8(cpu.s.bus.d)
-                    << (cpu.s.bus.rw ? "  r  " : "  w  ") << print_u16(cpu.s.pc) << ' '
+                    << (cpu.s.bus.rw ? "   " : " * ") << print_u16(cpu.s.pc) << ' '
                     << print_u8(cpu.s.a) << ' ' << print_u8(cpu.s.x) << ' ' << print_u8(cpu.s.y) << ' '
                     << print_u16(cpu.s.sp) << ' ' << print_u8(cpu.s.p) << ' ' << flags_str(cpu.s.p) << ' '
-                    << print_u16(cpu.s.opc()) << '/' << (cpu.s.mcc & 0b111);
+                    << print_u16(cpu.s.opc()) << '/' << (cpu.s.mcc & 0b111) << ' ' << tn;
 
-            if (tn == 0) {
+            if (tn == 1) {
                 const auto bytes = Bytes{{mem[cpu.s.bus.a], mem[u16(cpu.s.bus.a + 1)], mem[u16(cpu.s.bus.a + 2)]}};
                 std::cout << "  [" + disasm_first(bytes, cpu.s.bus.a).text + "]";
-                //cpu.s.pc = cpu.s.bus.a;
             } else if (cpu.s.opc() <= 0xff) {
                 std::cout << "  [" << NMOS6502::instruction[cpu.s.opc()].mnemonic << "]";
             }
