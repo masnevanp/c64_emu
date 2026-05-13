@@ -91,7 +91,7 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
 
 void Dbg::System::tick(u32 cycles, bool verbose) {
     if (verbose) {
-        std::cout << "  cn   ab  db w  pc  ac xr yr  sp  ps ps-flags mcop/n t";
+        std::cout << "  cn   ab  db w  pc  ac xr yr  sp  ps ps-flags n/i mcop/n t";
         std::cout << std::endl;
     }
 
@@ -110,6 +110,7 @@ void Dbg::System::tick(u32 cycles, bool verbose) {
                     << (cpu.s.bus.rw ? "   " : " * ") << print_u16(cpu.s.pc) << ' '
                     << print_u8(cpu.s.a) << ' ' << print_u8(cpu.s.x) << ' ' << print_u8(cpu.s.y) << ' '
                     << print_u16(cpu.s.sp) << ' ' << print_u8(cpu.s.p) << ' ' << flags_str(cpu.s.p) << ' '
+                    << (cpu.s.nmi_act ? "n/" : "-/") << (cpu.s.irq_act ? "i " : "- ")
                     << print_u16(cpu.s.opc()) << '/' << (cpu.s.mcc & 0b111) << ' ' << tn;
 
             if (tn == 1) {

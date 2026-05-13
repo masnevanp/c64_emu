@@ -367,6 +367,26 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
+        case mc(0x40, 0): // rti
+            s.bus.a = s.sp;
+            s.sp = sp(s.sp + 3);
+            break;
+        case mc(0x40, 1):
+            s.bus.a = sp(s.bus.a + 1);
+            break;
+        case mc(0x40, 2):
+            s.p = s.bus.d;
+            s.bus.a = sp(s.bus.a + 1);
+            break;
+        case mc(0x40, 3):
+            s.pc = s.bus.d;
+            s.bus.a = sp(s.bus.a + 1);
+            break;
+        case mc(0x40, 4):
+            s.bus.a = s.pc | (s.bus.d << 8);
+            schedule(OPC::dispatch);
+            break;
+
         case mc(0x48, 0): // pha
             s.pc = s.bus.a;
             s.bus(s.sp, s.a, RW::w);
@@ -400,6 +420,7 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0x60, 0): // rts
             s.bus.a = s.sp;
+            s.sp = sp(s.sp + 2);
             break;
         case mc(0x60, 1):
             s.bus.a = sp(s.bus.a + 1);
@@ -410,7 +431,6 @@ void NMOS6502::Core::exec_cycle() {
             break;
         case mc(0x60, 3):
             s.bus.a = s.pc | (s.bus.d << 8);
-            s.sp = sp(s.sp + 2);
             break;
         case mc(0x60, 4):
             s.bus.a += 1; // pc + 1

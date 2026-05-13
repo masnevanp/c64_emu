@@ -39,6 +39,7 @@ public:
         u16 pc;
         u16 sp;
         u16 ad; // TODO: is the high-byte really needed?
+                // (or is 'ad' needed at all? At least in some cases we could just 'borrow' e.g. sp and/or pc...)
     
         Bus bus;
     
