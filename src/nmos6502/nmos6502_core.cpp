@@ -331,6 +331,10 @@ void NMOS6502::Core::exec_cycle() {
             Op{s}.schedule(OPC::dispatch);
             break;
 
+        case mc(0x10, 0): // bpl
+            bra_if_clr(Flag::N);
+            break;
+
         case mc(0x18, 0): // clc
             s.clr(Flag::C);
             Op{s}.schedule(OPC::dispatch);
@@ -375,6 +379,10 @@ void NMOS6502::Core::exec_cycle() {
         case mc(0x2a, 0): // rol
             Op{s}.rol(s.a);
             Op{s}.schedule(OPC::dispatch);
+            break;
+
+        case mc(0x30, 0): // bmi
+            bra_if_set(Flag::N);
             break;
 
         case mc(0x38, 0): // sec
@@ -427,6 +435,10 @@ void NMOS6502::Core::exec_cycle() {
         case mc(0x4c, 1):
             Op{s}.read_pch();
             Op{s}.schedule(OPC::dispatch);
+            break;
+
+        case mc(0x50, 0): // bvc
+            bra_if_clr(Flag::V);
             break;
 
         case mc(0x58, 0): // cli
@@ -487,6 +499,10 @@ void NMOS6502::Core::exec_cycle() {
         case mc(0x6c, 3):
             Op{s}.read_pch();
             Op{s}.schedule(OPC::dispatch);
+            break;
+
+        case mc(0x70, 0): // bvs
+            bra_if_set(Flag::V);
             break;
 
         case mc(0x78, 0): // sei
@@ -565,6 +581,10 @@ void NMOS6502::Core::exec_cycle() {
             Op{s}.schedule(OPC::dispatch);
             break;
 
+        case mc(0xd0, 0): // bne
+            bra_if_clr(Flag::Z);
+            break;
+
         case mc(0xd8, 0): // cld
             s.clr(Flag::D);
             Op{s}.schedule(OPC::dispatch);
@@ -577,6 +597,10 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0xea, 0): // nop
             Op{s}.schedule(OPC::dispatch);
+            break;
+
+        case mc(0xf0, 0): // beq
+            bra_if_set(Flag::Z);
             break;
 
         case mc(0xf8, 0): // sed
