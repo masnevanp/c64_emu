@@ -280,6 +280,9 @@ static constexpr NMOS6502::u16 mc(NMOS6502::u16 opc, NMOS6502::u8 cn = 0) { // m
 void NMOS6502::Core::exec_cycle() {
     static constexpr u8 nmi_timer_handled = 0b10000000;
 
+    #define bra_if_set(flag) Op{s}.bra(s.is_set(flag));
+    #define bra_if_clr(flag) Op{s}.bra(s.is_clr(flag));
+
     switch (s.mcc++) {
 
         case mc(OPC::brk, 0):
@@ -510,7 +513,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0x90, 0): // bcc
-            Op{s}.bra(s.is_clr(Flag::C));
+            bra_if_clr(Flag::C);
             break;
 
         case mc(0x98, 0): // tya
@@ -539,7 +542,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0xb0, 0): // bcs
-            Op{s}.bra(s.is_set(Flag::C));
+            bra_if_set(Flag::C);
             break;
 
         case mc(0xb8, 0): // clv
@@ -645,6 +648,9 @@ void NMOS6502::Core::exec_cycle() {
             Op{s}.schedule(OPC::dispatch_post_brk);
             break;
     }
+
+    #undef bra_if_set
+    #undef bra_if_clr
 }
 
 
