@@ -92,7 +92,7 @@ public:
 private:
     void exec_cycle();
 
-    void schedule(u16 opc) { s.mcc = opc << 3; } // bits 0-2 encode the cycle (0..7)
+    void schedule(u16 opc) { s.mcc = opc << 3; } // bits 0-2 encode the step (0..7)
 
     Sig& sig_halt;
 };

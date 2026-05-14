@@ -294,7 +294,7 @@ void NMOS6502::Core::exec_cycle() {
         case mc(OPC::brk, 5):
             S{s}.read_pch();
             s.set(Flag::I);
-            schedule(OPC::dispatch_brk);
+            schedule(OPC::dispatch_post_brk);
             break;
 
         case mc(0x08, 0): // php
@@ -411,7 +411,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0x58, 0): // cli
-            schedule(OPC::dispatch_cli);
+            schedule(OPC::dispatch_post_cli);
             break;
 
         case mc(0x5a, 0): // nop
@@ -471,7 +471,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0x78, 0): // sei
-            schedule(OPC::dispatch_sei);
+            schedule(OPC::dispatch_post_sei);
             break;
 
         case mc(0x88, 0): // dey
@@ -481,6 +481,15 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0x8a, 0): // txa
             S{s}.set_nz(s.a = s.x);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0x8d, 0): // todo
+            break;
+        case mc(0x8d, 1): // todo
+            break;
+        case mc(0x8d, 2): // todo
+            s.bus.a += 2;
             schedule(OPC::dispatch);
             break;
 
@@ -499,8 +508,40 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
+        case mc(0xa9, 0): // todo
+            s.bus.a += 1;
+            schedule(OPC::dispatch);
+            break;
+
         case mc(0xaa, 0): // tax
             S{s}.set_nz(s.x = s.a);
+            schedule(OPC::dispatch);
+            break;
+
+        case mc(0xb0, 0): // bcs
+            s.bus.a += 1;
+
+            if (s.is_set(Flag::C)) {
+                s.pc = s.bus.a + i8(s.bus.d);
+                if ((s.pc ^ s.bus.a) & 0xff00) { // page cross?
+                    s.ad = s.bus.a + s.bus.d;
+                    s.mcc += 1; // schedule 'page cross' step
+                }
+            } else {
+                schedule(OPC::dispatch);
+            }
+            break;
+        case mc(0xb0, 1): // bra, no page cross (hold ints)
+            if (s.nmi_timer == 0x02) s.nmi_timer = 0x01;
+            if (s.irq_timer == 0b10) s.irq_timer = 0b01;
+            s.bus.a = s.pc;
+            schedule(OPC::dispatch);
+            break;
+        case mc(0xb0, 2): // bra, page cross
+            s.bus.a = s.ad;
+            break;
+        case mc(0xb0, 3):
+            s.bus.a = s.pc;
             schedule(OPC::dispatch);
             break;
 
@@ -543,7 +584,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
-        case mc(OPC::reset, 0): s.bus.a += 1; break;
+        case mc(OPC::reset, 0): s.bus.a += 1; break; // TODO: move to last
         case mc(OPC::reset, 1): s.bus.a = 0x0100; break;
         case mc(OPC::reset, 2): s.bus.a = 0x01ff; break;
         case mc(OPC::reset, 3): s.bus.a = 0x01fe; break;
@@ -554,46 +595,43 @@ void NMOS6502::Core::exec_cycle() {
         case mc(OPC::reset, 6):
             S{s}.read_pch();
             s.set(Flag::I);
-            schedule(OPC::dispatch_brk);
+            schedule(OPC::dispatch_post_brk);
             break;
 
+        /* Interrupt hijacking:
+            - happens if an interrupt of a higher priority is signalled before
+                the 'brk' execution of the lower priority reaches T5 (=T4 ph2 at latest).
+            - T0&T1 PC, and pushed b-flag according to the former (lower prio)
+            - vector address according to the latter (higher prio)
+        */
         /* cli&sei feature: change not be visible at next T0 (dispatch)
             (http://visual6502.org/wiki/index.php?title=6502_Timing_of_Interrupt_Handling)
         */
-        case mc(OPC::dispatch_cli): // post cli dispatch
-            S{s}.check_irq();
+        case mc(OPC::dispatch_post_cli): 
+            S{s}.check_irq(); // irq taken on 'old' i-flag value
             s.clr(Flag::I);
-            goto dispatch_post_cli_sei;
-        case mc(OPC::dispatch_sei): // post sei dispatch
-            S{s}.check_irq();
+            goto _irq_checked;
+        case mc(OPC::dispatch_post_sei):
+            S{s}.check_irq(); // irq taken on 'old' i-flag value
             s.set(Flag::I);
-            goto dispatch_post_cli_sei;
+            goto _irq_checked;
         case mc(OPC::dispatch): // 'normal' T0 case (all interrupts taken normally)
-            /* Interrupt hijacking:
-               - happens if an interrupt of a higher priority is signalled before
-                 the 'brk' execution of the lower priority reaches T5 (=T4 ph2 at latest).
-               - T0&T1 PC, and pushed b-flag according to the former (lower prio)
-               - vector address according to the latter (higher prio)
-            */
             S{s}.check_irq();
-        
-        dispatch_post_cli_sei: // irq has been taken based on 'old' i-flag value (still can hijack a sw brk!)
+        _irq_checked:
             if (s.nmi_act) {
                 s.brk_srcs |= Brk_src::nmi;
                 s.nmi_act = false;
                 if (s.nmi_timer) s.nmi_timer = nmi_timer_handled;
             }
             // fall through
-        case mc(OPC::dispatch_brk):
-            if (s.bus.d == OPC::brk) s.brk_srcs |= Brk_src::sw;
-
+        case mc(OPC::dispatch_post_brk):
             if (s.brk_srcs) {
                 schedule(OPC::brk);
             } else {
-                schedule(s.bus.d);
                 s.bus.a += 1; // inc pc
+                if (s.bus.d == OPC::brk) s.brk_srcs = Brk_src::sw;
+                schedule(s.bus.d);
             }
-
             break;
     }
 }

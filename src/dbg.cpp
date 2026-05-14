@@ -100,7 +100,7 @@ void Dbg::System::tick(u32 cycles, bool verbose) {
         else mem[cpu.s.bus.a] = cpu.s.bus.d;
 
         // BEWARE
-        if (cpu.s.opc() >= OPC::dispatch_cli && cpu.s.opc() <= OPC::dispatch_brk) {
+        if (cpu.s.opc() >= OPC::dispatch_post_cli && cpu.s.opc() <= OPC::dispatch_post_brk) {
             tn = 1;
         }
 

@@ -31,7 +31,7 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     Timer t;
     for (int prev_pc = cpu.s.pc, psc = 0, step = false, output = false; psc < 15; ++psc) {
         // BEWARE
-        if (cpu.s.opc()>= OPC::dispatch_cli && cpu.s.opc() <= OPC::dispatch_brk) {
+        if (cpu.s.opc()>= OPC::dispatch_post_cli && cpu.s.opc() <= OPC::dispatch_post_brk) {
             if (cpu.s.pc == step_from_pc) step = true;
             if (cpu.s.pc == output_from_pc) output = true;
             if (step || output) {
