@@ -299,7 +299,7 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0x08, 0): // php
             s.pc = s.bus.a;
-            s.bus(s.sp, s.p, RW::w);
+            s.bus(s.sp, s.p | (Flag::B | Flag::u), RW::w);
             s.sp = sp(s.sp - 1);
             break;
         case mc(0x08, 1):
