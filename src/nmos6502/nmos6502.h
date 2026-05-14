@@ -24,7 +24,9 @@ enum Flag : u8 { // nvubdizc, u = unused (bit 5)
 
 enum OPC {
     brk = 0x00, rts = 0x60,
-    reset = 0x100, dispatch_post_cli, dispatch_post_sei, dispatch, dispatch_post_brk
+    bra = 0x100,
+    dispatch_post_cli, dispatch_post_sei, dispatch, dispatch_post_brk,
+    reset
 };
 
 enum class Addr_mode {
