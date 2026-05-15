@@ -17,9 +17,9 @@ public:
             enum RW : u8 { w = 0, r = 1 };
 
             /* Bus access params (addr, data, r/w).
-                The read/write is expected to happen between ticks, e.g.:
+                The read/write is expected to happen before tick(), e.g.:
                 for (;;) {
-                    do_access(core.s.bus_a, core.s.bus_d, core.s.bus_rw);
+                    do_access(core.s.bus.a, core.s.bus.d, core.s.bus.rw);
                     core.tick();
                 }
             */
@@ -38,9 +38,9 @@ public:
 
         u16 pc;
         u16 sp;
-        u16 ad; // TODO: is the high-byte really needed?
-                // (or is 'ad' needed at all? At least in some cases we could just 'borrow' e.g. sp and/or pc...)
-    
+
+        u16 aux;
+
         Bus bus;
     
         u8 p;
@@ -86,8 +86,8 @@ public:
         exec_cycle();
     }
 
-    bool halted() const { /*return mop().mopc == MC::hlt;*/ return false; } // ### TODO ###
-    void resume() { /*if (halted()) ++s.mcc;*/ } // ### TODO ###
+    bool halted() const { return s.opc() == OPC::halt; }
+    void resume();
 
 private:
     void exec_cycle();

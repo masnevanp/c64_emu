@@ -86,17 +86,17 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     for (int sp = cpu.s.sp, i = 1; i < 4 && (sp + i) <= 0x1ff; ++i) {
         std::cout << " " << print_u8(mem[sp + i]);
     }
-    std::cout << " ]";
+    std::cout << " ]\n\n";
 }
 
 
 void Dbg::System::tick(u32 cycles, bool verbose) {
     if (verbose) {
-        std::cout << "\n  cn   ab  db w  pc  ac xr yr  sp  ps    ps    n/i mcop/n t";
+        std::cout << "\n  cn   ab  db w  pc  ac xr yr  sp  auxi ps    ps    n/i mcop/n t";
         std::cout << std::endl;
     }
 
-    while (cycles--) {
+    while (cycles-- && !cpu.halted()) {
         if (cpu.s.bus.rw == Core::State::Bus::RW::r) cpu.s.bus.d = mem[cpu.s.bus.a];
         else mem[cpu.s.bus.a] = cpu.s.bus.d;
 
@@ -110,7 +110,8 @@ void Dbg::System::tick(u32 cycles, bool verbose) {
                     << print_u16(cpu.s.bus.a) << ' ' << print_u8(cpu.s.bus.d)
                     << (cpu.s.bus.rw ? "   " : " * ") << print_u16(cpu.s.pc) << ' '
                     << print_u8(cpu.s.a) << ' ' << print_u8(cpu.s.x) << ' ' << print_u8(cpu.s.y) << ' '
-                    << print_u16(cpu.s.sp) << ' ' << print_u8(cpu.s.p) << ' ' << flags_str(cpu.s.p) << ' '
+                    << print_u16(cpu.s.sp) << ' ' << print_u16(cpu.s.aux) << ' '
+                    << print_u8(cpu.s.p) << ' ' << flags_str(cpu.s.p) << ' '
                     << (cpu.s.nmi_act ? "n/" : "-/") << (cpu.s.irq_act ? "i " : "- ")
                     << print_u16(cpu.s.opc()) << '/' << (cpu.s.mcc & 0b111) << ' ' << tn;
 

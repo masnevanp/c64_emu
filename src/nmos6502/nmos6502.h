@@ -26,7 +26,7 @@ enum OPC : u16 {
     brk = 0x00, rts = 0x60,
     bra = 0x100,
     dispatch_post_cli, dispatch_post_sei, dispatch, dispatch_post_brk,
-    reset
+    halt, reset
 };
 
 enum class Addr_mode {

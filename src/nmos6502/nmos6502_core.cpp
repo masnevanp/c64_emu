@@ -27,7 +27,7 @@ namespace NMOS6502 {
                 s.pc = s.bus.a + i8(s.bus.d);
                 schedule(OPC::bra);
                 if ((s.pc ^ s.bus.a) & 0xff00) { // page cross?
-                    s.ad = s.bus.a + s.bus.d;
+                    s.aux = s.bus.a + s.bus.d;
                     s.mcc += 1; // schedule 'page cross' step
                 }
             } else {
@@ -75,6 +75,12 @@ namespace NMOS6502 {
             }
         }
         */
+        void halt() {
+            s.aux = s.bus.d;
+            s.pc = s.bus.a + 1;
+            s.bus.a = 0xffff;
+            schedule(OPC::halt);
+        }
 
         void op() {
             //switch (s.ir) {
@@ -285,6 +291,8 @@ void NMOS6502::Core::exec_cycle() {
     auto bra_if_set = [&](Flag f) { Op{s}.bra(s.is_set(f)); };
     auto bra_if_clr = [&](Flag f) { Op{s}.bra(s.is_clr(f)); };
 
+    auto halt = [&]() { Op{s}.halt(); };
+
     auto schedule = [&](OPC opc) { Op{s}.schedule(opc); };
 
     #define rm_imm(op) { \
@@ -326,6 +334,10 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch_post_brk);
             break;
 
+        case mc(0x02, 0): // hlt
+            halt();
+            break;
+
         case mc(0x08, 0): // php
             s.pc = s.bus.a;
             s.bus(s.sp, s.p | (Flag::B | Flag::u), RW::w);
@@ -349,13 +361,17 @@ void NMOS6502::Core::exec_cycle() {
             bra_if_clr(Flag::N);
             break;
 
+        case mc(0x12, 0): // hlt
+            halt();
+            break;
+
         case mc(0x18, 0): // clc
             s.clr(Flag::C);
             schedule(OPC::dispatch);
             break;
 
         case mc(0x20, 0): // jsr
-            s.ad = s.bus.d;
+            s.aux = s.bus.d;
             s.pc = s.bus.a + 1;
             s.bus.a = s.sp;
             s.sp = sp(s.sp - 2);
@@ -372,8 +388,12 @@ void NMOS6502::Core::exec_cycle() {
             s.bus(RW::r);
             break;
         case mc(0x20, 4):
-            s.bus.a = (s.ad | (s.bus.d << 8));
+            s.bus.a = (s.aux | (s.bus.d << 8));
             schedule(OPC::dispatch);
+            break;
+
+        case mc(0x22, 0): // hlt
+            halt();
             break;
 
         case mc(0x28, 0): // plp
@@ -403,6 +423,10 @@ void NMOS6502::Core::exec_cycle() {
             bra_if_set(Flag::N);
             break;
 
+        case mc(0x32, 0): // hlt
+            halt();
+            break;
+
         case mc(0x38, 0): // sec
             s.set(Flag::C);
             schedule(OPC::dispatch);
@@ -430,6 +454,10 @@ void NMOS6502::Core::exec_cycle() {
         case mc(0x40, 4):
             s.bus.a = s.pc | (s.bus.d << 8);
             schedule(OPC::dispatch);
+            break;
+
+        case mc(0x42, 0): // hlt
+            halt();
             break;
 
         case mc(0x48, 0): // pha
@@ -463,6 +491,10 @@ void NMOS6502::Core::exec_cycle() {
             bra_if_clr(Flag::V);
             break;
 
+        case mc(0x52, 0): // hlt
+            halt();
+            break;
+
         case mc(0x58, 0): // cli
             schedule(OPC::dispatch_post_cli);
             break;
@@ -488,6 +520,10 @@ void NMOS6502::Core::exec_cycle() {
         case mc(0x60, 4):
             s.bus.a += 1; // pc + 1
             schedule(OPC::dispatch);
+            break;
+
+        case mc(0x62, 0): // hlt
+            halt();
             break;
 
         case mc(0x68, 0): // pla
@@ -531,6 +567,10 @@ void NMOS6502::Core::exec_cycle() {
             bra_if_set(Flag::V);
             break;
 
+        case mc(0x72, 0): // hlt
+            halt();
+            break;
+
         case mc(0x78, 0): // sei
             schedule(OPC::dispatch_post_sei);
             break;
@@ -556,6 +596,10 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0x90, 0): // bcc
             bra_if_clr(Flag::C);
+            break;
+
+        case mc(0x92, 0): // hlt
+            halt();
             break;
 
         case mc(0x98, 0): // tya
@@ -590,6 +634,10 @@ void NMOS6502::Core::exec_cycle() {
             bra_if_set(Flag::C);
             break;
 
+        case mc(0xb2, 0): // hlt
+            halt();
+            break;
+
         case mc(0xb8, 0): // clv
             s.clr(Flag::V);
             schedule(OPC::dispatch);
@@ -622,6 +670,10 @@ void NMOS6502::Core::exec_cycle() {
             bra_if_clr(Flag::Z);
             break;
 
+        case mc(0xd2, 0): // hlt
+            halt();
+            break;
+
         case mc(0xd8, 0): // cld
             s.clr(Flag::D);
             schedule(OPC::dispatch);
@@ -648,6 +700,10 @@ void NMOS6502::Core::exec_cycle() {
             bra_if_set(Flag::Z);
             break;
 
+        case mc(0xf2, 0): // hlt
+            halt();
+            break;
+
         case mc(0xf8, 0): // sed
             s.set(Flag::D);
             schedule(OPC::dispatch);
@@ -660,7 +716,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
         case mc(OPC::bra, 1): // bra, page cross
-            s.bus.a = s.ad;
+            s.bus.a = s.aux;
             break;
         case mc(OPC::bra, 2):
             s.bus.a = s.pc;
@@ -704,6 +760,19 @@ void NMOS6502::Core::exec_cycle() {
             }
             break;
 
+        case mc(OPC::halt, 0):
+            s.bus.a = 0xfffe;
+            break;
+        case mc(OPC::halt, 1):
+            break;
+        case mc(OPC::halt, 2):
+            s.bus.a = 0xffff;
+            sig_halt();
+            break;
+        case mc(OPC::halt, 3):
+            s.mcc--; // stuck (until resume())
+            break;
+
         case mc(OPC::reset, 0): s.bus.a += 1; break;
         case mc(OPC::reset, 1): s.bus.a = 0x0100; break;
         case mc(OPC::reset, 2): s.bus.a = 0x01ff; break;
@@ -717,6 +786,14 @@ void NMOS6502::Core::exec_cycle() {
             s.set(Flag::I);
             schedule(OPC::dispatch_post_brk);
             break;
+    }
+}
+
+
+void NMOS6502::Core::resume() {
+    if (halted()) {
+        s.bus.a = s.pc;
+        Op{s}.schedule(OPC::dispatch);
     }
 }
 
