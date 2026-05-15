@@ -92,7 +92,7 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
 
 void Dbg::System::tick(u32 cycles, bool verbose) {
     if (verbose) {
-        std::cout << "\n  cn   ab  db w  pc  ac xr yr  sp  ps ps-flags n/i mcop/n t fetch";
+        std::cout << "\n  cn   ab  db w  pc  ac xr yr  sp  ps    ps    n/i mcop/n t";
         std::cout << std::endl;
     }
 
@@ -118,7 +118,7 @@ void Dbg::System::tick(u32 cycles, bool verbose) {
                 const auto bytes = Bytes{{mem[cpu.s.bus.a], mem[u16(cpu.s.bus.a + 1)], mem[u16(cpu.s.bus.a + 2)]}};
                 std::cout << "  " + as_lower(disasm_first(bytes, cpu.s.bus.a).text) + " ";
             } else {
-                std::cout << "   .";
+                std::cout << "  .";
             }
             /*else if (cpu.s.opc() <= 0xff) {
                 std::cout << "   " << as_lower(NMOS6502::instruction[cpu.s.opc()].mnemonic) << "";

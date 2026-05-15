@@ -50,7 +50,7 @@ namespace NMOS6502 {
         }
 
         //void bit() { s.p = (s.p & 0x3f) | (s.d & 0xc0); s.set(Flag::Z, (s.a & s.d) == 0x00); }
-        //void cmp(const Reg8& r) { s.set(Flag::C, r >= s.d); set_nz(r - s.d); }
+        void cmp(const u8& r) { s.set(Flag::C, r >= s.bus.d); set_nz(r - s.bus.d); }
         void adc();
         void sbc();
 
@@ -162,50 +162,50 @@ namespace NMOS6502 {
                 -- Jorge Cwik, Flags on Decimal mode in the NMOS 6502
                    http://atariage.com/forums/topic/163876-flags-on-decimal-mode-on-the-nmos-6502/
             */
-            /*auto adc_dec_nib = [](u8 res, u8& co) -> u8 {
+            auto adc_dec_nib = [](u8 res, u8& co) -> u8 {
                 if (res > 0x9) { co = 0x1; return (res + 0x6) & 0xf; }
                 else { co = 0x0; return res; }
             };
-            s.set(Flag::Z, ((s.a + s.d + C()) & 0xff) == 0x00); // Z set based on binary result
+            s.set(Flag::Z, ((s.a + s.bus.d + C()) & 0xff) == 0x00); // Z set based on binary result
             u8 n1; u8 c1; u8 n2; u8 c2;
-            n1 = adc_dec_nib((s.a & 0xf) + (s.d & 0xf) + C(), c1);
-            n2 = (s.a >> 4) + (s.d >> 4) + c1;
+            n1 = adc_dec_nib((s.a & 0xf) + (s.bus.d & 0xf) + C(), c1);
+            n2 = (s.a >> 4) + (s.bus.d >> 4) + c1;
             u8 r = (n2 << 4) | n1; // high nib not adjusted yet (N&V set based on this)
             s.set(Flag::N, r & 0x80);
-            s.set(Flag::V, ((s.a ^ r) & (s.d ^ r) & 0x80));
+            s.set(Flag::V, ((s.a ^ r) & (s.bus.d ^ r) & 0x80));
             n2 = adc_dec_nib(n2, c2);
             s.set(Flag::C, c2); // decimal carry
-            s.a = (n2 << 4) | n1;*/
+            s.a = (n2 << 4) | n1;
         } else {
-            /*u16 r = s.a + s.d + C();
+            u16 r = s.a + s.bus.d + C();
             s.set(Flag::C, r & 0x100);
-            s.set(Flag::V, ((s.a ^ r) & (s.d ^ r) & 0x80));
-            set_nz(s.a = r);*/
+            s.set(Flag::V, ((s.a ^ r) & (s.bus.d ^ r) & 0x80));
+            set_nz(s.a = r);
         }
     }
 
-    void Op::sbc() {/*
+    void Op::sbc() {
         if (s.is_set(Flag::D)) {
             auto sbc_dec_nib = [](u8 res, u8& co) -> u8 {
                 if (res > 0xf) { co = 0x1; return (res - 0x6) & 0xf; }
                 else { co = 0x0; return res; }
             };
-            s.set(Flag::Z, ((s.a - s.d - B()) & 0xff) == 0x00);
+            s.set(Flag::Z, ((s.a - s.bus.d - B()) & 0xff) == 0x00);
             u8 n1; u8 c1; u8 n2; u8 c2;
-            n1 = sbc_dec_nib((s.a & 0xf) - (s.d & 0xf) - B(), c1);
-            n2 = (s.a >> 4) - (s.d >> 4) - c1;
+            n1 = sbc_dec_nib((s.a & 0xf) - (s.bus.d & 0xf) - B(), c1);
+            n2 = (s.a >> 4) - (s.bus.d >> 4) - c1;
             u8 r = (n2 << 4) | n1;
             s.set(Flag::N, r & 0x80);
-            s.set(Flag::V, ((s.a ^ s.d) & (s.a ^ r)) & 0x80);
+            s.set(Flag::V, ((s.a ^ s.bus.d) & (s.a ^ r)) & 0x80);
             n2 = sbc_dec_nib(n2, c2);
             s.set(Flag::C, !c2);
             s.a = (n2 << 4) | n1;
         } else {
-            u16 r = s.a - s.d - B();
+            u16 r = s.a - s.bus.d - B();
             s.set(Flag::C, r < 0x100);
-            s.set(Flag::V, ((s.a ^ s.d) & (s.a ^ r)) & 0x80);
+            s.set(Flag::V, ((s.a ^ s.bus.d) & (s.a ^ r)) & 0x80);
             set_nz(s.a = r);
-        }*/
+        }
     }
 
     //void S::ud_arr() {
@@ -275,6 +275,8 @@ static constexpr NMOS6502::u16 mc(NMOS6502::u16 opc, NMOS6502::u8 cn = 0) { // m
 void NMOS6502::Core::exec_cycle() {
     static constexpr u8 nmi_timer_handled = 0b10000000;
 
+    auto set_nz = [&](u8 res) { Op{s}.set_nz(res); };
+
     auto check_irq = [&]() { if (s.irq_act && s.is_clr(Flag::I)) s.brk_srcs |= Brk_src::irq; };
 
     auto read_pcl = [&]() { s.pc = s.bus.d; s.bus.a += 1; };
@@ -284,6 +286,12 @@ void NMOS6502::Core::exec_cycle() {
     auto bra_if_clr = [&](Flag f) { Op{s}.bra(s.is_clr(f)); };
 
     auto schedule = [&](OPC opc) { Op{s}.schedule(opc); };
+
+    #define rm_imm(op) { \
+        op; \
+        s.bus.a += 1; \
+        schedule(OPC::dispatch); \
+    }
 
     switch (s.mcc++) {
 
@@ -326,6 +334,10 @@ void NMOS6502::Core::exec_cycle() {
         case mc(0x08, 1):
             s.bus(s.pc, RW::r);
             schedule(OPC::dispatch);
+            break;
+
+        case mc(0x09, 0): // ora imm
+            rm_imm( set_nz(s.a |= s.bus.d); );
             break;
 
         case mc(0x0a, 0): // asl
@@ -378,6 +390,10 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
+        case mc(0x29, 0): // and imm
+            rm_imm( set_nz(s.a &= s.bus.d); );
+            break;
+
         case mc(0x2a, 0): // rol
             Op{s}.rol(s.a);
             schedule(OPC::dispatch);
@@ -424,6 +440,10 @@ void NMOS6502::Core::exec_cycle() {
         case mc(0x48, 1):
             s.bus(s.pc, RW::r);
             schedule(OPC::dispatch);
+            break;
+
+        case mc(0x49, 0): // eor imm
+            rm_imm( set_nz(s.a ^= s.bus.d); );
             break;
 
         case mc(0x4a, 0): // lsr
@@ -479,9 +499,13 @@ void NMOS6502::Core::exec_cycle() {
             s.bus.a = s.sp;
             break;
         case mc(0x68, 2):
-            Op{s}.set_nz(s.a = s.bus.d);
+            set_nz(s.a = s.bus.d);
             s.bus.a = s.pc;
             schedule(OPC::dispatch);
+            break;
+
+        case mc(0x69, 0): // adc imm
+            rm_imm( Op{s}.adc(); );
             break;
 
         case mc(0x6a, 0): // ror
@@ -512,12 +536,12 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0x88, 0): // dey
-            Op{s}.set_nz(--s.y);
+            set_nz(--s.y);
             schedule(OPC::dispatch);
             break;
 
         case mc(0x8a, 0): // txa
-            Op{s}.set_nz(s.a = s.x);
+            set_nz(s.a = s.x);
             schedule(OPC::dispatch);
             break;
 
@@ -535,7 +559,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0x98, 0): // tya
-            Op{s}.set_nz(s.a = s.y);
+            set_nz(s.a = s.y);
             schedule(OPC::dispatch);
             break;
 
@@ -544,18 +568,21 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
+        case mc(0xa2, 0): // ldx imm
+            rm_imm( set_nz(s.x = s.bus.d); );
+            break;
+
         case mc(0xa8, 0): // tay
-            Op{s}.set_nz(s.y = s.a);
+            set_nz(s.y = s.a);
             schedule(OPC::dispatch);
             break;
 
-        case mc(0xa9, 0): // todo
-            s.bus.a += 1;
-            schedule(OPC::dispatch);
+        case mc(0xa9, 0): // lda imm
+            rm_imm( set_nz(s.a = s.bus.d); );
             break;
 
         case mc(0xaa, 0): // tax
-            Op{s}.set_nz(s.x = s.a);
+            set_nz(s.x = s.a);
             schedule(OPC::dispatch);
             break;
 
@@ -569,17 +596,25 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0xba, 0): // tsx
-            Op{s}.set_nz(s.x = u8(s.sp));
+            set_nz(s.x = u8(s.sp));
             schedule(OPC::dispatch);
+            break;
+
+        case mc(0xc0, 0): // cpy imm
+            rm_imm( Op{s}.cmp(s.y); );
             break;
 
         case mc(0xc8, 0): // iny
-            Op{s}.set_nz(++s.y);
+            set_nz(++s.y);
             schedule(OPC::dispatch);
             break;
 
+        case mc(0xc9, 0): // cmp imm
+            rm_imm( Op{s}.cmp(s.a); );
+            break;
+
         case mc(0xca, 0): // dex
-            Op{s}.set_nz(--s.x);
+            set_nz(--s.x);
             schedule(OPC::dispatch);
             break;
 
@@ -592,9 +627,17 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
+        case mc(0xe0, 0): // cpx imm
+            rm_imm( Op{s}.cmp(s.x); );
+            break;
+
         case mc(0xe8, 0): // inx
-            Op{s}.set_nz(++s.x);
+            set_nz(++s.x);
             schedule(OPC::dispatch);
+            break;
+
+        case mc(0xe9, 0): // sbc imm
+            rm_imm( Op{s}.sbc(); );
             break;
 
         case mc(0xea, 0): // nop
