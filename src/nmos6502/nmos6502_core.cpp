@@ -13,17 +13,12 @@ namespace NMOS6502 {
     struct Op {
         Core::State& s;
 
+        void schedule(u16 opc) { s.mcc = opc << 3; } // bits 0-2 encode the step (0..7)
+
         void set_nz(const u8& res) { s.set(Flag::N, res & 0x80); s.set(Flag::Z, res == 0x00); }
 
         u8 C() const { return s.p & Flag::C; } // carry
-        u8 B() const { return C() ^ 0x1; } // borrow
-
-        void schedule(u16 opc) { s.mcc = opc << 3; } // bits 0-2 encode the step (0..7)
-
-        void check_irq() { if (s.irq_act && s.is_clr(Flag::I)) s.brk_srcs |= Brk_src::irq; }
-
-        void read_pcl() { s.pc = s.bus.d; s.bus.a += 1; }
-        void read_pch() { s.pc |= (s.bus.d << 8); s.bus.a = s.pc; }
+        u8 B() const { return C() ^ 1; } // borrow
 
         void bra(bool cond) {
             s.bus.a += 1;
@@ -280,8 +275,15 @@ static constexpr NMOS6502::u16 mc(NMOS6502::u16 opc, NMOS6502::u8 cn = 0) { // m
 void NMOS6502::Core::exec_cycle() {
     static constexpr u8 nmi_timer_handled = 0b10000000;
 
-    #define bra_if_set(flag) Op{s}.bra(s.is_set(flag));
-    #define bra_if_clr(flag) Op{s}.bra(s.is_clr(flag));
+    auto check_irq = [&]() { if (s.irq_act && s.is_clr(Flag::I)) s.brk_srcs |= Brk_src::irq; };
+
+    auto read_pcl = [&]() { s.pc = s.bus.d; s.bus.a += 1; };
+    auto read_pch = [&]() { s.pc |= (s.bus.d << 8); s.bus.a = s.pc; };
+
+    auto bra_if_set = [&](Flag f) { Op{s}.bra(s.is_set(f)); };
+    auto bra_if_clr = [&](Flag f) { Op{s}.bra(s.is_clr(f)); };
+
+    auto schedule = [&](OPC opc) { Op{s}.schedule(opc); };
 
     switch (s.mcc++) {
 
@@ -308,12 +310,12 @@ void NMOS6502::Core::exec_cycle() {
             s.bus(RW::r);
             break;
         case mc(OPC::brk, 4):
-            Op{s}.read_pcl();
+            read_pcl();
             break;
         case mc(OPC::brk, 5):
-            Op{s}.read_pch();
+            read_pch();
             s.set(Flag::I);
-            Op{s}.schedule(OPC::dispatch_post_brk);
+            schedule(OPC::dispatch_post_brk);
             break;
 
         case mc(0x08, 0): // php
@@ -323,12 +325,12 @@ void NMOS6502::Core::exec_cycle() {
             break;
         case mc(0x08, 1):
             s.bus(s.pc, RW::r);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x0a, 0): // asl
             Op{s}.asl(s.a);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x10, 0): // bpl
@@ -337,7 +339,7 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0x18, 0): // clc
             s.clr(Flag::C);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x20, 0): // jsr
@@ -359,7 +361,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
         case mc(0x20, 4):
             s.bus.a = (s.ad | (s.bus.d << 8));
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x28, 0): // plp
@@ -373,12 +375,12 @@ void NMOS6502::Core::exec_cycle() {
         case mc(0x28, 2):
             s.p = s.bus.d;
             s.bus.a = s.pc;
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x2a, 0): // rol
             Op{s}.rol(s.a);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x30, 0): // bmi
@@ -387,11 +389,11 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0x38, 0): // sec
             s.set(Flag::C);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x3a, 0): // nop
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x40, 0): // rti
@@ -411,7 +413,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
         case mc(0x40, 4):
             s.bus.a = s.pc | (s.bus.d << 8);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x48, 0): // pha
@@ -421,20 +423,20 @@ void NMOS6502::Core::exec_cycle() {
             break;
         case mc(0x48, 1):
             s.bus(s.pc, RW::r);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x4a, 0): // lsr
             Op{s}.lsr(s.a);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x4c, 0): // jmp abs
-            Op{s}.read_pcl();
+            read_pcl();
             break;
         case mc(0x4c, 1):
-            Op{s}.read_pch();
-            Op{s}.schedule(OPC::dispatch);
+            read_pch();
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x50, 0): // bvc
@@ -442,11 +444,11 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0x58, 0): // cli
-            Op{s}.schedule(OPC::dispatch_post_cli);
+            schedule(OPC::dispatch_post_cli);
             break;
 
         case mc(0x5a, 0): // nop
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x60, 0): // rts
@@ -465,7 +467,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
         case mc(0x60, 4):
             s.bus.a += 1; // pc + 1
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x68, 0): // pla
@@ -479,26 +481,26 @@ void NMOS6502::Core::exec_cycle() {
         case mc(0x68, 2):
             Op{s}.set_nz(s.a = s.bus.d);
             s.bus.a = s.pc;
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x6a, 0): // ror
             Op{s}.ror(s.a);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x6c, 0): // jmp ind
-            Op{s}.read_pcl();
+            read_pcl();
             break;
         case mc(0x6c, 1):
-            Op{s}.read_pch();
+            read_pch();
             break;
         case mc(0x6c, 2):
-            Op{s}.read_pcl();
+            read_pcl();
             break;
         case mc(0x6c, 3):
-            Op{s}.read_pch();
-            Op{s}.schedule(OPC::dispatch);
+            read_pch();
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x70, 0): // bvs
@@ -506,17 +508,17 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         case mc(0x78, 0): // sei
-            Op{s}.schedule(OPC::dispatch_post_sei);
+            schedule(OPC::dispatch_post_sei);
             break;
 
         case mc(0x88, 0): // dey
             Op{s}.set_nz(--s.y);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x8a, 0): // txa
             Op{s}.set_nz(s.a = s.x);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x8d, 0): // todo
@@ -525,7 +527,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
         case mc(0x8d, 2): // todo
             s.bus.a += 2;
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x90, 0): // bcc
@@ -534,27 +536,27 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0x98, 0): // tya
             Op{s}.set_nz(s.a = s.y);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0x9a, 0): // txs
             s.sp = sp(s.x);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0xa8, 0): // tay
             Op{s}.set_nz(s.y = s.a);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0xa9, 0): // todo
             s.bus.a += 1;
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0xaa, 0): // tax
             Op{s}.set_nz(s.x = s.a);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0xb0, 0): // bcs
@@ -563,22 +565,22 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0xb8, 0): // clv
             s.clr(Flag::V);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0xba, 0): // tsx
             Op{s}.set_nz(s.x = u8(s.sp));
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0xc8, 0): // iny
             Op{s}.set_nz(++s.y);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0xca, 0): // dex
             Op{s}.set_nz(--s.x);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0xd0, 0): // bne
@@ -587,16 +589,16 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0xd8, 0): // cld
             s.clr(Flag::D);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0xe8, 0): // inx
             Op{s}.set_nz(++s.x);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0xea, 0): // nop
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(0xf0, 0): // beq
@@ -605,21 +607,21 @@ void NMOS6502::Core::exec_cycle() {
 
         case mc(0xf8, 0): // sed
             s.set(Flag::D);
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         case mc(OPC::bra, 0): // bra, no page cross (hold ints)
             if (s.nmi_timer == 0x02) s.nmi_timer = 0x01;
             if (s.irq_timer == 0b10) s.irq_timer = 0b01;
             s.bus.a = s.pc;
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
         case mc(OPC::bra, 1): // bra, page cross
             s.bus.a = s.ad;
             break;
         case mc(OPC::bra, 2):
             s.bus.a = s.pc;
-            Op{s}.schedule(OPC::dispatch);
+            schedule(OPC::dispatch);
             break;
 
         /* Interrupt hijacking:
@@ -632,16 +634,17 @@ void NMOS6502::Core::exec_cycle() {
             (http://visual6502.org/wiki/index.php?title=6502_Timing_of_Interrupt_Handling)
         */
         case mc(OPC::dispatch_post_cli): 
-            Op{s}.check_irq(); // irq taken on 'old' i-flag value
+            check_irq(); // irq taken on 'old' i-flag value
             s.clr(Flag::I);
-            goto _irq_checked;
+            goto IRQ_checked;
         case mc(OPC::dispatch_post_sei):
-            Op{s}.check_irq(); // irq taken on 'old' i-flag value
+            check_irq(); // irq taken on 'old' i-flag value
             s.set(Flag::I);
-            goto _irq_checked;
+            goto IRQ_checked;
         case mc(OPC::dispatch): // 'normal' T0 case (all interrupts taken normally)
-            Op{s}.check_irq();
-        _irq_checked:
+            check_irq();
+
+            IRQ_checked:
             if (s.nmi_act) {
                 s.brk_srcs |= Brk_src::nmi;
                 s.nmi_act = false;
@@ -650,11 +653,11 @@ void NMOS6502::Core::exec_cycle() {
             // fall through
         case mc(OPC::dispatch_post_brk):
             if (s.brk_srcs) {
-                Op{s}.schedule(OPC::brk);
+                schedule(OPC::brk);
             } else {
                 s.bus.a += 1; // inc pc
                 if (s.bus.d == OPC::brk) s.brk_srcs = Brk_src::sw;
-                Op{s}.schedule(s.bus.d);
+                schedule(OPC(s.bus.d));
             }
             break;
 
@@ -664,17 +667,14 @@ void NMOS6502::Core::exec_cycle() {
         case mc(OPC::reset, 3): s.bus.a = 0x01fe; break;
         case mc(OPC::reset, 4): s.bus.a = Vec::rst; s.sp = 0x01fd; break;
         case mc(OPC::reset, 5):
-            Op{s}.read_pcl();
+            read_pcl();
             break;
         case mc(OPC::reset, 6):
-            Op{s}.read_pch();
+            read_pch();
             s.set(Flag::I);
-            Op{s}.schedule(OPC::dispatch_post_brk);
+            schedule(OPC::dispatch_post_brk);
             break;
     }
-
-    #undef bra_if_set
-    #undef bra_if_clr
 }
 
 
