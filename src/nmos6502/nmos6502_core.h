@@ -2,7 +2,6 @@
 #define NMOS6502_CORE_H_INCLUDED
 
 #include "nmos6502.h"
-#include "nmos6502_mc.h"
 
 
 namespace NMOS6502 {

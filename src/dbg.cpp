@@ -117,7 +117,7 @@ void Dbg::System::tick(u32 cycles, bool verbose) {
 
             if (tn == 1) {
                 const auto bytes = Bytes{{mem[cpu.s.bus.a], mem[u16(cpu.s.bus.a + 1)], mem[u16(cpu.s.bus.a + 2)]}};
-                std::cout << "  " + as_lower(disasm_first(bytes, cpu.s.bus.a).text) + " ";
+                std::cout << "  > " + as_lower(disasm_first(bytes, cpu.s.bus.a).text) + " ";
             } else {
                 std::cout << "  .";
             }

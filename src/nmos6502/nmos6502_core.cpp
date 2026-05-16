@@ -288,18 +288,63 @@ void NMOS6502::Core::exec_cycle() {
     auto read_pcl = [&]() { s.pc = s.bus.d; s.bus.a += 1; };
     auto read_pch = [&]() { s.pc |= (s.bus.d << 8); s.bus.a = s.pc; };
 
-    auto bra_if_set = [&](Flag f) { Op{s}.bra(s.is_set(f)); };
-    auto bra_if_clr = [&](Flag f) { Op{s}.bra(s.is_clr(f)); };
-
-    auto halt = [&]() { Op{s}.halt(); };
-
     auto schedule = [&](OPC opc) { Op{s}.schedule(opc); };
 
-    #define rm_imm(op) { \
-        op; \
-        s.bus.a += 1; \
-        schedule(OPC::dispatch); \
+    #define set_flag(opc, flag) { \
+        case mc(opc, 0): \
+            s.set(flag); \
+            schedule(OPC::dispatch); \
+            break; \
     }
+
+    #define clr_flag(opc, flag) { \
+        case mc(opc, 0): \
+            s.clr(flag); \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
+    #define bra_if_set(opc, flag) { \
+        case mc(opc, 0): \
+            Op{s}.bra(s.is_set(flag)); \
+            break; \
+    }
+
+    #define bra_if_clr(opc, flag) { \
+        case mc(opc, 0): \
+            Op{s}.bra(s.is_clr(flag)); \
+            break; \
+    }
+
+    #define halt(opc) { \
+        case mc(opc, 0): \
+            Op{s}.halt(); \
+            break; \
+    }
+
+    // Read & Modify -operations (internal exec on mem data)
+    #define rm_imm(opc, op) { \
+        case mc(opc, 0): \
+            op; \
+            s.bus.a += 1; \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
+    #define rm_zp(opc, op) { \
+        case mc(opc, 0): \
+            s.pc = s.bus.a + 1; \
+            s.bus.a = s.bus.d; \
+            break; \
+        case mc(opc, 1): \
+            op; \
+            s.bus.a = s.pc; \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
+    // Store Operations
+    // Read & Modify & Write -operations
 
     switch (s.mcc++) {
 
@@ -334,9 +379,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch_post_brk);
             break;
 
-        case mc(0x02, 0): // hlt
-            halt();
-            break;
+        halt(0x02);
 
         case mc(0x08, 0): // php
             s.pc = s.bus.a;
@@ -348,27 +391,18 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
-        case mc(0x09, 0): // ora imm
-            rm_imm( set_nz(s.a |= s.bus.d); );
-            break;
+        rm_imm(0x09, set_nz(s.a |= s.bus.d)); // ora imm
 
         case mc(0x0a, 0): // asl
             Op{s}.asl(s.a);
             schedule(OPC::dispatch);
             break;
 
-        case mc(0x10, 0): // bpl
-            bra_if_clr(Flag::N);
-            break;
+        bra_if_clr(0x10, Flag::N); // bpl
 
-        case mc(0x12, 0): // hlt
-            halt();
-            break;
+        halt(0x12);
 
-        case mc(0x18, 0): // clc
-            s.clr(Flag::C);
-            schedule(OPC::dispatch);
-            break;
+        clr_flag(0x18, Flag::C); // clc
 
         case mc(0x20, 0): // jsr
             s.aux = s.bus.d;
@@ -392,9 +426,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
-        case mc(0x22, 0): // hlt
-            halt();
-            break;
+        halt(0x22);
 
         case mc(0x28, 0): // plp
             s.pc = s.bus.a;
@@ -410,27 +442,18 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
-        case mc(0x29, 0): // and imm
-            rm_imm( set_nz(s.a &= s.bus.d); );
-            break;
+        rm_imm(0x29, set_nz(s.a &= s.bus.d)); // and imm
 
         case mc(0x2a, 0): // rol
             Op{s}.rol(s.a);
             schedule(OPC::dispatch);
             break;
 
-        case mc(0x30, 0): // bmi
-            bra_if_set(Flag::N);
-            break;
+        bra_if_set(0x30, Flag::N); // bmi
 
-        case mc(0x32, 0): // hlt
-            halt();
-            break;
+        halt(0x32);
 
-        case mc(0x38, 0): // sec
-            s.set(Flag::C);
-            schedule(OPC::dispatch);
-            break;
+        set_flag(0x38, Flag::C); // sec
 
         case mc(0x3a, 0): // nop
             schedule(OPC::dispatch);
@@ -456,9 +479,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
-        case mc(0x42, 0): // hlt
-            halt();
-            break;
+        halt(0x42);
 
         case mc(0x48, 0): // pha
             s.pc = s.bus.a;
@@ -470,9 +491,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
-        case mc(0x49, 0): // eor imm
-            rm_imm( set_nz(s.a ^= s.bus.d); );
-            break;
+        rm_imm(0x49, set_nz(s.a ^= s.bus.d)); // eor imm
 
         case mc(0x4a, 0): // lsr
             Op{s}.lsr(s.a);
@@ -487,13 +506,9 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
-        case mc(0x50, 0): // bvc
-            bra_if_clr(Flag::V);
-            break;
+        bra_if_clr(0x50, Flag::V); // bvc
 
-        case mc(0x52, 0): // hlt
-            halt();
-            break;
+        halt(0x52);
 
         case mc(0x58, 0): // cli
             schedule(OPC::dispatch_post_cli);
@@ -522,9 +537,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
-        case mc(0x62, 0): // hlt
-            halt();
-            break;
+        halt(0x62);
 
         case mc(0x68, 0): // pla
             s.pc = s.bus.a;
@@ -540,9 +553,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
-        case mc(0x69, 0): // adc imm
-            rm_imm( Op{s}.adc(); );
-            break;
+        rm_imm(0x69, Op{s}.adc()); // adc imm
 
         case mc(0x6a, 0): // ror
             Op{s}.ror(s.a);
@@ -563,13 +574,9 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
-        case mc(0x70, 0): // bvs
-            bra_if_set(Flag::V);
-            break;
+        bra_if_set(0x70, Flag::V); // bvs
 
-        case mc(0x72, 0): // hlt
-            halt();
-            break;
+        halt(0x72);
 
         case mc(0x78, 0): // sei
             schedule(OPC::dispatch_post_sei);
@@ -594,13 +601,9 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
-        case mc(0x90, 0): // bcc
-            bra_if_clr(Flag::C);
-            break;
+        bra_if_clr(0x90, Flag::C); // bcc
 
-        case mc(0x92, 0): // hlt
-            halt();
-            break;
+        halt(0x92);
 
         case mc(0x98, 0): // tya
             set_nz(s.a = s.y);
@@ -612,102 +615,75 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
-        case mc(0xa2, 0): // ldx imm
-            rm_imm( set_nz(s.x = s.bus.d); );
-            break;
+        rm_imm(0xa2, set_nz(s.x = s.bus.d));// ldx imm
+
+        rm_zp(0xa4, set_nz(s.y = s.bus.d)); // ldy zp
+
+        rm_zp(0xa5, set_nz(s.a = s.bus.d)); // lda zp
+
+        rm_zp(0xa6, set_nz(s.x = s.bus.d)); // ldx zp
 
         case mc(0xa8, 0): // tay
             set_nz(s.y = s.a);
             schedule(OPC::dispatch);
             break;
 
-        case mc(0xa9, 0): // lda imm
-            rm_imm( set_nz(s.a = s.bus.d); );
-            break;
+        rm_imm(0xa9, set_nz(s.a = s.bus.d)); // lda imm
 
         case mc(0xaa, 0): // tax
             set_nz(s.x = s.a);
             schedule(OPC::dispatch);
             break;
 
-        case mc(0xb0, 0): // bcs
-            bra_if_set(Flag::C);
-            break;
+        bra_if_set(0xb0, Flag::C); // bcs
 
-        case mc(0xb2, 0): // hlt
-            halt();
-            break;
+        halt(0xb2);
 
-        case mc(0xb8, 0): // clv
-            s.clr(Flag::V);
-            schedule(OPC::dispatch);
-            break;
+        clr_flag(0xb8, Flag::V); // clv
 
         case mc(0xba, 0): // tsx
             set_nz(s.x = u8(s.sp));
             schedule(OPC::dispatch);
             break;
 
-        case mc(0xc0, 0): // cpy imm
-            rm_imm( Op{s}.cmp(s.y); );
-            break;
+        rm_imm(0xc0, Op{s}.cmp(s.y)); // cpy imm
 
         case mc(0xc8, 0): // iny
             set_nz(++s.y);
             schedule(OPC::dispatch);
             break;
 
-        case mc(0xc9, 0): // cmp imm
-            rm_imm( Op{s}.cmp(s.a); );
-            break;
+        rm_imm(0xc9, Op{s}.cmp(s.a)); // cmp imm
 
         case mc(0xca, 0): // dex
             set_nz(--s.x);
             schedule(OPC::dispatch);
             break;
 
-        case mc(0xd0, 0): // bne
-            bra_if_clr(Flag::Z);
-            break;
+        bra_if_clr(0xd0, Flag::Z); // bne
 
-        case mc(0xd2, 0): // hlt
-            halt();
-            break;
+        halt(0xd2);
 
-        case mc(0xd8, 0): // cld
-            s.clr(Flag::D);
-            schedule(OPC::dispatch);
-            break;
+        clr_flag(0xd8, Flag::D); // cld
 
-        case mc(0xe0, 0): // cpx imm
-            rm_imm( Op{s}.cmp(s.x); );
-            break;
+        rm_imm(0xe0, Op{s}.cmp(s.x)); // cpx imm
 
         case mc(0xe8, 0): // inx
             set_nz(++s.x);
             schedule(OPC::dispatch);
             break;
 
-        case mc(0xe9, 0): // sbc imm
-            rm_imm( Op{s}.sbc(); );
-            break;
+        rm_imm(0xe9, Op{s}.sbc()); // sbc imm
 
         case mc(0xea, 0): // nop
             schedule(OPC::dispatch);
             break;
 
-        case mc(0xf0, 0): // beq
-            bra_if_set(Flag::Z);
-            break;
+        bra_if_set(0xf0, Flag::Z); // beq
 
-        case mc(0xf2, 0): // hlt
-            halt();
-            break;
+        halt(0xf2);
 
-        case mc(0xf8, 0): // sed
-            s.set(Flag::D);
-            schedule(OPC::dispatch);
-            break;
+        set_flag(0xf8, Flag::D); // sed
 
         case mc(OPC::bra, 0): // bra, no page cross (hold ints)
             if (s.nmi_timer == 0x02) s.nmi_timer = 0x01;
@@ -787,6 +763,14 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch_post_brk);
             break;
     }
+
+    #undef set_flag
+    #undef clr_flag
+    #undef bra_if_set
+    #undef bra_if_clr
+    #undef halt
+    #undef rm_imm
+    #undef rm_zp
 }
 
 

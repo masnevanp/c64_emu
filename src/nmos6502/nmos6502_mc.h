@@ -1,7 +1,0 @@
-#ifndef NMOS6502_MC_H_INCLUDED
-#define NMOS6502_MC_H_INCLUDED
-
-#include "nmos6502.h"
-
-
-#endif // NMOS6502_MC_H_INCLUDED
