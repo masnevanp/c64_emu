@@ -339,6 +339,38 @@ void NMOS6502::Core::exec_cycle() {
     }
 
     // Store Operations
+    #define st_z(opc, reg) { \
+        case mc(opc, 0): \
+            s.aux = s.bus.a + 1; \
+            s.bus.a = s.bus.d; \
+            s.bus.d = reg; \
+            s.bus(RW::w); \
+            break; \
+        case mc(opc, 1): \
+            s.bus.a = s.aux; \
+            s.bus(RW::r); \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
+    #define st_a(opc, reg) { \
+        case mc(opc, 0): \
+            s.aux = s.bus.d; \
+            s.pc = s.bus.a + 2; \
+            s.bus.a = s.bus.a + 1; \
+            break; \
+        case mc(opc, 1): \
+            s.bus.a = s.aux | (s.bus.d << 8); \
+            s.bus.d = reg; \
+            s.bus(RW::w); \
+            break; \
+        case mc(opc, 2): \
+            s.bus.a = s.pc; \
+            s.bus(RW::r); \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
     // Read & Modify & Write -operations
 
     switch (s.mcc++) {
@@ -387,13 +419,9 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         rm_i(0x09, set_nz(s.a |= s.bus.d)); // ora imm
-
         sb(0x0a, Op{s}.asl(s.a)); // asl
-
         brc(0x10, Flag::N); // bpl
-
         hlt(0x12);
-
         sb(0x18, s.clr(Flag::C)); // clc
 
         case mc(0x20, 0): // jsr
@@ -435,15 +463,10 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         rm_i(0x29, set_nz(s.a &= s.bus.d)); // and imm
-
         sb(0x2a, Op{s}.rol(s.a)); // rol
-
         brs(0x30, Flag::N); // bmi
-
         hlt(0x32);
-
         sb(0x38, s.set(Flag::C)); // sec
-
         sb(0x3a,); // nop
 
         case mc(0x40, 0): // rti
@@ -479,7 +502,6 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         rm_i(0x49, set_nz(s.a ^= s.bus.d)); // eor imm
-
         sb(0x4a, Op{s}.lsr(s.a)); // lsr
 
         case mc(0x4c, 0): // jmp abs
@@ -491,7 +513,6 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         brc(0x50, Flag::V); // bvc
-
         hlt(0x52);
 
         case mc(0x58, 0): // cli
@@ -536,7 +557,6 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         rm_i(0x69, Op{s}.adc()); // adc imm
-
         sb(0x6a, Op{s}.ror(s.a)); // ror
 
         case mc(0x6c, 0): // jmp ind
@@ -554,82 +574,48 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         brs(0x70, Flag::V); // bvs
-
         hlt(0x72);
 
         case mc(0x78, 0): // sei
             schedule(OPC::dispatch_post_sei);
             break;
 
+        st_z(0x84, s.y); // sty zp
+        st_z(0x85, s.a); // sta zp
+        st_z(0x86, s.x); // stx zp
         sb(0x88, set_nz(--s.y)); // dey
-
         sb(0x8a, set_nz(s.a = s.x)); // txa
-
-        case mc(0x8d, 0): // todo
-            break;
-        case mc(0x8d, 1): // todo
-            break;
-        case mc(0x8d, 2): // todo
-            s.bus.a += 2;
-            schedule(OPC::dispatch);
-            break;
-
+        st_a(0x8c, s.y); // sty abs
+        st_a(0x8d, s.a); // sta abs
+        st_a(0x8e, s.x); // stx abs
         brc(0x90, Flag::C); // bcc
-
         hlt(0x92);
-
         sb(0x98, set_nz(s.a = s.y)); // tya
-
         sb(0x9a, s.sp = sp(s.x)); // txs
-
         rm_i(0xa2, set_nz(s.x = s.bus.d));// ldx imm
-
         rm_z(0xa4, set_nz(s.y = s.bus.d)); // ldy zp
-
         rm_z(0xa5, set_nz(s.a = s.bus.d)); // lda zp
-
         rm_z(0xa6, set_nz(s.x = s.bus.d)); // ldx zp
-
         sb(0xa8, set_nz(s.y = s.a)); // tay
-
         rm_i(0xa9, set_nz(s.a = s.bus.d)); // lda imm
-
         sb(0xaa, set_nz(s.x = s.a)); // tax
-
         brs(0xb0, Flag::C); // bcs
-
         hlt(0xb2);
-
         sb(0xb8, s.clr(Flag::V)); // clv
-
         sb(0xba, set_nz(s.x = u8(s.sp))); // tsx
-
         rm_i(0xc0, Op{s}.cmp(s.y)); // cpy imm
-
         sb(0xc8, set_nz(++s.y)); // iny
-
         rm_i(0xc9, Op{s}.cmp(s.a)); // cmp imm
-
         sb(0xca, set_nz(--s.x)); // dex
-
         brc(0xd0, Flag::Z); // bne
-
         hlt(0xd2);
-
         sb(0xd8, s.clr(Flag::D)); // cld
-
         rm_i(0xe0, Op{s}.cmp(s.x)); // cpx imm
-
         sb(0xe8, set_nz(++s.x)); // inx
-
         rm_i(0xe9, Op{s}.sbc()); // sbc imm
-
         sb(0xea,); // nop
-
         brs(0xf0, Flag::Z); // beq
-
         hlt(0xf2);
-
         sb(0xf8, s.set(Flag::D)); // sed
 
         // --------------------------------------------------------------------
