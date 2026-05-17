@@ -309,7 +309,7 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
-    // Single Byte
+    // ******** Single Byte ********
     #define sb(opc, op) { \
         case mc(opc, 0): \
             op; \
@@ -317,7 +317,7 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
-    // Read & Modify -operations (internal exec on mem data)
+    // ******** Read & Modify -operations (internal exec on mem data) ********
     #define rm_i(opc, op) { \
         case mc(opc, 0): \
             op; \
@@ -338,7 +338,7 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
-    // Store Operations
+    // ******** Store Operations ********
     #define st_z(opc, reg) { \
         case mc(opc, 0): \
             s.aux = s.bus.a + 1; \
@@ -357,7 +357,7 @@ void NMOS6502::Core::exec_cycle() {
         case mc(opc, 0): \
             s.aux = s.bus.d; \
             s.pc = s.bus.a + 2; \
-            s.bus.a = s.bus.a + 1; \
+            s.bus.a += 1; \
             break; \
         case mc(opc, 1): \
             s.bus.a = s.aux | (s.bus.d << 8); \
@@ -371,7 +371,31 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
-    // Read & Modify & Write -operations
+    #define st_izx(opc) { \
+        case mc(opc, 0): \
+            s.pc = s.bus.a + 1; \
+            s.bus.a = s.bus.d; \
+            break; \
+        case mc(opc, 1): \
+            s.bus.a += s.x; \
+            break; \
+        case mc(opc, 2): \
+            s.aux = s.bus.d; \
+            s.bus.a += 1; \
+            break; \
+        case mc(opc, 3): \
+            s.bus.a = s.aux | (s.bus.d << 8); \
+            s.bus.d = s.a; \
+            s.bus(RW::w); \
+            break; \
+        case mc(opc, 4): \
+            s.bus.a = s.pc; \
+            s.bus(RW::r); \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
+    // ******** Read & Modify & Write -operations ********
 
     switch (s.mcc++) {
 
@@ -566,7 +590,8 @@ void NMOS6502::Core::exec_cycle() {
             read_pch();
             break;
         case mc(0x6c, 2):
-            read_pcl();
+            s.pc = s.bus.d;
+            s.bus.a = (s.bus.a & 0xff00) | ((s.bus.a + 1) & 0xff); // the 'missing carry propagation' feature
             break;
         case mc(0x6c, 3):
             read_pch();
@@ -580,6 +605,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch_post_sei);
             break;
 
+        st_izx(0x81); // sta izx
         st_z(0x84, s.y); // sty zp
         st_z(0x85, s.a); // sta zp
         st_z(0x86, s.x); // stx zp
@@ -592,7 +618,7 @@ void NMOS6502::Core::exec_cycle() {
         hlt(0x92);
         sb(0x98, set_nz(s.a = s.y)); // tya
         sb(0x9a, s.sp = sp(s.x)); // txs
-        rm_i(0xa2, set_nz(s.x = s.bus.d));// ldx imm
+        rm_i(0xa2, set_nz(s.x = s.bus.d)); // ldx imm
         rm_z(0xa4, set_nz(s.y = s.bus.d)); // ldy zp
         rm_z(0xa5, set_nz(s.a = s.bus.d)); // lda zp
         rm_z(0xa6, set_nz(s.x = s.bus.d)); // ldx zp
@@ -618,7 +644,7 @@ void NMOS6502::Core::exec_cycle() {
         hlt(0xf2);
         sb(0xf8, s.set(Flag::D)); // sed
 
-        // --------------------------------------------------------------------
+        // ********************************************************************
 
         case mc(OPC::bra, 0): // bra, no page cross (hold ints)
             if (s.nmi_timer == 0x02) s.nmi_timer = 0x01;
