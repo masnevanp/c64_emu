@@ -371,7 +371,7 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
-    #define st_izx(opc) { \
+    #define st_izx(opc, reg) { \
         case mc(opc, 0): \
             s.pc = s.bus.a + 1; \
             s.bus.a = s.bus.d; \
@@ -385,7 +385,7 @@ void NMOS6502::Core::exec_cycle() {
             break; \
         case mc(opc, 3): \
             s.bus.a = s.aux | (s.bus.d << 8); \
-            s.bus.d = s.a; \
+            s.bus.d = reg; \
             s.bus(RW::w); \
             break; \
         case mc(opc, 4): \
@@ -415,17 +415,40 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
-    #define st_zx(opc) { \
+    #define st_zi(opc, ireg, reg) { \
         case mc(opc, 0): \
             s.pc = s.bus.a + 1; \
             s.bus.a = s.bus.d; \
             break; \
         case mc(opc, 1): \
-            s.bus.a += s.x; \
-            s.bus.d = s.a; \
+            s.bus.a += ireg; \
+            s.bus.d = reg; \
             s.bus(RW::w); \
             break; \
         case mc(opc, 2): \
+            s.bus.a = s.pc; \
+            s.bus(RW::r); \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
+    #define st_izy(opc) { \
+        case mc(opc, 0): \
+            s.pc = s.bus.a + 1; \
+            s.bus.a = s.bus.d; \
+            break; \
+        case mc(opc, 1): \
+            s.aux = s.bus.d; \
+            s.bus.a += 1; \
+            break; \
+        case mc(opc, 2): \
+            s.bus.a = (s.aux | (s.bus.d << 8)) + s.y; \
+            break; \
+        case mc(opc, 3): \
+            s.bus.d = s.a; \
+            s.bus(RW::w); \
+            break; \
+        case mc(opc, 4): \
             s.bus.a = s.pc; \
             s.bus(RW::r); \
             schedule(OPC::dispatch); \
@@ -642,22 +665,30 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch_post_sei);
             break;
 
-        st_izx(0x81); // sta izx
+        st_izx(0x81, s.a); // sta izx
+        st_izx(0x83, s.a & s.x); // sax izx
         st_z(0x84, s.y); // sty zp
         st_z(0x85, s.a); // sta zp
         st_z(0x86, s.x); // stx zp
+        st_z(0x87, s.a & s.x); // sax zp
         sb(0x88, set_nz(--s.y)); // dey
         sb(0x8a, set_nz(s.a = s.x)); // txa
         st_a(0x8c, s.y); // sty abs
         st_a(0x8d, s.a); // sta abs
         st_a(0x8e, s.x); // stx abs
+        st_a(0x8f, s.a & s.x); // sax abs
         brc(0x90, Flag::C); // bcc
+        st_izy(0x91); // sta izy
         hlt(0x92);
-        st_zx(0x95); // sta zpx
+        st_zi(0x94, s.x, s.y); // sty zpx
+        st_zi(0x95, s.x, s.a); // sta zpx
+        st_zi(0x96, s.y, s.x); // stx zpy
+        st_zi(0x97, s.y, s.a & s.x); // sax zpy
         sb(0x98, set_nz(s.a = s.y)); // tya
         st_ai(0x99, s.y); // sta absy
         sb(0x9a, s.sp = sp(s.x)); // txs
         st_ai(0x9d, s.x); // sta absx
+        rm_i(0xa0, set_nz(s.y = s.bus.d)); // ldy imm
         rm_i(0xa2, set_nz(s.x = s.bus.d)); // ldx imm
         rm_z(0xa4, set_nz(s.y = s.bus.d)); // ldy zp
         rm_z(0xa5, set_nz(s.a = s.bus.d)); // lda zp
