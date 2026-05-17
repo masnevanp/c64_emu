@@ -395,6 +395,43 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
+    #define st_ai(opc, ireg) { \
+        case mc(opc, 0): \
+            s.aux = s.bus.d; \
+            s.pc = s.bus.a + 2; \
+            s.bus.a += 1; \
+            break; \
+        case mc(opc, 1): \
+            s.bus.a = (s.aux | (s.bus.d << 8)) + ireg; \
+            break; \
+        case mc(opc, 2): \
+            s.bus.d = s.a; \
+            s.bus(RW::w); \
+            break; \
+        case mc(opc, 3): \
+            s.bus.a = s.pc; \
+            s.bus(RW::r); \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
+    #define st_zx(opc) { \
+        case mc(opc, 0): \
+            s.pc = s.bus.a + 1; \
+            s.bus.a = s.bus.d; \
+            break; \
+        case mc(opc, 1): \
+            s.bus.a += s.x; \
+            s.bus.d = s.a; \
+            s.bus(RW::w); \
+            break; \
+        case mc(opc, 2): \
+            s.bus.a = s.pc; \
+            s.bus(RW::r); \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
     // ******** Read & Modify & Write -operations ********
 
     switch (s.mcc++) {
@@ -616,8 +653,11 @@ void NMOS6502::Core::exec_cycle() {
         st_a(0x8e, s.x); // stx abs
         brc(0x90, Flag::C); // bcc
         hlt(0x92);
+        st_zx(0x95); // sta zpx
         sb(0x98, set_nz(s.a = s.y)); // tya
+        st_ai(0x99, s.y); // sta absy
         sb(0x9a, s.sp = sp(s.x)); // txs
+        st_ai(0x9d, s.x); // sta absx
         rm_i(0xa2, set_nz(s.x = s.bus.d)); // ldx imm
         rm_z(0xa4, set_nz(s.y = s.bus.d)); // ldy zp
         rm_z(0xa5, set_nz(s.a = s.bus.d)); // lda zp
