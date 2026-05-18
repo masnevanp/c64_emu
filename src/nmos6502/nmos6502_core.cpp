@@ -416,6 +416,30 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
+    #define rmw_ax(opc, op) { \
+        case mc(opc, 0): \
+            s.aux = s.bus.d; \
+            s.pc = s.bus.a + 2; \
+            s.bus.a += 1; \
+            break; \
+        case mc(opc, 1): \
+            s.bus.a = (s.aux | (s.bus.d << 8)) + s.x; \
+            break; \
+        case mc(opc, 2): \
+            break; \
+        case mc(opc, 3): \
+            s.bus(RW::w); \
+            break; \
+        case mc(opc, 4): \
+            op; \
+            break; \
+        case mc(opc, 5): \
+            s.bus.a = s.pc; \
+            s.bus(RW::r); \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
     switch (s.mcc++) {
         /* Interrupt hijacking:
             - happens if an interrupt of a higher priority is signalled before
@@ -475,6 +499,8 @@ void NMOS6502::Core::exec_cycle() {
         brc(0x10, Flag::N); // bpl
         hlt(0x12);
         sb(0x18, s.clr(Flag::C)); // clc
+        rmw_ax(0x1e, Op{s}.asl(s.bus.d)); // asl absx
+        rmw_ax(0x1f, Op{s}.ud_slo(s.bus.d)); // slo absx
 
         case mc(0x20, 0): // jsr
             s.aux = s.bus.d;
@@ -524,6 +550,8 @@ void NMOS6502::Core::exec_cycle() {
         hlt(0x32);
         sb(0x38, s.set(Flag::C)); // sec
         sb(0x3a,); // nop
+        rmw_ax(0x3e, Op{s}.rol(s.bus.d)); // rol absx
+        rmw_ax(0x3f, Op{s}.ud_rla(s.bus.d)); // rla absx
 
         case mc(0x40, 0): // rti
             s.bus.a = s.sp;
@@ -580,6 +608,8 @@ void NMOS6502::Core::exec_cycle() {
             break;
 
         sb(0x5a,); // nop
+        rmw_ax(0x5e, Op{s}.lsr(s.bus.d)); // lsr absx
+        rmw_ax(0x5f, Op{s}.ud_sre(s.bus.d)); // sre absx
 
         case mc(0x60, 0): // rts
             s.bus.a = s.sp;
@@ -645,6 +675,8 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch_post_sei);
             break;
 
+        rmw_ax(0x7e, Op{s}.ror(s.bus.d)); // ror absx
+        rmw_ax(0x7f, Op{s}.ud_rra(s.bus.d)); // rra absx
         st_izx(0x81, s.a); // sta izx
         st_izx(0x83, s.a & s.x); // sax izx
         st_z(0x84, s.y); // sty zp
@@ -691,6 +723,8 @@ void NMOS6502::Core::exec_cycle() {
         brc(0xd0, Flag::Z); // bne
         hlt(0xd2);
         sb(0xd8, s.clr(Flag::D)); // cld
+        rmw_ax(0xde, Op{s}.dec(s.bus.d)); // dec absx
+        rmw_ax(0xdf, Op{s}.ud_dcp(s.bus.d)); // dcp absx
         rm_i(0xe0, Op{s}.cmp(s.x)); // cpx imm
         rmw_z(0xe6, Op{s}.inc(s.bus.d)); // inc zp
         rmw_z(0xe7, Op{s}.ud_isc(s.bus.d)); // isc zp
@@ -702,6 +736,8 @@ void NMOS6502::Core::exec_cycle() {
         brs(0xf0, Flag::Z); // beq
         hlt(0xf2);
         sb(0xf8, s.set(Flag::D)); // sed
+        rmw_ax(0xfe, Op{s}.inc(s.bus.d)); // inc absx
+        rmw_ax(0xff, Op{s}.ud_isc(s.bus.d)); // isc absx
 
         // ********************************************************************
 
