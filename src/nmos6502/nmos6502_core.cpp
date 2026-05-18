@@ -51,22 +51,25 @@ namespace NMOS6502 {
             set_nz(d |= old_c);
         }
 
-        void bit() { s.p = (s.p & 0x3f) | (s.bus.d & 0xc0); s.set(Flag::Z, (s.a & s.bus.d) == 0x00); }
+        // TODO: check if we can use s.bus.d directly everywhere?
+        void bit(u8& d) { s.p = (s.p & 0x3f) | (d & 0xc0); s.set(Flag::Z, (s.a & d) == 0x00); }
         void cmp(const u8& r) { s.set(Flag::C, r >= s.bus.d); set_nz(r - s.bus.d); }
         void adc();
         void sbc();
 
-        void ud_anc() { set_nz(s.a &= s.bus.d); s.set(Flag::C, s.a & 0x80); }
+        void ud_anc(u8& d) { set_nz(s.a &= d); s.set(Flag::C, s.a & 0x80); }
         void ud_arr();
-        void ud_axs() { s.x &= s.a; s.set(Flag::C, s.x >= s.bus.d); set_nz(s.x -= s.bus.d); }
-        void ud_las() { set_nz(s.a = s.x = (s.sp & s.bus.d)); s.sp = sp(s.a); }
-        void ud_lxa() { set_nz(s.a = s.x = (s.a | 0xee) & s.bus.d); }
+        void ud_axs(u8& d) { s.x &= s.a; s.set(Flag::C, s.x >= d); set_nz(s.x -= d); }
+        void ud_dcp(u8& d) { --d; cmp(s.a); }
+        void ud_isc(u8& d) { ++d; sbc(); }
+        void ud_las(u8& d) { set_nz(s.a = s.x = (s.sp & d)); s.sp = sp(s.a); }
+        void ud_lxa(u8& d) { set_nz(s.a = s.x = (s.a | 0xee) & d); }
         void ud_rla(u8& d) { rol(d); set_nz(s.a &= d); }
-        void ud_rra() { ror(s.bus.d); adc(); }
+        void ud_rra(u8& d) { ror(d); adc(); }
         void ud_slo(u8& d) { s.set(Flag::C, d & 0x80); set_nz(s.a |= (d <<= 1)); }
-        void ud_sre() { s.set(Flag::C, s.bus.d & 0x01); set_nz(s.a ^= (s.bus.d >>= 1)); }
-        //void ud_tas() { s.sp = sp(s.a & s.x); s.bus.d = s.sp & (s.a1h + 0x01); }
-        void ud_xaa() { set_nz(s.a = (s.a | 0xee) & s.x & s.bus.d); }
+        void ud_sre(u8& d) { s.set(Flag::C, d & 0x01); set_nz(s.a ^= (d >>= 1)); }
+        //void ud_tas(u8& d) { s.sp = sp(s.a & s.x); s.bus.d = s.sp & (s.a1h + 0x01); }
+        void ud_xaa(u8& d) { set_nz(s.a = (s.a | 0xee) & s.x & d); }
 
         void halt() {
             s.aux = s.bus.d;
@@ -392,7 +395,12 @@ void NMOS6502::Core::exec_cycle() {
     }
 
     switch (s.mcc++) {
-
+        /* Interrupt hijacking:
+            - happens if an interrupt of a higher priority is signalled before
+                the 'brk' execution of the lower priority reaches T5 (=T4 ph2 at latest).
+            - T0&T1 PC, and pushed b-flag according to the former (lower prio)
+            - vector address according to the latter (higher prio)
+        */
         case mc(OPC::brk, 0):
             s.pc = s.bus.a;
             if (s.brk_srcs == Brk_src::sw) s.pc += 1;
@@ -513,6 +521,7 @@ void NMOS6502::Core::exec_cycle() {
 
         hlt(0x42);
         rmw_zp(0x46, Op{s}.lsr(s.bus.d)); // lsr zp
+        rmw_zp(0x47, Op{s}.ud_sre(s.bus.d)); // sre zp
 
         case mc(0x48, 0): // pha
             s.pc = s.bus.a;
@@ -565,6 +574,7 @@ void NMOS6502::Core::exec_cycle() {
 
         hlt(0x62);
         rmw_zp(0x66, Op{s}.ror(s.bus.d)); // ror zp
+        rmw_zp(0x67, Op{s}.ud_rra(s.bus.d)); // rra zp
 
         case mc(0x68, 0): // pla
             s.pc = s.bus.a;
@@ -642,6 +652,7 @@ void NMOS6502::Core::exec_cycle() {
         sb(0xba, set_nz(s.x = u8(s.sp))); // tsx
         rm_i(0xc0, Op{s}.cmp(s.y)); // cpy imm
         rmw_zp(0xc6, Op{s}.dec(s.bus.d)); // dec zp
+        rmw_zp(0xc7, Op{s}.ud_dcp(s.bus.d)); // dcp zp
         sb(0xc8, set_nz(++s.y)); // iny
         rm_i(0xc9, Op{s}.cmp(s.a)); // cmp imm
         sb(0xca, set_nz(--s.x)); // dex
@@ -650,6 +661,7 @@ void NMOS6502::Core::exec_cycle() {
         sb(0xd8, s.clr(Flag::D)); // cld
         rm_i(0xe0, Op{s}.cmp(s.x)); // cpx imm
         rmw_zp(0xe6, Op{s}.inc(s.bus.d)); // inc zp
+        rmw_zp(0xe7, Op{s}.ud_isc(s.bus.d)); // isc zp
         sb(0xe8, set_nz(++s.x)); // inx
         rm_i(0xe9, Op{s}.sbc()); // sbc imm
         sb(0xea,); // nop
@@ -673,12 +685,8 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
-        /* Interrupt hijacking:
-            - happens if an interrupt of a higher priority is signalled before
-                the 'brk' execution of the lower priority reaches T5 (=T4 ph2 at latest).
-            - T0&T1 PC, and pushed b-flag according to the former (lower prio)
-            - vector address according to the latter (higher prio)
-        */
+        // --------------------------------------------------------------------
+
         /* cli&sei feature: change not be visible at next T0 (dispatch)
             (http://visual6502.org/wiki/index.php?title=6502_Timing_of_Interrupt_Handling)
         */
@@ -710,6 +718,8 @@ void NMOS6502::Core::exec_cycle() {
             }
             break;
 
+        // --------------------------------------------------------------------
+
         case mc(OPC::halt, 0):
             s.bus.a = 0xfffe;
             break;
@@ -722,6 +732,8 @@ void NMOS6502::Core::exec_cycle() {
         case mc(OPC::halt, 3):
             s.mcc--; // stuck (until resume())
             break;
+
+        // --------------------------------------------------------------------
 
         case mc(OPC::reset, 0): s.bus.a += 1; break;
         case mc(OPC::reset, 1): s.bus.a = 0x0100; break;
@@ -738,6 +750,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
     }
 
+    // TODO: add missing undefs
     #undef halt
     #undef rm_i
     #undef rm_z
