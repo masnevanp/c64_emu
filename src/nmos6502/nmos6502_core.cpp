@@ -8,6 +8,7 @@ using RW = NMOS6502::Core::State::Bus::RW;
 namespace NMOS6502 {
     enum Brk_src : u8 { sw = 0b001, nmi = 0b010, irq = 0b100, };
 
+    static u16 zp(u16 a) { return a & 0x00ff; }
     static u16 sp(u16 a) { return (a & 0xff) | 0x0100; }
 
     struct Op {
@@ -296,11 +297,11 @@ void NMOS6502::Core::exec_cycle() {
             s.bus.a = s.bus.d; \
             break; \
         case mc(opc, 1): \
-            s.bus.a += s.x; \
+            s.bus.a = zp(s.bus.a + s.x); \
             break; \
         case mc(opc, 2): \
             s.aux = s.bus.d; \
-            s.bus.a += 1; \
+            s.bus.a = zp(s.bus.a + 1); \
             break; \
         case mc(opc, 3): \
             s.bus.a = s.aux | (s.bus.d << 8); \
@@ -340,7 +341,7 @@ void NMOS6502::Core::exec_cycle() {
             s.bus.a = s.bus.d; \
             break; \
         case mc(opc, 1): \
-            s.bus.a += ireg; \
+            s.bus.a = zp(s.bus.a + ireg); \
             s.bus.d = reg; \
             s.bus(RW::w); \
             break; \
@@ -402,6 +403,27 @@ void NMOS6502::Core::exec_cycle() {
             break; \
         case mc(opc, 1): \
             s.bus.a = s.aux | (s.bus.d << 8); \
+            break; \
+        case mc(opc, 2): \
+            s.bus(RW::w); \
+            break; \
+        case mc(opc, 3): \
+            op; \
+            break; \
+        case mc(opc, 4): \
+            s.bus.a = s.pc; \
+            s.bus(RW::r); \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
+    #define rmw_zx(opc, op) { \
+        case mc(opc, 0): \
+            s.pc = s.bus.a + 1; \
+            s.bus.a = s.bus.d; \
+            break; \
+        case mc(opc, 1): \
+            s.bus.a = zp(s.bus.a + s.x); \
             break; \
         case mc(opc, 2): \
             s.bus(RW::w); \
@@ -498,6 +520,8 @@ void NMOS6502::Core::exec_cycle() {
         rmw_a(0x0f, Op{s}.ud_slo(s.bus.d)); // slo abs
         brc(0x10, Flag::N); // bpl
         hlt(0x12);
+        rmw_zx(0x16, Op{s}.asl(s.bus.d)); // asl zpx
+        rmw_zx(0x17, Op{s}.ud_slo(s.bus.d)); // slo zpx
         sb(0x18, s.clr(Flag::C)); // clc
         rmw_ax(0x1e, Op{s}.asl(s.bus.d)); // asl absx
         rmw_ax(0x1f, Op{s}.ud_slo(s.bus.d)); // slo absx
@@ -548,6 +572,8 @@ void NMOS6502::Core::exec_cycle() {
         rmw_a(0x2f, Op{s}.ud_rla(s.bus.d)); // rla abs
         brs(0x30, Flag::N); // bmi
         hlt(0x32);
+        rmw_zx(0x36, Op{s}.rol(s.bus.d)); // rol zpx
+        rmw_zx(0x37, Op{s}.ud_rla(s.bus.d)); // rla zpx
         sb(0x38, s.set(Flag::C)); // sec
         sb(0x3a,); // nop
         rmw_ax(0x3e, Op{s}.rol(s.bus.d)); // rol absx
@@ -602,6 +628,8 @@ void NMOS6502::Core::exec_cycle() {
 
         brc(0x50, Flag::V); // bvc
         hlt(0x52);
+        rmw_zx(0x56, Op{s}.lsr(s.bus.d)); // lsr zpx
+        rmw_zx(0x57, Op{s}.ud_sre(s.bus.d)); // sre zpx
 
         case mc(0x58, 0): // cli
             schedule(OPC::dispatch_post_cli);
@@ -670,6 +698,8 @@ void NMOS6502::Core::exec_cycle() {
 
         brs(0x70, Flag::V); // bvs
         hlt(0x72);
+        rmw_zx(0x76, Op{s}.ror(s.bus.d)); // ror zpx
+        rmw_zx(0x77, Op{s}.ud_rra(s.bus.d)); // rra zpx
 
         case mc(0x78, 0): // sei
             schedule(OPC::dispatch_post_sei);
@@ -722,6 +752,8 @@ void NMOS6502::Core::exec_cycle() {
         rmw_a(0xcf, Op{s}.ud_dcp(s.bus.d)); // dcp abs
         brc(0xd0, Flag::Z); // bne
         hlt(0xd2);
+        rmw_zx(0xd6, Op{s}.dec(s.bus.d)); // dec zpx
+        rmw_zx(0xd7, Op{s}.ud_dcp(s.bus.d)); // dcp zpx
         sb(0xd8, s.clr(Flag::D)); // cld
         rmw_ax(0xde, Op{s}.dec(s.bus.d)); // dec absx
         rmw_ax(0xdf, Op{s}.ud_dcp(s.bus.d)); // dcp absx
@@ -735,6 +767,8 @@ void NMOS6502::Core::exec_cycle() {
         rmw_a(0xef, Op{s}.ud_isc(s.bus.d)); // isc abs
         brs(0xf0, Flag::Z); // beq
         hlt(0xf2);
+        rmw_zx(0xf6, Op{s}.inc(s.bus.d)); // inc zpx
+        rmw_zx(0xf7, Op{s}.ud_isc(s.bus.d)); // isc zpx
         sb(0xf8, s.set(Flag::D)); // sed
         rmw_ax(0xfe, Op{s}.inc(s.bus.d)); // inc absx
         rmw_ax(0xff, Op{s}.ud_isc(s.bus.d)); // isc absx
