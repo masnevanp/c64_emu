@@ -261,13 +261,13 @@ void NMOS6502::Core::exec_cycle() {
     // ******** Store Operations ********
     #define st_z(opc, reg) { \
         case mc(opc, 0): \
-            s.aux = s.bus.a + 1; \
+            s.pc = s.bus.a + 1; \
             s.bus.a = s.bus.d; \
             s.bus.d = reg; \
             s.bus(RW::w); \
             break; \
         case mc(opc, 1): \
-            s.bus.a = s.aux; \
+            s.bus.a = s.pc; \
             s.bus(RW::r); \
             schedule(OPC::dispatch); \
             break; \
