@@ -274,6 +274,56 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
+    #define rm_izx(opc, op) { \
+        case mc(opc, 0): \
+            s.pc = s.bus.a + 1; \
+            s.bus.a = s.bus.d; \
+            break; \
+        case mc(opc, 1): \
+            s.bus.a = zp(s.bus.a + s.x); \
+            break; \
+        case mc(opc, 2): \
+            s.aux = s.bus.d; \
+            s.bus.a = zp(s.bus.a + 1); \
+            break; \
+        case mc(opc, 3): \
+            s.bus.a = s.aux | (s.bus.d << 8); \
+            break; \
+        case mc(opc, 4): \
+            op; \
+            s.bus.a = s.pc; \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
+    #define rm_ai(opc, ireg, op) { \
+        case mc(opc, 0): \
+            s.aux = s.bus.d; \
+            s.pc = s.bus.a + 2; \
+            s.bus.a += 1; \
+            break; \
+        case mc(opc, 1): \
+            s.bus.a = (s.aux | (s.bus.d << 8)) + ireg; \
+            if ((s.bus.a & 0xff) < ireg) { \
+                s.bus.a -= 0x100; \
+                s.mcc += 1; \
+            } \
+            break; \
+        case mc(opc, 2): \
+            op; \
+            s.bus.a = s.pc; \
+            schedule(OPC::dispatch); \
+            break; \
+        case mc(opc, 3): \
+            s.bus.a += 0x100; \
+            break; \
+        case mc(opc, 4): \
+            op; \
+            s.bus.a = s.pc; \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
     // ******** Store Operations ********
     #define st_z(opc, reg) { \
         case mc(opc, 0): \
@@ -516,6 +566,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch_post_brk);
             break;
 
+        rm_izx(0x01, set_nz(s.a |= s.bus.d)); // ora izx
         hlt(0x02);
         rmw_z(0x06, Op{s}.asl(s.bus.d)); // asl zp
         rmw_z(0x07, Op{s}.ud_slo(s.bus.d)); // slo zp
@@ -566,6 +617,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
+        rm_izx(0x21, set_nz(s.a &= s.bus.d)); // and izx
         hlt(0x22);
         rmw_z(0x26, Op{s}.rol(s.bus.d)); // rol zp
         rmw_z(0x27, Op{s}.ud_rla(s.bus.d)); // rla zp
@@ -619,6 +671,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
+        rm_izx(0x41, set_nz(s.a ^= s.bus.d)); // eor izx
         hlt(0x42);
         rmw_z(0x46, Op{s}.lsr(s.bus.d)); // lsr zp
         rmw_z(0x47, Op{s}.ud_sre(s.bus.d)); // sre zp
@@ -679,6 +732,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch);
             break;
 
+        rm_izx(0x61, Op{s}.adc()); // adc izx
         hlt(0x62);
         rmw_z(0x66, Op{s}.ror(s.bus.d)); // ror zp
         rmw_z(0x67, Op{s}.ud_rra(s.bus.d)); // rra zp
@@ -753,7 +807,9 @@ void NMOS6502::Core::exec_cycle() {
         sb(0x9a, s.sp = sp(s.x)); // txs
         st_ai(0x9d, s.x); // sta absx
         rm_i(0xa0, set_nz(s.y = s.bus.d)); // ldy imm
+        rm_izx(0xa1, set_nz(s.a = s.bus.d)); // lda izx
         rm_i(0xa2, set_nz(s.x = s.bus.d)); // ldx imm
+        rm_izx(0xa3, set_nz(s.a = s.x = s.bus.d)); // lax izx
         rm_z(0xa4, set_nz(s.y = s.bus.d)); // ldy zp
         rm_z(0xa5, set_nz(s.a = s.bus.d)); // lda zp
         rm_z(0xa6, set_nz(s.x = s.bus.d)); // ldx zp
@@ -768,7 +824,9 @@ void NMOS6502::Core::exec_cycle() {
         hlt(0xb2);
         sb(0xb8, s.clr(Flag::V)); // clv
         sb(0xba, set_nz(s.x = u8(s.sp))); // tsx
+        rm_ai(0xbd, s.x, set_nz(s.a = s.bus.d)); // lda absx
         rm_i(0xc0, Op{s}.cmp(s.y)); // cpy imm
+        rm_izx(0xc1, Op{s}.cmp(s.a)); // cmp izx
         rmw_z(0xc6, Op{s}.dec(s.bus.d)); // dec zp
         rmw_z(0xc7, Op{s}.ud_dcp(s.bus.d)); // dcp zp
         sb(0xc8, set_nz(++s.y)); // iny
@@ -786,6 +844,7 @@ void NMOS6502::Core::exec_cycle() {
         rmw_ax(0xde, Op{s}.dec(s.bus.d)); // dec absx
         rmw_ax(0xdf, Op{s}.ud_dcp(s.bus.d)); // dcp absx
         rm_i(0xe0, Op{s}.cmp(s.x)); // cpx imm
+        rm_izx(0xe1, Op{s}.sbc()); // sbc izx
         rmw_z(0xe6, Op{s}.inc(s.bus.d)); // inc zp
         rmw_z(0xe7, Op{s}.ud_isc(s.bus.d)); // isc zp
         sb(0xe8, set_nz(++s.x)); // inx
