@@ -191,7 +191,7 @@ const NMOS6502::Instruction NMOS6502::instruction[256] = {
     {0xb3, 2, Am::indy, "LAX", "LAX ($%02X),Y"},
     {0xb4, 2, Am::zpx,  "LDY", "LDY $%02X,X"},
     {0xb5, 2, Am::zpx,  "LDA", "LDA $%02X,X"},
-    {0xb6, 2, Am::zpy,  "LDX", "LDX $%02X,X"},
+    {0xb6, 2, Am::zpy,  "LDX", "LDX $%02X,Y"},
     {0xb7, 2, Am::zpy,  "LAX", "LAX $%02X,Y"},
     {0xb8, 1, Am::impl, "CLV", "CLV"},
     {0xb9, 3, Am::absy, "LDA", "LDA $%02X%02X,Y"},
