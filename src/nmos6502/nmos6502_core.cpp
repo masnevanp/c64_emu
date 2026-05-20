@@ -550,14 +550,14 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
-    #define rmw_ax(opc, op) { \
+    #define rmw_ai(opc, ireg, op) { \
         case mc(opc, 0): \
             s.aux = s.bus.d; \
             s.pc = s.bus.a + 2; \
             s.bus.a += 1; \
             break; \
         case mc(opc, 1): \
-            s.bus.a = (s.aux | (s.bus.d << 8)) + s.x; \
+            s.bus.a = (s.aux | (s.bus.d << 8)) + ireg; \
             break; \
         case mc(opc, 2): \
             break; \
@@ -615,6 +615,8 @@ void NMOS6502::Core::exec_cycle() {
         rm_izx(0x01, set_nz(s.a |= s.bus.d)); // ora izx
         hlt(0x02);
         // TODO
+        rm_z(0x04,); // nop zp
+        rm_z(0x05, set_nz(s.a |= s.bus.d)); // ora zp
         rmw_z(0x06, Op{s}.asl(s.bus.d)); // asl zp
         rmw_z(0x07, Op{s}.ud_slo(s.bus.d)); // slo zp
 
@@ -630,7 +632,7 @@ void NMOS6502::Core::exec_cycle() {
 
         rm_i(0x09, set_nz(s.a |= s.bus.d)); // ora imm
         sb(0x0a, Op{s}.asl(s.a)); // asl
-        // TODO
+        rm_i(0x0b, Op{s}.ud_anc(s.bus.d)); // anc imm
         rm_a(0x0c, ); // nop abs
         rm_a(0x0d, set_nz(s.a |= s.bus.d)); // ora abs
         rmw_a(0x0e, Op{s}.asl(s.bus.d)); // asl abs
@@ -645,11 +647,12 @@ void NMOS6502::Core::exec_cycle() {
         rmw_zx(0x17, Op{s}.ud_slo(s.bus.d)); // slo zpx
         sb(0x18, s.clr(Flag::C)); // clc
         rm_ai(0x19, s.y, set_nz(s.a |= s.bus.d)); // ora absy
-        // TODO
+        sb(0x1a, ) // nop
+        rmw_ai(0x1b, s.y, Op{s}.ud_slo(s.bus.d)); // slo absy
         rm_ai(0x1c, s.x, ); // nop absx
         rm_ai(0x1d, s.x, set_nz(s.a |= s.bus.d)); // ora absx
-        rmw_ax(0x1e, Op{s}.asl(s.bus.d)); // asl absx
-        rmw_ax(0x1f, Op{s}.ud_slo(s.bus.d)); // slo absx
+        rmw_ai(0x1e, s.x, Op{s}.asl(s.bus.d)); // asl absx
+        rmw_ai(0x1f, s.x, Op{s}.ud_slo(s.bus.d)); // slo absx
 
         case mc(0x20, 0): // jsr
             s.aux = s.bus.d;
@@ -676,6 +679,8 @@ void NMOS6502::Core::exec_cycle() {
         rm_izx(0x21, set_nz(s.a &= s.bus.d)); // and izx
         hlt(0x22);
         // TODO
+        rm_z(0x24, Op{s}.bit(s.bus.d)); // bit zp
+        rm_z(0x25, set_nz(s.a &= s.bus.d)); // and zp
         rmw_z(0x26, Op{s}.rol(s.bus.d)); // rol zp
         rmw_z(0x27, Op{s}.ud_rla(s.bus.d)); // rla zp
 
@@ -711,11 +716,11 @@ void NMOS6502::Core::exec_cycle() {
         sb(0x38, s.set(Flag::C)); // sec
         rm_ai(0x39, s.y, set_nz(s.a &= s.bus.d)); // and absy
         sb(0x3a,); // nop
-        // TODO
+        rmw_ai(0x3b, s.y, Op{s}.ud_rla(s.bus.d)); // rla absy
         rm_ai(0x3c, s.x,); // nop absx
         rm_ai(0x3d, s.x, set_nz(s.a &= s.bus.d)); // and absx
-        rmw_ax(0x3e, Op{s}.rol(s.bus.d)); // rol absx
-        rmw_ax(0x3f, Op{s}.ud_rla(s.bus.d)); // rla absx
+        rmw_ai(0x3e, s.x, Op{s}.rol(s.bus.d)); // rol absx
+        rmw_ai(0x3f, s.x, Op{s}.ud_rla(s.bus.d)); // rla absx
 
         case mc(0x40, 0): // rti
             s.bus.a = s.sp;
@@ -740,6 +745,8 @@ void NMOS6502::Core::exec_cycle() {
         rm_izx(0x41, set_nz(s.a ^= s.bus.d)); // eor izx
         hlt(0x42);
         // TODO
+        rm_z(0x44,); // nop zp
+        rm_z(0x45, set_nz(s.a &= s.bus.d)); // and zp
         rmw_z(0x46, Op{s}.lsr(s.bus.d)); // lsr zp
         rmw_z(0x47, Op{s}.ud_sre(s.bus.d)); // sre zp
 
@@ -783,11 +790,11 @@ void NMOS6502::Core::exec_cycle() {
 
         rm_ai(0x59, s.y, set_nz(s.a ^= s.bus.d)); // eor absy
         sb(0x5a,); // nop
-        // TODO
+        rmw_ai(0x5b, s.y, Op{s}.ud_sre(s.bus.d)); // sre absy
         rm_ai(0x5c, s.x,); // nop absx
         rm_ai(0x5d, s.x, set_nz(s.a ^= s.bus.d)); // eor absx
-        rmw_ax(0x5e, Op{s}.lsr(s.bus.d)); // lsr absx
-        rmw_ax(0x5f, Op{s}.ud_sre(s.bus.d)); // sre absx
+        rmw_ai(0x5e, s.x, Op{s}.lsr(s.bus.d)); // lsr absx
+        rmw_ai(0x5f, s.x, Op{s}.ud_sre(s.bus.d)); // sre absx
 
         case mc(0x60, 0): // rts
             s.bus.a = s.sp;
@@ -811,6 +818,8 @@ void NMOS6502::Core::exec_cycle() {
         rm_izx(0x61, Op{s}.adc()); // adc izx
         hlt(0x62);
         // TODO
+        rm_z(0x64,); // nop zp
+        rm_z(0x65, Op{s}.adc()); // adc zp
         rmw_z(0x66, Op{s}.ror(s.bus.d)); // ror zp
         rmw_z(0x67, Op{s}.ud_rra(s.bus.d)); // rra zp
 
@@ -864,10 +873,11 @@ void NMOS6502::Core::exec_cycle() {
 
         rm_ai(0x79, s.y, Op{s}.adc()); // adc absy
         // TODO
+        rmw_ai(0x7b, s.y, Op{s}.ud_rra(s.bus.d)); // rra absy
         rm_ai(0x7c, s.x,); // nop absx
         rm_ai(0x7d, s.x, Op{s}.adc()); // adc absx
-        rmw_ax(0x7e, Op{s}.ror(s.bus.d)); // ror absx
-        rmw_ax(0x7f, Op{s}.ud_rra(s.bus.d)); // rra absx
+        rmw_ai(0x7e, s.x, Op{s}.ror(s.bus.d)); // ror absx
+        rmw_ai(0x7f, s.x, Op{s}.ud_rra(s.bus.d)); // rra absx
         st_izx(0x81, s.a); // sta izx
         // TODO
         st_izx(0x83, s.a & s.x); // sax izx
@@ -904,7 +914,7 @@ void NMOS6502::Core::exec_cycle() {
         rm_z(0xa4, set_nz(s.y = s.bus.d)); // ldy zp
         rm_z(0xa5, set_nz(s.a = s.bus.d)); // lda zp
         rm_z(0xa6, set_nz(s.x = s.bus.d)); // ldx zp
-        // TODO
+        rm_z(0xa7, set_nz(s.a = s.x = s.bus.d)); // lax zp
         sb(0xa8, set_nz(s.y = s.a)); // tay
         rm_i(0xa9, set_nz(s.a = s.bus.d)); // lda imm
         sb(0xaa, set_nz(s.x = s.a)); // tax
@@ -932,6 +942,8 @@ void NMOS6502::Core::exec_cycle() {
         rm_i(0xc0, Op{s}.cmp(s.y)); // cpy imm
         rm_izx(0xc1, Op{s}.cmp(s.a)); // cmp izx
         // TODO
+        rm_z(0xc4, Op{s}.cmp(s.y)); // cpy zp
+        rm_z(0xc5, Op{s}.cmp(s.a)); // cmp zp
         rmw_z(0xc6, Op{s}.dec(s.bus.d)); // dec zp
         rmw_z(0xc7, Op{s}.ud_dcp(s.bus.d)); // dcp zp
         sb(0xc8, set_nz(++s.y)); // iny
@@ -953,13 +965,16 @@ void NMOS6502::Core::exec_cycle() {
         sb(0xd8, s.clr(Flag::D)); // cld
         rm_ai(0xd9, s.y, Op{s}.cmp(s.a)); // cmp absy
         // TODO
+        rmw_ai(0xdb, s.y, Op{s}.ud_dcp(s.bus.d)); // dcp absy
         rm_ai(0xdc, s.x,); // nop absx
         rm_ai(0xdd, s.x, Op{s}.cmp(s.a)); // cmp absx
-        rmw_ax(0xde, Op{s}.dec(s.bus.d)); // dec absx
-        rmw_ax(0xdf, Op{s}.ud_dcp(s.bus.d)); // dcp absx
+        rmw_ai(0xde, s.x, Op{s}.dec(s.bus.d)); // dec absx
+        rmw_ai(0xdf, s.x, Op{s}.ud_dcp(s.bus.d)); // dcp absx
         rm_i(0xe0, Op{s}.cmp(s.x)); // cpx imm
         rm_izx(0xe1, Op{s}.sbc()); // sbc izx
         // TODO
+        rm_z(0xe4, Op{s}.cmp(s.x)); // cpx zp
+        rm_z(0xe5, Op{s}.sbc()); // sbc zp
         rmw_z(0xe6, Op{s}.inc(s.bus.d)); // inc zp
         rmw_z(0xe7, Op{s}.ud_isc(s.bus.d)); // isc zp
         sb(0xe8, set_nz(++s.x)); // inx
@@ -981,10 +996,11 @@ void NMOS6502::Core::exec_cycle() {
         sb(0xf8, s.set(Flag::D)); // sed
         rm_ai(0xf9, s.y, Op{s}.sbc()); // sbc absy
         // TODO
+        rmw_ai(0xfb, s.y, Op{s}.ud_isc(s.bus.d)); // isc absy
         rm_ai(0xfc, s.x,); // nop absx
         rm_ai(0xfd, s.x, Op{s}.sbc()); // sbc absx
-        rmw_ax(0xfe, Op{s}.inc(s.bus.d)); // inc absx
-        rmw_ax(0xff, Op{s}.ud_isc(s.bus.d)); // isc absx
+        rmw_ai(0xfe, s.x, Op{s}.inc(s.bus.d)); // inc absx
+        rmw_ai(0xff, s.x, Op{s}.ud_isc(s.bus.d)); // isc absx
 
         // ********************************************************************
 
