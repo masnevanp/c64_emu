@@ -747,7 +747,7 @@ void NMOS6502::Core::exec_cycle() {
         hlt(0x42);
         // TODO
         rm_z(0x44,); // nop zp
-        rm_z(0x45, set_nz(s.a &= s.bus.d)); // and zp
+        rm_z(0x45, set_nz(s.a ^= s.bus.d)); // eor zp
         rmw_z(0x46, Op{s}.lsr(s.bus.d)); // lsr zp
         rmw_z(0x47, Op{s}.ud_sre(s.bus.d)); // sre zp
 

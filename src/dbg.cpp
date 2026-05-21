@@ -86,7 +86,7 @@ void Dbg::print_status(const Core& cpu, u8* mem) {
     for (int sp = cpu.s.sp, i = 1; i < 4 && (sp + i) <= 0x1ff; ++i) {
         std::cout << " " << print_u8(mem[sp + i]);
     }
-    std::cout << " ]\n\n";
+    std::cout << " ]\n";
 }
 
 

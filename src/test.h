@@ -30,8 +30,15 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     int op_cnt = 0;
     Timer t;
     for (int prev_pc = cpu.s.pc, psc = 0, step = false, output = false; psc < 15; ++psc) {
+        if (cpu.s.bus.rw == Core::State::Bus::r) cpu.s.bus.d = mem[cpu.s.bus.a];
+        else mem[cpu.s.bus.a] = cpu.s.bus.d;
+
+        //std::cout << "  " << Dbg::print_u16(cpu.s.bus.a) << ' ' << Dbg::print_u8(cpu.s.bus.d)
+        //            << (cpu.s.bus.rw ? " r " : " w ");
+
         // BEWARE
         if (cpu.s.opc()>= OPC::dispatch_post_cli && cpu.s.opc() <= OPC::dispatch_post_brk) {
+            cpu.s.pc = cpu.s.bus.a;
             if (cpu.s.pc == step_from_pc) step = true;
             if (cpu.s.pc == output_from_pc) output = true;
             if (step || output) {
@@ -40,6 +47,12 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
                 if (step) getchar();
             }
 
+            /*
+            std::cout << "\n";
+            Dbg::print_status(cpu, mem);
+            const auto bytes = Bytes{{mem[cpu.s.pc], mem[u16(cpu.s.pc + 1)], mem[u16(cpu.s.pc + 2)]}};
+            std::cout << "  > " + as_lower(Dbg::disasm_first(bytes, cpu.s.pc).text) << "\n\n";
+            */
             if (prev_pc != cpu.s.pc) {
                 prev_pc = cpu.s.pc;
                 psc = 0; // 'pc stuck' counter
@@ -48,8 +61,6 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
             ++op_cnt;
         }
 
-        if (cpu.s.bus.rw == Core::State::Bus::r) cpu.s.bus.d = mem[cpu.s.bus.a];
-        else mem[cpu.s.bus.a] = cpu.s.bus.d;
         cpu.tick();
     }
     int te = t.elapsed();
@@ -61,7 +72,7 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     std::cout << " op/sec: " << (int)(op_cnt / te * 1000) << "\n";
     std::cout << "=========================================================\n";
     std::cout << ((cpu.s.pc == 0x3469) ? "### PASS ###" : "### FAIL ###");
-    std::cout << "\n";
+    std::cout << std::endl;
 }
 
 
