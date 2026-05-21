@@ -85,7 +85,8 @@ public:
         exec_cycle();
     }
 
-    bool halted() const { return s.opc() == OPC::halt; }
+    bool at_fetch() const { return s.opc()>= OPC::dispatch_post_cli && s.opc() <= OPC::dispatch_post_brk; }
+    bool halted() const   { return s.opc() == OPC::halt; }
     void resume();
 
 private:

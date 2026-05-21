@@ -36,8 +36,7 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
         //std::cout << "  " << Dbg::print_u16(cpu.s.bus.a) << ' ' << Dbg::print_u8(cpu.s.bus.d)
         //            << (cpu.s.bus.rw ? " r " : " w ");
 
-        // BEWARE
-        if (cpu.s.opc()>= OPC::dispatch_post_cli && cpu.s.opc() <= OPC::dispatch_post_brk) {
+        if (cpu.at_fetch()) {
             cpu.s.pc = cpu.s.bus.a;
             if (cpu.s.pc == step_from_pc) step = true;
             if (cpu.s.pc == output_from_pc) output = true;
@@ -95,7 +94,7 @@ void run_test_suite()
 
         sys.cpu.s.sp = 0x1fd;
         sys.cpu.s.p = 0x04;
-        sys.cpu.s.pc = 0x0801;
+        sys.cpu.s.pc = sys.cpu.s.bus.a = 0x0801;
     };
 
     auto load = [&](const std::string& filename) {
@@ -129,10 +128,11 @@ void run_test_suite()
 
     auto rts = [&]() {
         sys.cpu.s.sp = ((sys.cpu.s.sp + 1) & 0xff) | 0x100;
-        sys.cpu.s.pc = mem[0x100 | sys.cpu.s.sp];
+        sys.cpu.s.pc = mem[sys.cpu.s.sp];
         sys.cpu.s.sp = ((sys.cpu.s.sp + 1) & 0xff) | 0x100;
         sys.cpu.s.pc |= (mem[sys.cpu.s.sp] << 8);
         ++sys.cpu.s.pc;
+        sys.cpu.s.bus.a = sys.cpu.s.pc;
     };
 
     load("_start");
@@ -140,9 +140,9 @@ void run_test_suite()
     Timer t;
     for (;;) {
         //if (sys.cpu.halted()) { std::cout << "\n[HALTED]"; goto exit; }
-        if (sys.tn == 0) {
+        if (sys.cpu.at_fetch()) {
             //print_status(sys.cpu, sys.mem);
-            switch (sys.cpu.s.pc) {
+            switch (sys.cpu.s.bus.a) { // pc
                 case 0xffd2: // print chr
                     mem[0x030c] = 0;
                     std::cout << to_ascii_chr(sys.cpu.s.a);
@@ -160,7 +160,7 @@ void run_test_suite()
                     std::cout << " -> ";
                     load(filename);
                     rts();
-                    sys.cpu.s.pc = 0x0816;
+                    sys.cpu.s.bus.a = 0x0816; // pc
                     break;
                 }
                 case 0xffe4: // scan keyboard
@@ -171,7 +171,7 @@ void run_test_suite()
                     std::cout << "\n[FAILED]"; goto exit;
             }
         }
-        sys.tick();
+        sys.tick(1, false);
     }
 
 exit:

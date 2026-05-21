@@ -100,10 +100,7 @@ void Dbg::System::tick(u32 cycles, bool verbose) {
         if (cpu.s.bus.rw == Core::State::Bus::RW::r) cpu.s.bus.d = mem[cpu.s.bus.a];
         else mem[cpu.s.bus.a] = cpu.s.bus.d;
 
-        // BEWARE
-        if (cpu.s.opc() >= OPC::dispatch_post_cli && cpu.s.opc() <= OPC::dispatch_post_brk) {
-            tn = 1;
-        }
+        if (cpu.at_fetch()) tn = 0;
 
         if (verbose) {
             std::cout << ' ' << print_u16(cn) << ' '
@@ -115,15 +112,12 @@ void Dbg::System::tick(u32 cycles, bool verbose) {
                     << (cpu.s.nmi_act ? "n/" : "-/") << (cpu.s.irq_act ? "i " : "- ")
                     << print_u16(cpu.s.opc()) << '/' << (cpu.s.mcc & 0b111) << ' ' << tn;
 
-            if (tn == 1) {
+            if (tn == 0) {
                 const auto bytes = Bytes{{mem[cpu.s.bus.a], mem[u16(cpu.s.bus.a + 1)], mem[u16(cpu.s.bus.a + 2)]}};
                 std::cout << "  > " + as_lower(disasm_first(bytes, cpu.s.bus.a).text) + " ";
             } else {
                 std::cout << "  .";
             }
-            /*else if (cpu.s.opc() <= 0xff) {
-                std::cout << "   " << as_lower(NMOS6502::instruction[cpu.s.opc()].mnemonic) << "";
-            }*/
 
             std::cout << std::endl;
         }
