@@ -269,7 +269,6 @@ void System::C64::check_deferred() {
 
 
 void System::C64::log_status() {
-    /*
     using RW = State::System::Bus::RW;
 
     char buffer[128];
@@ -368,23 +367,30 @@ void System::C64::log_status() {
     };
 
     auto line_4 = [&]() {
-        const auto& dr = NMOS6502::MC::code[s.cpu.mcc].dr;
-        const auto& pc = s.cpu.pc;
-
         std::string instr_txt = "";
-        if (const bool fetch = (dr == NMOS6502::Ri8::ir); fetch) {
+        if (cpu.at_fetch()) {
+            const auto& pc = s.cpu.bus.a;
             const auto bytes = Bytes{{bus.peek(pc), bus.peek(pc + 1), bus.peek(pc + 2)}};
             instr_txt = "> " + as_lower(Dbg::disasm_first(bytes, pc).text);
-        } else {
-            instr_txt = "> " + as_lower(NMOS6502::instruction[s.cpu.ir].mnemonic);
+
+            const char pc_mapping = mapped_at(pc, RW::r);
+
+            const char* format = "pc:%04x [%c] %s";
+            sprintf(buffer, format, pc, pc_mapping, instr_txt.c_str());
+
+            Log::info("%s", buffer);
+        } else if (cpu.s.opc() <= 0xff) {
+            instr_txt = as_lower(NMOS6502::instruction[cpu.s.opc()].mnemonic);
+            Log::info("            > %s", instr_txt.c_str());
         }
 
-        const char pc_mapping = mapped_at(s.cpu.pc, RW::r);
+        /*const char pc_mapping = mapped_at(s.cpu.pc, RW::r);
 
         const char* format = "pc:%04x [%c] %s";
         sprintf(buffer, format, s.cpu.pc, pc_mapping, instr_txt.c_str());
 
         Log::info("%s", buffer);
+        */
     };
 
     Log::info("");
@@ -393,8 +399,6 @@ void System::C64::log_status() {
     line_2();
     line_3();
     line_4();
-    */
-    Log::info("TODO: log_status() (system.cpp)");
 }
 
 
@@ -490,10 +494,9 @@ void System::C64::step_forward(u8 key_code) {
             run_cycle();
             break;
         case kc::step_instr:
-            /*if (!cpu.halted()) {
-                do run_cycle(); while (cpu.mop().dr != NMOS6502::Ri8::ir);
-            }*/
-            Log::info("TODO: step_instr (system.cpp)");
+            if (!cpu.halted()) {
+                do run_cycle(); while (!cpu.at_fetch());
+            }
             break;
         case kc::step_line:
             do run_cycle(); while (s.vic.line_cycle() < (LINE_CYCLE_COUNT - 1));
