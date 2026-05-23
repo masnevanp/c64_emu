@@ -8,8 +8,10 @@ namespace NMOS6502 {
 
 // TODO: SO (set overflow) pin, used by 1541 (is there a delay before it is detected?)
 
+using Sig_halt = std::function<void (u8, u8)>;
+
 struct Core {
-public:
+public:    
 
     struct State {
         struct Bus {
@@ -63,7 +65,7 @@ public:
 
     State& s;
 
-    Core(State& s_, Sig& sig_halt_);
+    Core(State& s_, Sig_halt& sig_halt_);
 
     void reset();
 
@@ -92,7 +94,7 @@ public:
 private:
     void exec_cycle();
 
-    Sig& sig_halt;
+    Sig_halt& sig_halt;
 };
 
 

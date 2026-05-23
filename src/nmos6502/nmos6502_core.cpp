@@ -73,8 +73,8 @@ namespace NMOS6502 {
         //void ud_tas(u8& d) { s.sp = sp(s.a & s.x); s.bus.d = s.sp & (s.a1h + 0x01); }
         void ud_xaa(u8& d) { set_nz(s.a = (s.a | 0xee) & s.x & d); }
 
-        void halt() {
-            s.aux = s.bus.d;
+        void halt(u8 opc, u8 d) {
+            s.aux = (d << 8) | opc; // temp store for sig_halt()
             s.pc = s.bus.a + 1;
             s.bus.a = 0xffff;
             schedule(OPC::halt);
@@ -167,7 +167,7 @@ namespace NMOS6502 {
 }
 
 
-NMOS6502::Core::Core(State& s_, Sig& sig_halt_) : s(s_), sig_halt(sig_halt_) {}
+NMOS6502::Core::Core(State& s_, Sig_halt& sig_halt_) : s(s_), sig_halt(sig_halt_) {}
 
 
 void NMOS6502::Core::reset() {
@@ -226,7 +226,7 @@ void NMOS6502::Core::exec_cycle() {
 
     #define hlt(opc) { \
         case mc(opc, 0): \
-            Op{s}.halt(); \
+            Op{s}.halt(opc, s.bus.d); \
             break; \
     }
 
@@ -584,14 +584,14 @@ void NMOS6502::Core::exec_cycle() {
         */
         case mc(OPC::brk, 0):
             s.pc = s.bus.a;
-            if (s.brk_srcs == Brk_src::sw) s.pc += 1;
+            if (s.brk_srcs == Brk_src::sw) s.pc += 1; // TODO: during dispatch?
             s.bus(s.sp, (s.pc >> 8), RW::w);
             break;
         case mc(OPC::brk, 1):
             s.bus(sp(s.bus.a - 1), s.pc);
             break;
         case mc(OPC::brk, 2): {
-            const auto p = s.p | Flag::u | (s.brk_srcs == Brk_src::sw ? Flag::B : 0x00);
+            const auto p = s.p | Flag::u;
             s.bus(sp(s.bus.a - 1), p);
             s.sp = sp(s.bus.a - 1);
             break; }
@@ -1027,15 +1027,15 @@ void NMOS6502::Core::exec_cycle() {
         case mc(OPC::dispatch_post_cli): 
             check_irq(); // irq taken on 'old' i-flag value
             s.clr(Flag::I);
-            goto IRQ_checked;
+            goto irq_checked;
         case mc(OPC::dispatch_post_sei):
             check_irq(); // irq taken on 'old' i-flag value
             s.set(Flag::I);
-            goto IRQ_checked;
+            goto irq_checked;
         case mc(OPC::dispatch): // 'normal' T0 case (all interrupts taken normally)
             check_irq();
 
-            IRQ_checked:
+            irq_checked:
             if (s.nmi_act) {
                 s.brk_srcs |= Brk_src::nmi;
                 s.nmi_act = false;
@@ -1044,10 +1044,14 @@ void NMOS6502::Core::exec_cycle() {
             // fall through
         case mc(OPC::dispatch_post_brk):
             if (s.brk_srcs) {
+                s.p &= ~Flag::B;
                 schedule(OPC::brk);
             } else {
                 s.bus.a += 1; // inc pc
-                if (s.bus.d == OPC::brk) s.brk_srcs = Brk_src::sw;
+                if (s.bus.d == OPC::brk) {
+                    s.p |= Flag::B;
+                    s.brk_srcs = Brk_src::sw;
+                }
                 schedule(OPC(s.bus.d));
             }
             break;
@@ -1061,7 +1065,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
         case mc(OPC::halt, 2):
             s.bus.a = 0xffff;
-            sig_halt();
+            sig_halt(s.aux & 0xff, s.aux >> 8);
             break;
         case mc(OPC::halt, 3):
             s.mcc--; // stuck (until resume())

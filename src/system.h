@@ -585,35 +585,30 @@ private:
     Host::Input host_input{host_input_handlers};
 
     // TODO: verify that it is a valid kernal trap (e.g. 'addr_space.mapping(cpu.pc) == kernal')
-    NMOS6502::Sig cpu_trap {
-        [this]() {
-            bool proceed = true;
+    NMOS6502::Sig_halt cpu_trap{
+        [this](u8 trap_opc, u8 routine_id) {
+            bool resume = true;
 
-            const auto trap_opc = cpu.s.opc();
             switch (trap_opc) {
                 /*case Trap_OPC::IEC_virtual_routine:
                     handled = IEC_virtual::on_trap(c64.cpu, c64.s.ram, iec_ctrl);
                     break;*/
-                case Trap_OPC::tape_routine: {
-                    const auto routine_id = 0x00; // cpu.s.d;
-                    Log::info("TODO: trap routine id (system.h)");
-
+                case Trap_OPC::tape_routine:
                     switch (routine_id) {
                         case Trap_ID::load: do_load(); break;
                         case Trap_ID::save: do_save(); break;
                         default:
-                            proceed = false;
+                            resume = false;
                             Log::error("Unknown tape routine: %d", (int)routine_id);
                             break;
                     }
                     break;
-                }
                 default:
-                    proceed = false;
+                    resume = false;
                     break;
             }
 
-            if (proceed) {
+            if (resume) {
                 cpu.resume();
             } else {
                 Log::error("****** CPU halted! ******");

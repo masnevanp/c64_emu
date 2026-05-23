@@ -90,7 +90,7 @@ template<typename T>
 using Maybe = std::optional<T>;
 
 
-using Sig = NMOS6502::Sig;
+using Sig  = std::function<void (void)>;
 
 template<typename T>
 using Sig1 = std::function<void (T)>;

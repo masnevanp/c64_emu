@@ -868,9 +868,9 @@ private:
         disk_carousel.insert(0, blank_disk, "Blank"); // TODO: handle 0 free slots case
     }
 
-    NMOS6502::Sig cpu_trap {
-        [this]() {
-            Log::error("****** C1541 CPU halted! ******");
+    NMOS6502::Sig_halt cpu_trap {
+        [this](u8 opc, u8 d) {
+            Log::error("****** C1541 CPU halted! (opc: %d, d: %d) ******", opc, d);
             Dbg::print_status(cpu, s.ram);
         }
     };

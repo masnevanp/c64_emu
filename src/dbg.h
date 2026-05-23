@@ -196,9 +196,9 @@ public:
 private:
     void do_reset() { cpu.reset(); tick(7, false); cn = 0; tn = 0; }
 
-    NMOS6502::Sig cpu_trap {
-        [this]() {
-            Log::error("****** CPU halted! ******");
+    NMOS6502::Sig_halt cpu_trap {
+        [this](u8 opc, u8 d) {
+            Log::error("****** CPU halted! (opc: %d, d: %d) ******", opc, d);
             Dbg::print_status(cpu, mem);
         }
     };
