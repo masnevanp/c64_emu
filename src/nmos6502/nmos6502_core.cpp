@@ -603,6 +603,34 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
+    #define ud_izy(opc, op) { \
+        case mc(opc, 0): \
+            s.pc = s.bus.a + 1; \
+            s.bus.a = s.bus.d; \
+            break; \
+        case mc(opc, 1): \
+            s.aux = s.bus.d + s.y; \
+            s.bus.a = zp(s.bus.a + 1); \
+            break; \
+        case mc(opc, 2): \
+            s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
+            break; \
+        case mc(opc, 3): \
+            s.bus.a += (s.aux & 0x100); \
+            break; \
+        case mc(opc, 4): \
+            s.bus(RW::w); \
+            break; \
+        case mc(opc, 5): \
+            op; \
+            break; \
+        case mc(opc, 6): \
+            s.bus.a = s.pc; \
+            s.bus(RW::r); \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
     switch (s.mcc++) {
         /* Interrupt hijacking:
             - happens if an interrupt of a higher priority is signalled before
@@ -669,7 +697,7 @@ void NMOS6502::Core::exec_cycle() {
         brc(0x10, Flag::N); // bpl
         rm_izy(0x11, set_nz(s.a |= s.bus.d)); // ora izy
         hlt(0x12);
-        // TODO
+        ud_izy(0x13, Op{s}.ud_slo(s.bus.d)); // slo izy
         rm_zi(0x14, s.x,); // nop zpx
         rm_zi(0x15, s.x, set_nz(s.a |= s.bus.d)); // ora zpx
         rmw_zx(0x16, Op{s}.asl(s.bus.d)); // asl zpx
@@ -737,7 +765,7 @@ void NMOS6502::Core::exec_cycle() {
         brs(0x30, Flag::N); // bmi
         rm_izy(0x31, set_nz(s.a &= s.bus.d)); // and izy
         hlt(0x32);
-        // TODO
+        ud_izy(0x33, Op{s}.ud_rla(s.bus.d)); // rla izy
         rm_zi(0x34, s.x,); // nop zpx
         rm_zi(0x35, s.x, set_nz(s.a &= s.bus.d)); // and zpx
         rmw_zx(0x36, Op{s}.rol(s.bus.d)); // rol zpx
@@ -807,7 +835,7 @@ void NMOS6502::Core::exec_cycle() {
         brc(0x50, Flag::V); // bvc
         rm_izy(0x51, set_nz(s.a ^= s.bus.d)); // eor izy
         hlt(0x52);
-        // TODO
+        ud_izy(0x53, Op{s}.ud_sre(s.bus.d)); // sre izy
         rm_zi(0x54, s.x,); // nop zpx
         rm_zi(0x55, s.x, set_nz(s.a ^= s.bus.d)); // eor zpx
         rmw_zx(0x56, Op{s}.lsr(s.bus.d)); // lsr zpx
@@ -890,7 +918,7 @@ void NMOS6502::Core::exec_cycle() {
         brs(0x70, Flag::V); // bvs
         rm_izy(0x71, Op{s}.adc()); // adc izy
         hlt(0x72);
-        // TODO
+        ud_izy(0x73, Op{s}.ud_rra(s.bus.d)); // rra izy
         rm_zi(0x74, s.x,); // nop zpx
         rm_zi(0x75, s.x, Op{s}.adc()); // adc zpx
         rmw_zx(0x76, Op{s}.ror(s.bus.d)); // ror zpx
@@ -987,7 +1015,7 @@ void NMOS6502::Core::exec_cycle() {
         brc(0xd0, Flag::Z); // bne
         rm_izy(0xd1, Op{s}.cmp(s.a)); // cmp izy
         hlt(0xd2);
-        // TODO
+        ud_izy(0xd3, Op{s}.ud_dcp(s.bus.d)); // dcp izy
         rm_zi(0xd4, s.x,); // nop zpx
         rm_zi(0xd5, s.x, Op{s}.cmp(s.a)); // cmp zpx
         rmw_zx(0xd6, Op{s}.dec(s.bus.d)); // dec zpx
@@ -1019,7 +1047,7 @@ void NMOS6502::Core::exec_cycle() {
         brs(0xf0, Flag::Z); // beq
         rm_izy(0xf1, Op{s}.sbc()); // sbc izy
         hlt(0xf2);
-        // TODO
+        ud_izy(0xf3, Op{s}.ud_isc(s.bus.d)); // isc izy
         rm_zi(0xf4, s.x,); // nop zpx
         rm_zi(0xf5, s.x, Op{s}.sbc()); // sbc zpx
         rmw_zx(0xf6, Op{s}.inc(s.bus.d)); // inc zpx
