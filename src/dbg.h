@@ -185,29 +185,31 @@ std::vector<std::string> disasm(const Bytes& bytes, const u16 start_addr = 0x000
 
 class System;
 
-void step(System& sys, u16 until_pc = 0xffff);
-
 
 class System {
 public:
-    System(u8* mem_, bool do_reset_=true) : mem(mem_) { if (do_reset_) do_reset(); }
+    System(u8* mem_) : mem(mem_) { do_reset(); }
+
     u8* mem;
     Core::State cpu_state;
     Core cpu{cpu_state, cpu_trap};
     uint64_t cn = 1;
     int tn = 0;
-    void exec_cycle() {
+
+    void tick(u32 cycles = 1, bool verbose = true);
+
+    void tick_one() {
         if (cpu.mrw() == MC::RW::r) cpu.mdr() = mem[cpu.mar()];
         else mem[cpu.mar()] = cpu.mdr();
-        //if (cpu.mar() < 2) print_status(cpu, mem);
+
         cpu.tick();
         ++cn; ++tn;
         // BEWARE
         if (cpu.mop().mopc >= MC::MOPC::dispatch_cli && cpu.mop().mopc <= MC::MOPC::dispatch_brk) tn = 0;
     }
-    void do_reset() { cpu.reset(); for (int i = 0; i < 7; ++i, ++cn) exec_cycle(); }
-
 private:
+    void do_reset() { cpu.reset(); tick(7, false); cn = 0; tn = 0; }
+
     NMOS6502::Sig cpu_trap {
         [this]() {
             Log::error("****** CPU halted! ******");
@@ -215,6 +217,7 @@ private:
         }
     };
 };
+
 
 } // namespace Dbg
 

@@ -1,5 +1,6 @@
 
 #include "dbg.h"
+#include "utils.h"
 #include <sstream>
 #include <iostream>
 #include <iomanip>
@@ -125,26 +126,41 @@ void Dbg::reg_diff(const Core& cpu) {
 }
 
 
-void Dbg::step(System& sys, u16 until_pc)
-{
-    reg_diff(sys.cpu);
-
-    print_status(sys.cpu, sys.mem);
-    for (;;) {
-        if (sys.tn == 0) {
-            std::cout << "==========================================================";
-            if (sys.cpu.s.pc == until_pc) break;
-        } else std::cout << "----------------------------------------------------------";
-
-        //getchar();
-        std::cout << std::dec << "C" << (int)sys.cn << " T" << (int)sys.tn << ": " << std::string(sys.cpu.mop());
-
-        sys.exec_cycle();
-        reg_diff(sys.cpu);
-        print_status(sys.cpu, sys.mem);
-
-        if (sys.cpu.halted()) { std::cout << "\n[HALTED]"; break; }
+void Dbg::System::tick(u32 cycles, bool verbose) {
+    if (verbose) {
+        std::cout << "\n  cn   ab  db w  pc  ac xr yr  sp  ps    ps    n/i mcop/n t";
+        std::cout << std::endl;
     }
-    std::cout << "\n\n=================== DONE (" << sys.cn << " cycles) ======================";
-    print_status(sys.cpu, sys.mem);
+
+    while (cycles-- && !cpu.halted()) {
+        if (cpu.mrw() == 1) cpu.mdr() = mem[cpu.mar()];
+        else mem[cpu.mar()] = cpu.mdr();
+
+        if (cpu.mop().mopc >= NMOS6502::MC::dispatch_cli && cpu.mop().mopc <= NMOS6502::MC::dispatch_brk) tn = 0;
+
+        if (verbose) {
+            std::cout << ' ' << print_u16(cn) << ' '
+                    << print_u16(cpu.mar()) << ' ' << print_u8(cpu.mdr())
+                    << (cpu.mrw() ? "   " : " * ") << print_u16(cpu.s.pc) << ' '
+                    << print_u8(cpu.s.a) << ' ' << print_u8(cpu.s.x) << ' ' << print_u8(cpu.s.y) << ' '
+                    << print_u16(cpu.s.sp) << ' ' //<< print_u16(cpu.s.aux) << ' '
+                    << print_u8(cpu.s.p) << ' ' << flags_str(cpu.s.p) << ' '
+                    << (cpu.s.nmi_act ? "n/" : "-/") << (cpu.s.irq_act ? "i " : "- ")
+                    << print_u16(cpu.s.ir) << '/' << (cpu.s.mcc & 0b111) << ' ' << tn;
+
+            if (tn == 0) {
+                const auto bytes = Bytes{{mem[cpu.s.pc], mem[u16(cpu.s.pc + 1)], mem[u16(cpu.s.pc + 2)]}};
+                std::cout << "  > " + as_lower(disasm_first(bytes, cpu.s.pc).text) + " ";
+            } else {
+                std::cout << "  .";
+            }
+
+            std::cout << std::endl;
+        }
+
+        cpu.tick();
+
+        ++cn;
+        ++tn;
+    }
 }
