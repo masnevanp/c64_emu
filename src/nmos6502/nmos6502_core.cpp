@@ -575,6 +575,34 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
+    #define ud_izx(opc, op) { \
+        case mc(opc, 0): \
+            s.pc = s.bus.a + 1; \
+            s.bus.a = s.bus.d; \
+            break; \
+        case mc(opc, 1): \
+            s.bus.a = zp(s.bus.a + s.x); \
+            break; \
+        case mc(opc, 2): \
+            s.aux = s.bus.d; \
+            s.bus.a = zp(s.bus.a + 1); \
+            break; \
+        case mc(opc, 3): \
+            s.bus.a = s.aux | (s.bus.d << 8); \
+            break; \
+        case mc(opc, 4): \
+            s.bus(RW::w); \
+            break; \
+        case mc(opc, 5): \
+            op; \
+            break; \
+        case mc(opc, 6): \
+            s.bus.a = s.pc; \
+            s.bus(RW::r); \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
     switch (s.mcc++) {
         /* Interrupt hijacking:
             - happens if an interrupt of a higher priority is signalled before
@@ -615,7 +643,7 @@ void NMOS6502::Core::exec_cycle() {
 
         rm_izx(0x01, set_nz(s.a |= s.bus.d)); // ora izx
         hlt(0x02);
-        // TODO
+        ud_izx(0x03, Op{s}.ud_slo(s.bus.d)); // slo izx
         rm_z(0x04,); // nop zp
         rm_z(0x05, set_nz(s.a |= s.bus.d)); // ora zp
         rmw_z(0x06, Op{s}.asl(s.bus.d)); // asl zp
@@ -974,6 +1002,7 @@ void NMOS6502::Core::exec_cycle() {
         rm_i(0xe0, Op{s}.cmp(s.x)); // cpx imm
         rm_izx(0xe1, Op{s}.sbc()); // sbc izx
         rm_i(0xe2, ); // nop imm
+        // TODO
         rm_z(0xe4, Op{s}.cmp(s.x)); // cpx zp
         rm_z(0xe5, Op{s}.sbc()); // sbc zp
         rmw_z(0xe6, Op{s}.inc(s.bus.d)); // inc zp
