@@ -188,10 +188,21 @@ public:
     Core::State cpu_state;
     Core cpu{cpu_state, cpu_trap};
 
-    int cn = 0;
+    uint64_t cn = 1;
     int tn = 0;
 
     void tick(u32 cycles = 1, bool verbose = true);
+
+    void tick_one() {
+        if (cpu.s.bus.rw == NMOS6502::Core::State::Bus::RW::r) cpu.s.bus.d = mem[cpu.s.bus.a];
+        else mem[cpu.s.bus.a] = cpu.s.bus.d;
+
+        cpu.tick();
+        ++cn; ++tn;
+        // BEWARE
+        if (cpu.s.opc() >= NMOS6502::OPC::dispatch_post_cli &&
+                cpu.s.opc() <= NMOS6502::OPC::dispatch_post_brk) tn = 0;
+    }
 
 private:
     void do_reset() { cpu.reset(); tick(7, false); cn = 0; tn = 0; }

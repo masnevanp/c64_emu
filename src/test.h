@@ -143,7 +143,7 @@ void run_test_suite()
     Timer t;
     for (;;) {
         //if (sys.cpu.halted()) { std::cout << "\n[HALTED]"; goto exit; }
-        if (sys.cpu.at_fetch()) {
+        if (sys.tn == 0) {
             //print_status(sys.cpu, sys.mem);
             switch (sys.cpu.s.bus.a) { // pc
                 case 0xffd2: // print chr
@@ -174,7 +174,7 @@ void run_test_suite()
                     std::cout << "\n[FAILED]"; goto exit;
             }
         }
-        sys.tick(1, false);
+        sys.tick_one();
     }
 
 exit:
