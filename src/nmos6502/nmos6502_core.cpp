@@ -472,7 +472,7 @@ void NMOS6502::Core::exec_cycle() {
             break; \
         case mc(opc, 1): \
             s.aux = s.bus.d + s.y; \
-            s.bus.a += 1; \
+            s.bus.a = zp(s.bus.a + 1); \
             break; \
         case mc(opc, 2): \
             s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
@@ -664,7 +664,7 @@ void NMOS6502::Core::exec_cycle() {
             break; \
         case mc(opc, 1): \
             s.aux = s.bus.d + s.y; \
-            s.bus.a += 1; \
+            s.bus.a = zp(s.bus.a + 1); \
             break; \
         case mc(opc, 2): \
             s.bus.a = (s.bus.d << 8) | (s.aux & 0xff); \
