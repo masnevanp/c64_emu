@@ -990,7 +990,7 @@ void NMOS6502::Core::exec_cycle() {
         ud_shi_ai(0x9c, s.x, s.y, ); // shy absx
         st_ai(0x9d, s.x); // sta absx
         ud_shi_ai(0x9e, s.y, s.x, ); // shx absy
-        // TODO
+        ud_shi_ai(0x9f, s.y, s.x, s.bus.d &= s.a); // ahx absy
         rm_i(0xa0, set_nz(s.y = s.bus.d)); // ldy imm
         rm_izx(0xa1, set_nz(s.a = s.bus.d)); // lda izx
         rm_i(0xa2, set_nz(s.x = s.bus.d)); // ldx imm
