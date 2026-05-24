@@ -3,6 +3,15 @@
 
 #include "nmos6502.h"
 
+/*
+Invaluable resources (thanks!):
+    http://visual6502.org/JSSim/
+    http://retro.hansotten.nl/uploads/6502docs/hwman.htm
+    https://www.nesdev.org/wiki/Visual6502wiki
+    https://www.nesdev.org/wiki/Visual6502wiki/6502_all_256_Opcodes
+    https://www.masswerk.at/6502/6502_instruction_set.html
+
+*/
 
 namespace NMOS6502 {
 
@@ -20,7 +29,7 @@ public:
             /* Bus access params (addr, data, r/w).
                 The read/write is expected to happen before tick(), e.g.:
                 for (;;) {
-                    do_access(core.s.bus.a, core.s.bus.d, core.s.bus.rw);
+                    bus_access(core.s.bus);
                     core.tick();
                 }
             */
