@@ -6,7 +6,7 @@
 #include "state.h"
 #include "utils.h"
 #include "files.h"
-#include "nmos6502/nmos6502_core.h"
+#include "nmos6502/nmos6502.h"
 #include "menu.h"
 #include "dbg.h"
 

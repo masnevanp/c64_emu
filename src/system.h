@@ -7,7 +7,7 @@
 #include "state.h"
 #include "utils.h"
 #include "dbg.h"
-#include "nmos6502/nmos6502_core.h"
+#include "nmos6502/nmos6502.h"
 #include "vic_ii.h"
 #include "sid.h"
 #include "cia.h"

@@ -380,7 +380,7 @@ void System::C64::log_status() {
 
             Log::info("%s", buffer);
         } else if (cpu.s.opc() <= 0xff) {
-            instr_txt = as_lower(NMOS6502::instruction[cpu.s.opc()].mnemonic);
+            instr_txt = as_lower(NMOS6502::Asm::instruction[cpu.s.opc()].mnemonic);
             Log::info("            > %s", instr_txt.c_str());
         }
 

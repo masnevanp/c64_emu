@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include "common.h"
 #include "nmos6502/nmos6502.h"
-#include "nmos6502/nmos6502_core.h"
 
 namespace Dbg {
 
@@ -52,7 +51,7 @@ public:
 private:
     Line disasm(const std::size_t bin_pos) const {
         const auto opc = bin[bin_pos];
-        const auto& instr = NMOS6502::instruction[opc];
+        const auto& instr = NMOS6502::Asm::instruction[opc];
         const u16 pc = start_addr + bin_pos;
 
         char instr_disasm[16];
@@ -76,7 +75,7 @@ private:
                     sprintf(instr_bytes, "%02X", bin[bin_pos]);
                     break; 
                 case 2:
-                    if (instr.addr_mode == NMOS6502::Addr_mode::rel) {
+                    if (instr.addr_mode == NMOS6502::Asm::Addr_mode::rel) {
                         const u16 tgt_addr = pc + 2 + i8(bin[bin_pos + 1]);
                         sprintf(instr_disasm, instr.asm_format.c_str(), tgt_addr);
                         sprintf(instr_bytes, "%02X %02X", bin[bin_pos], bin[bin_pos + 1]);
@@ -109,7 +108,7 @@ auto disasm(const Bin& bin, const u16 start_addr = 0x0000) {
 
     for (std::size_t bin_pos = 0; bin_pos < std::size(bin); ) {
         lines.push_back(dis.at(bin_pos));
-        bin_pos += NMOS6502::instruction[bin[bin_pos]].size;
+        bin_pos += NMOS6502::Asm::instruction[bin[bin_pos]].size;
     }
 
     return lines;

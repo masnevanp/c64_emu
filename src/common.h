@@ -2,7 +2,6 @@
 #define COMMON_H_INCLUDED
 
 #include "nmos6502/nmos6502.h"
-#include "nmos6502/nmos6502_core.h"
 #include <optional>
 #include <cstdio>
 
