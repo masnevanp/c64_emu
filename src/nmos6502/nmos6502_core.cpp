@@ -633,12 +633,11 @@ void NMOS6502::Core::exec_cycle() {
 
     #define ud_shi_ai(opc, ir1, ir2, op) { \
         case mc(opc, 0): \
-            s.aux = s.bus.d; \
+            s.aux = s.bus.d + ir1; \
             s.pc = s.bus.a + 2; \
             s.bus.a += 1; \
             break; \
         case mc(opc, 1): \
-            s.aux += ir1; \
             s.bus.a = (s.bus.d << 8) | (s.aux & 0xff); \
             break; \
         case mc(opc, 2): \
@@ -650,6 +649,32 @@ void NMOS6502::Core::exec_cycle() {
             s.bus(RW::w); \
             break; \
         case mc(opc, 3): \
+            s.bus.a = s.pc; \
+            s.bus(RW::r); \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
+    #define ud_ahx(opc) { \
+        case mc(opc, 0): \
+            s.pc = s.bus.a + 1; \
+            s.bus.a = s.bus.d; \
+            break; \
+        case mc(opc, 1): \
+            s.aux = s.bus.d + s.y; \
+            s.bus.a += 1; \
+            break; \
+        case mc(opc, 2): \
+            s.bus.a = (s.bus.d << 8) | (s.aux & 0xff); \
+            break; \
+        case mc(opc, 3): \
+            s.bus.d = s.a & s.x & ((s.bus.a + 0x100) >> 8); \
+            s.bus.a = (s.aux & 0x100) \
+                ? ((s.bus.d << 8) | (s.bus.a & 0xff)) \
+                : s.bus.a; \
+            s.bus(RW::w); \
+            break; \
+        case mc(opc, 4): \
             s.bus.a = s.pc; \
             s.bus(RW::r); \
             schedule(OPC::dispatch); \
@@ -978,7 +1003,7 @@ void NMOS6502::Core::exec_cycle() {
         brc(0x90, Flag::C); // bcc
         st_izy(0x91); // sta izy
         hlt(0x92);
-        // TODO
+        ud_ahx(0x93); // ahx izy
         st_zi(0x94, s.x, s.y); // sty zpx
         st_zi(0x95, s.x, s.a); // sta zpx
         st_zi(0x96, s.y, s.x); // stx zpy
