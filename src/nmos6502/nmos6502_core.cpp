@@ -471,13 +471,14 @@ void NMOS6502::Core::exec_cycle() {
             s.bus.a = s.bus.d; \
             break; \
         case mc(opc, 1): \
-            s.aux = s.bus.d; \
+            s.aux = s.bus.d + s.y; \
             s.bus.a += 1; \
             break; \
         case mc(opc, 2): \
-            s.bus.a = (s.aux | (s.bus.d << 8)) + s.y; \
+            s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
             break; \
         case mc(opc, 3): \
+            s.bus.a += (s.aux & 0x100); \
             s.bus.d = s.a; \
             s.bus(RW::w); \
             break; \
@@ -553,14 +554,15 @@ void NMOS6502::Core::exec_cycle() {
 
     #define rmw_ai(opc, ireg, op) { \
         case mc(opc, 0): \
-            s.aux = s.bus.d; \
+            s.aux = s.bus.d + ireg; \
             s.pc = s.bus.a + 2; \
             s.bus.a += 1; \
             break; \
         case mc(opc, 1): \
-            s.bus.a = (s.aux | (s.bus.d << 8)) + ireg; \
+            s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
             break; \
         case mc(opc, 2): \
+            s.bus.a += (s.aux & 0x100); \
             break; \
         case mc(opc, 3): \
             s.bus(RW::w); \
@@ -985,6 +987,7 @@ void NMOS6502::Core::exec_cycle() {
         rm_ai(0x7d, s.x, Op{s}.adc()); // adc absx
         rmw_ai(0x7e, s.x, Op{s}.ror(s.bus.d)); // ror absx
         rmw_ai(0x7f, s.x, Op{s}.ud_rra(s.bus.d)); // rra absx
+        rm_i(0x80, ); // nop imm
         st_izx(0x81, s.a); // sta izx
         rm_i(0x82, ); // nop imm
         st_izx(0x83, s.a & s.x); // sax izx
