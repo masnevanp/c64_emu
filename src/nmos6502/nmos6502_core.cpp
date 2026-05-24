@@ -631,6 +631,30 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
+    #define ud_shi_ai(opc, ir1, ir2) { \
+        case mc(opc, 0): \
+            s.aux = s.bus.d; \
+            s.pc = s.bus.a + 2; \
+            s.bus.a += 1; \
+            break; \
+        case mc(opc, 1): \
+            s.aux += ir1; \
+            s.bus.a = (s.bus.d << 8) | (s.aux & 0xff); \
+            break; \
+        case mc(opc, 2): \
+            s.bus.d = ir2 & ((s.bus.a + 0x100) >> 8); \
+            s.bus.a = (s.aux & 0x100) \
+                ? ((s.bus.d << 8) | (s.bus.a & 0xff)) \
+                : s.bus.a; \
+            s.bus(RW::w); \
+            break; \
+        case mc(opc, 3): \
+            s.bus.a = s.pc; \
+            s.bus(RW::r); \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
     switch (s.mcc++) {
         /* Interrupt hijacking:
             - happens if an interrupt of a higher priority is signalled before
@@ -962,7 +986,9 @@ void NMOS6502::Core::exec_cycle() {
         st_ai(0x99, s.y); // sta absy
         sb(0x9a, s.sp = sp(s.x)); // txs
         // TODO
+        ud_shi_ai(0x9c, s.x, s.y); // shy absx
         st_ai(0x9d, s.x); // sta absx
+        ud_shi_ai(0x9e, s.y, s.x); // shx absy
         // TODO
         rm_i(0xa0, set_nz(s.y = s.bus.d)); // ldy imm
         rm_izx(0xa1, set_nz(s.a = s.bus.d)); // lda izx
