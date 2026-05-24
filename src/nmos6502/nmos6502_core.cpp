@@ -631,7 +631,7 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
-    #define ud_shi_ai(opc, ir1, ir2) { \
+    #define ud_shi_ai(opc, ir1, ir2, op) { \
         case mc(opc, 0): \
             s.aux = s.bus.d; \
             s.pc = s.bus.a + 2; \
@@ -643,6 +643,7 @@ void NMOS6502::Core::exec_cycle() {
             break; \
         case mc(opc, 2): \
             s.bus.d = ir2 & ((s.bus.a + 0x100) >> 8); \
+            op; \
             s.bus.a = (s.aux & 0x100) \
                 ? ((s.bus.d << 8) | (s.bus.a & 0xff)) \
                 : s.bus.a; \
@@ -985,10 +986,10 @@ void NMOS6502::Core::exec_cycle() {
         sb(0x98, set_nz(s.a = s.y)); // tya
         st_ai(0x99, s.y); // sta absy
         sb(0x9a, s.sp = sp(s.x)); // txs
-        // TODO
-        ud_shi_ai(0x9c, s.x, s.y); // shy absx
+        ud_shi_ai(0x9b, s.y, s.x, (s.bus.d &= s.a, s.sp = sp(s.a & s.x))); // tas absy
+        ud_shi_ai(0x9c, s.x, s.y, ); // shy absx
         st_ai(0x9d, s.x); // sta absx
-        ud_shi_ai(0x9e, s.y, s.x); // shx absy
+        ud_shi_ai(0x9e, s.y, s.x, ); // shx absy
         // TODO
         rm_i(0xa0, set_nz(s.y = s.bus.d)); // ldy imm
         rm_izx(0xa1, set_nz(s.a = s.bus.d)); // lda izx
