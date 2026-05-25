@@ -5,7 +5,8 @@
 #include <vector>
 #include <stdio.h>
 #include "common.h"
-#include "nmos6502/nmos6502.h"
+#include "nmos6502/core.h"
+#include "nmos6502/asm.h"
 
 namespace Dbg {
 

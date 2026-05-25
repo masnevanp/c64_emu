@@ -2,11 +2,12 @@
 #define C1541_H_INCLUDED
 
 #include <vector>
+#include <string>
 #include "common.h"
 #include "state.h"
 #include "utils.h"
 #include "files.h"
-#include "nmos6502/nmos6502.h"
+#include "nmos6502/core.h"
 #include "menu.h"
 #include "dbg.h"
 

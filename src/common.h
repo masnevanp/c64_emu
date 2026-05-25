@@ -1,7 +1,8 @@
 #ifndef COMMON_H_INCLUDED
 #define COMMON_H_INCLUDED
 
-#include "nmos6502/nmos6502.h"
+#include "nmos6502/core.h"
+#include <string>
 #include <optional>
 #include <cstdio>
 
