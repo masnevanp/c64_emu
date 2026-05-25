@@ -28,7 +28,7 @@ namespace NMOS6502 {
                 s.pc = s.bus.a + i8(s.bus.d);
                 schedule(OPC::bra);
                 if ((s.pc ^ s.bus.a) & 0xff00) { // page cross?
-                    s.aux = s.bus.a + s.bus.d;
+                    s.aux = (s.bus.a & 0xff00) | (s.pc & 0x00ff);
                     s.mcc += 1; // schedule 'page cross' step
                 }
             } else {
@@ -949,6 +949,7 @@ void NMOS6502::Core::exec_cycle() {
         rm_i(0x69, Op{s}.adc()); // adc imm
         sb(0x6a, Op{s}.ror(s.a)); // ror
         rm_i(0x6b, Op{s}.ud_arr()); // arr imm
+    
         case mc(0x6c, 0): // jmp ind
             read_pcl();
             break;
