@@ -206,8 +206,8 @@ void NMOS6502::Core::exec_cycle() {
 
     auto check_irq = [&]() { if (s.irq_act && s.is_clr(Flag::I)) s.brk_srcs |= Brk_src::irq; };
 
-    auto read_pcl = [&]() { s.pc = s.bus.d; s.bus.a += 1; };
-    auto read_pch = [&]() { s.pc |= (s.bus.d << 8); s.bus.a = s.pc; };
+    auto read_al = [&]() { s.aux = s.bus.d; s.bus.a += 1; };
+    auto read_ah = [&]() { s.bus.a = s.aux | (s.bus.d << 8); };
 
     auto schedule = [&](OPC opc) { Op{s}.schedule(opc); };
 
@@ -708,10 +708,10 @@ void NMOS6502::Core::exec_cycle() {
             s.bus(RW::r);
             break;
         case mc(OPC::brk, 4):
-            read_pcl();
+            read_al();
             break;
         case mc(OPC::brk, 5):
-            read_pch();
+            read_ah();
             s.set(Flag::I);
             schedule(OPC::dispatch_post_brk);
             break;
@@ -869,10 +869,10 @@ void NMOS6502::Core::exec_cycle() {
         rm_i(0x4b, Op{s}.ud_alr(s.bus.d)); // alr imm
 
         case mc(0x4c, 0): // jmp abs
-            read_pcl();
+            read_al();
             break;
         case mc(0x4c, 1):
-            read_pch();
+            read_ah();
             schedule(OPC::dispatch);
             break;
 
@@ -946,17 +946,17 @@ void NMOS6502::Core::exec_cycle() {
         rm_i(0x6b, Op{s}.ud_arr()); // arr imm
     
         case mc(0x6c, 0): // jmp ind
-            read_pcl();
+            read_al();
             break;
         case mc(0x6c, 1):
-            read_pch();
+            read_ah();
             break;
         case mc(0x6c, 2):
-            s.pc = s.bus.d;
+            s.aux = s.bus.d;
             s.bus.a = (s.bus.a & 0xff00) | ((s.bus.a + 1) & 0xff); // the 'missing carry propagation' feature
             break;
         case mc(0x6c, 3):
-            read_pch();
+            read_ah();
             schedule(OPC::dispatch);
             break;
 
@@ -1188,10 +1188,10 @@ void NMOS6502::Core::exec_cycle() {
         case mc(OPC::reset, 3): s.bus.a = 0x01fe; break;
         case mc(OPC::reset, 4): s.bus.a = Vec::rst; s.sp = 0x01fd; break;
         case mc(OPC::reset, 5):
-            read_pcl();
+            read_al();
             break;
         case mc(OPC::reset, 6):
-            read_pch();
+            read_ah();
             s.set(Flag::I);
             schedule(OPC::dispatch_post_brk);
             break;
