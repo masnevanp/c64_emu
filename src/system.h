@@ -719,7 +719,7 @@ void C64::run_cycle() {
 
     vic.tick();
 
-    const auto& rw{cpu.s.bus.rw};
+    const auto rw{cpu.s.bus.rw};
     const auto rdy = s.ba || s.dma;
     if (rdy && rw == RW::r) {
         c1541.tick();
