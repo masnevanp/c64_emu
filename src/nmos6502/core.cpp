@@ -299,16 +299,13 @@ void NMOS6502::Core::exec_cycle() {
 
     #define rm_ai(opc, ireg, op) { \
         case mc(opc, 0): \
-            s.aux = s.bus.d; \
+            s.aux = s.bus.d + ireg; \
             s.pc = s.bus.a + 2; \
             s.bus.a += 1; \
             break; \
         case mc(opc, 1): \
-            s.bus.a = (s.aux | (s.bus.d << 8)) + ireg; \
-            if ((s.bus.a & 0xff) < ireg) { \
-                s.bus.a -= 0x100; \
-                s.mcc += 1; \
-            } \
+            s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
+            s.mcc += (s.aux >> 8); \
             break; \
         case mc(opc, 2): \
             op; \
@@ -346,15 +343,12 @@ void NMOS6502::Core::exec_cycle() {
             s.bus.a = s.bus.d; \
             break; \
         case mc(opc, 1): \
-            s.aux = s.bus.d; \
+            s.aux = s.bus.d + s.y; \
             s.bus.a = zp(s.bus.a + 1); \
             break; \
         case mc(opc, 2): \
-            s.bus.a = (s.aux | (s.bus.d << 8)) + s.y; \
-            if ((s.bus.a & 0xff) < s.y) { \
-                s.bus.a -= 0x100; \
-                s.mcc += 1; \
-            } \
+            s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
+            s.mcc += (s.aux >> 8); \
             break; \
         case mc(opc, 3): \
             op; \
@@ -430,14 +424,15 @@ void NMOS6502::Core::exec_cycle() {
 
     #define st_ai(opc, ireg) { \
         case mc(opc, 0): \
-            s.aux = s.bus.d; \
+            s.aux = s.bus.d + ireg; \
             s.pc = s.bus.a + 2; \
             s.bus.a += 1; \
             break; \
         case mc(opc, 1): \
-            s.bus.a = (s.aux | (s.bus.d << 8)) + ireg; \
+            s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
             break; \
         case mc(opc, 2): \
+            s.bus.a += (s.aux & 0x100); \
             s.bus.d = s.a; \
             s.bus(RW::w); \
             break; \
