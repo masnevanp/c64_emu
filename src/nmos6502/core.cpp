@@ -211,6 +211,136 @@ void NMOS6502::Core::exec_cycle() {
 
     auto schedule = [&](OPC opc) { Op{s}.schedule(opc); };
 
+    // ******** Miscellaneous Operations ********
+
+    /* Interrupt hijacking:
+        - happens if an interrupt of a higher priority is signalled before
+            the 'brk' execution of the lower priority reaches T5 (=T4 ph2 at latest).
+        - T0&T1 PC, and pushed b-flag according to the former (lower prio)
+        - vector address according to the latter (higher prio)
+    */
+    #define msc_brk(opc) \
+        case mc(opc, 0): \
+            s.pc = s.bus.a; \
+            if (s.brk_srcs == Brk_src::sw) s.pc += 1; /*TODO: inc during dispatch?*/ \
+            s.bus(s.sp, (s.pc >> 8), RW::w); \
+            break; \
+        case mc(opc, 1): \
+            s.bus(sp(s.bus.a - 1), s.pc); \
+            break; \
+        case mc(opc, 2): { \
+            const auto p = s.p | Flag::u; \
+            s.bus(sp(s.bus.a - 1), p); \
+            s.sp = sp(s.bus.a - 1); \
+            break; } \
+        case mc(opc, 3): \
+            if (s.nmi_timer & 0b11) /*Potential hijacking by nmi*/ { \
+                s.brk_srcs = Brk_src::nmi; \
+                s.nmi_timer = nmi_timer_handled; \
+            } \
+            s.bus.a = (s.brk_srcs & Brk_src::nmi) ? Vec::nmi : Vec::irq; \
+            s.brk_srcs = 0; \
+            s.bus(RW::r); \
+            break; \
+        case mc(opc, 4): \
+            read_al(); \
+            break; \
+        case mc(opc, 5): \
+            read_ah(); \
+            s.set(Flag::I); \
+            schedule(OPC::dispatch_post_brk); \
+            break; \
+
+    #define msc_jmp_a(opc) \
+        case mc(opc, 0): \
+            read_al(); \
+            break; \
+        case mc(opc, 1): \
+            read_ah(); \
+            schedule(OPC::dispatch); \
+            break; \
+
+    #define msc_jmp_i(opc) \
+        case mc(opc, 0): \
+            read_al(); \
+            break; \
+        case mc(opc, 1): \
+            read_ah(); \
+            break; \
+        case mc(opc, 2): \
+            s.aux = s.bus.d; \
+            /* the 'missing carry propagation' feature*/ \
+            s.bus.a = (s.bus.a & 0xff00) | ((s.bus.a + 1) & 0xff); \
+            break; \
+        case mc(opc, 3): \
+            read_ah(); \
+            schedule(OPC::dispatch); \
+            break; \
+
+    #define msc_jsr(opc) \
+        case mc(opc, 0): \
+            s.aux = s.bus.d; \
+            s.pc = s.bus.a + 1; \
+            s.bus.a = s.sp; \
+            s.sp = sp(s.sp - 2); \
+            break; \
+        case mc(opc, 1): \
+            s.bus.d = (s.pc >> 8); \
+            s.bus(RW::w); \
+            break; \
+        case mc(opc, 2): \
+            s.bus(sp(s.bus.a - 1), u8(s.pc)); \
+            break; \
+        case mc(opc, 3): \
+            s.bus.a = s.pc; \
+            s.bus(RW::r); \
+            break; \
+        case mc(opc, 4): \
+            s.bus.a = (s.aux | (s.bus.d << 8)); \
+            schedule(OPC::dispatch); \
+            break; \
+
+    #define msc_rts(opc) \
+        case mc(opc, 0): \
+            s.bus.a = s.sp; \
+            s.sp = sp(s.sp + 2); \
+            break; \
+        case mc(opc, 1): \
+            s.bus.a = sp(s.bus.a + 1); \
+            break; \
+        case mc(opc, 2): \
+            s.pc = s.bus.d; \
+            s.bus.a = sp(s.bus.a + 1); \
+            break; \
+        case mc(opc, 3): \
+            s.bus.a = s.pc | (s.bus.d << 8); \
+            break; \
+        case mc(opc, 4): \
+            s.bus.a += 1; \
+            schedule(OPC::dispatch); \
+            break; \
+
+    #define msc_rti(opc) \
+        case mc(opc, 0): \
+            s.bus.a = s.sp; \
+            s.sp = sp(s.sp + 3); \
+            break; \
+        case mc(opc, 1): \
+            s.bus.a = sp(s.bus.a + 1); \
+            break; \
+        case mc(opc, 2): \
+            s.p = s.bus.d; \
+            s.bus.a = sp(s.bus.a + 1); \
+            break; \
+        case mc(opc, 3): \
+            s.pc = s.bus.d; \
+            s.bus.a = sp(s.bus.a + 1); \
+            break; \
+        case mc(opc, 4): \
+            s.bus.a = s.pc | (s.bus.d << 8); \
+            schedule(OPC::dispatch); \
+            break; \
+
     // bra if set
     #define brs(opc, flag) { \
         case mc(opc, 0): \
@@ -224,9 +354,43 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
+    #define sched(opc, nxt) { \
+        case mc(opc, 0): \
+            schedule(nxt); \
+            break; \
+    }
+
     #define hlt(opc) { \
         case mc(opc, 0): \
             Op{s}.halt(opc, s.bus.d); \
+            break; \
+    }
+
+    #define phr(opc, reg) { \
+        case mc(opc, 0): \
+            s.pc = s.bus.a; \
+            s.bus(s.sp, reg, RW::w); \
+            s.sp = sp(s.sp - 1); \
+            break; \
+        case mc(opc, 1): \
+            s.bus(s.pc, RW::r); \
+            schedule(OPC::dispatch); \
+            break; \
+    }
+
+    #define plr(opc, op) { \
+        case mc(opc, 0): \
+            s.pc = s.bus.a; \
+            s.bus.a = s.sp; \
+            break; \
+        case mc(opc, 1): \
+            s.sp = sp(s.sp + 1); \
+            s.bus.a = s.sp; \
+            break; \
+        case mc(opc, 2): \
+            op; \
+            s.bus.a = s.pc; \
+            schedule(OPC::dispatch); \
             break; \
     }
 
@@ -679,43 +843,7 @@ void NMOS6502::Core::exec_cycle() {
     }
 
     switch (s.mcc++) {
-        /* Interrupt hijacking:
-            - happens if an interrupt of a higher priority is signalled before
-                the 'brk' execution of the lower priority reaches T5 (=T4 ph2 at latest).
-            - T0&T1 PC, and pushed b-flag according to the former (lower prio)
-            - vector address according to the latter (higher prio)
-        */
-        case mc(OPC::brk, 0):
-            s.pc = s.bus.a;
-            if (s.brk_srcs == Brk_src::sw) s.pc += 1; // TODO: during dispatch?
-            s.bus(s.sp, (s.pc >> 8), RW::w);
-            break;
-        case mc(OPC::brk, 1):
-            s.bus(sp(s.bus.a - 1), s.pc);
-            break;
-        case mc(OPC::brk, 2): {
-            const auto p = s.p | Flag::u;
-            s.bus(sp(s.bus.a - 1), p);
-            s.sp = sp(s.bus.a - 1);
-            break; }
-        case mc(OPC::brk, 3):
-            if (s.nmi_timer & 0b11) { // Potential hijacking by nmi
-                s.brk_srcs = Brk_src::nmi;
-                s.nmi_timer = nmi_timer_handled;
-            }
-            s.bus.a = (s.brk_srcs & Brk_src::nmi) ? Vec::nmi : Vec::irq;
-            s.brk_srcs = 0;
-            s.bus(RW::r);
-            break;
-        case mc(OPC::brk, 4):
-            read_al();
-            break;
-        case mc(OPC::brk, 5):
-            read_ah();
-            s.set(Flag::I);
-            schedule(OPC::dispatch_post_brk);
-            break;
-
+        msc_brk(0x00); // brk
         rm_izx(0x01, set_nz(s.a |= s.bus.d)); // ora izx
         hlt(0x02);
         ud_izx(0x03, Op{s}.ud_slo(s.bus.d)); // slo izx
@@ -723,17 +851,7 @@ void NMOS6502::Core::exec_cycle() {
         rm_z(0x05, set_nz(s.a |= s.bus.d)); // ora zp
         rmw_z(0x06, Op{s}.asl(s.bus.d)); // asl zp
         rmw_z(0x07, Op{s}.ud_slo(s.bus.d)); // slo zp
-
-        case mc(0x08, 0): // php
-            s.pc = s.bus.a;
-            s.bus(s.sp, s.p | (Flag::B | Flag::u), RW::w);
-            s.sp = sp(s.sp - 1);
-            break;
-        case mc(0x08, 1):
-            s.bus(s.pc, RW::r);
-            schedule(OPC::dispatch);
-            break;
-
+        phr(0x08, s.p | (Flag::B | Flag::u)); // php
         rm_i(0x09, set_nz(s.a |= s.bus.d)); // ora imm
         sb(0x0a, Op{s}.asl(s.a)); // asl
         rm_i(0x0b, Op{s}.ud_anc(s.bus.d)); // anc imm
@@ -757,29 +875,7 @@ void NMOS6502::Core::exec_cycle() {
         rm_ai(0x1d, s.x, set_nz(s.a |= s.bus.d)); // ora absx
         rmw_ai(0x1e, s.x, Op{s}.asl(s.bus.d)); // asl absx
         rmw_ai(0x1f, s.x, Op{s}.ud_slo(s.bus.d)); // slo absx
-
-        case mc(0x20, 0): // jsr
-            s.aux = s.bus.d;
-            s.pc = s.bus.a + 1;
-            s.bus.a = s.sp;
-            s.sp = sp(s.sp - 2);
-            break;
-        case mc(0x20, 1):
-            s.bus.d = (s.pc >> 8);
-            s.bus(RW::w);
-            break;
-        case mc(0x20, 2):
-            s.bus(sp(s.bus.a - 1), u8(s.pc));
-            break;
-        case mc(0x20, 3):
-            s.bus.a = s.pc;
-            s.bus(RW::r);
-            break;
-        case mc(0x20, 4):
-            s.bus.a = (s.aux | (s.bus.d << 8));
-            schedule(OPC::dispatch);
-            break;
-
+        msc_jsr(0x20); // jsr
         rm_izx(0x21, set_nz(s.a &= s.bus.d)); // and izx
         hlt(0x22);
         ud_izx(0x23, Op{s}.ud_rla(s.bus.d)); // rla izx
@@ -787,21 +883,7 @@ void NMOS6502::Core::exec_cycle() {
         rm_z(0x25, set_nz(s.a &= s.bus.d)); // and zp
         rmw_z(0x26, Op{s}.rol(s.bus.d)); // rol zp
         rmw_z(0x27, Op{s}.ud_rla(s.bus.d)); // rla zp
-
-        case mc(0x28, 0): // plp
-            s.pc = s.bus.a;
-            s.bus.a = s.sp;
-            break;
-        case mc(0x28, 1):
-            s.sp = sp(s.sp + 1);
-            s.bus.a = s.sp;
-            break;
-        case mc(0x28, 2):
-            s.p = s.bus.d;
-            s.bus.a = s.pc;
-            schedule(OPC::dispatch);
-            break;
-
+        plr(0x28, s.p = s.bus.d); // plp
         rm_i(0x29, set_nz(s.a &= s.bus.d)); // and imm
         sb(0x2a, Op{s}.rol(s.a)); // rol
         rm_i(0x2b, Op{s}.ud_anc(s.bus.d)); // anc imm
@@ -825,27 +907,7 @@ void NMOS6502::Core::exec_cycle() {
         rm_ai(0x3d, s.x, set_nz(s.a &= s.bus.d)); // and absx
         rmw_ai(0x3e, s.x, Op{s}.rol(s.bus.d)); // rol absx
         rmw_ai(0x3f, s.x, Op{s}.ud_rla(s.bus.d)); // rla absx
-
-        case mc(0x40, 0): // rti
-            s.bus.a = s.sp;
-            s.sp = sp(s.sp + 3);
-            break;
-        case mc(0x40, 1):
-            s.bus.a = sp(s.bus.a + 1);
-            break;
-        case mc(0x40, 2):
-            s.p = s.bus.d;
-            s.bus.a = sp(s.bus.a + 1);
-            break;
-        case mc(0x40, 3):
-            s.pc = s.bus.d;
-            s.bus.a = sp(s.bus.a + 1);
-            break;
-        case mc(0x40, 4):
-            s.bus.a = s.pc | (s.bus.d << 8);
-            schedule(OPC::dispatch);
-            break;
-
+        msc_rti(0x40); // rti
         rm_izx(0x41, set_nz(s.a ^= s.bus.d)); // eor izx
         hlt(0x42);
         ud_izx(0x43, Op{s}.ud_sre(s.bus.d)); // sre izx
@@ -853,29 +915,11 @@ void NMOS6502::Core::exec_cycle() {
         rm_z(0x45, set_nz(s.a ^= s.bus.d)); // eor zp
         rmw_z(0x46, Op{s}.lsr(s.bus.d)); // lsr zp
         rmw_z(0x47, Op{s}.ud_sre(s.bus.d)); // sre zp
-
-        case mc(0x48, 0): // pha
-            s.pc = s.bus.a;
-            s.bus(s.sp, s.a, RW::w);
-            s.sp = sp(s.sp - 1);
-            break;
-        case mc(0x48, 1):
-            s.bus(s.pc, RW::r);
-            schedule(OPC::dispatch);
-            break;
-
+        phr(0x48, s.a); // pha
         rm_i(0x49, set_nz(s.a ^= s.bus.d)); // eor imm
         sb(0x4a, Op{s}.lsr(s.a)); // lsr
         rm_i(0x4b, Op{s}.ud_alr(s.bus.d)); // alr imm
-
-        case mc(0x4c, 0): // jmp abs
-            read_al();
-            break;
-        case mc(0x4c, 1):
-            read_ah();
-            schedule(OPC::dispatch);
-            break;
-
+        msc_jmp_a(0x4c); // jmp abs
         rm_a(0x4d, set_nz(s.a ^= s.bus.d)); // eor abs
         rmw_a(0x4e, Op{s}.lsr(s.bus.d)); // lsr abs
         rmw_a(0x4f, Op{s}.ud_sre(s.bus.d)); // sre abs
@@ -887,11 +931,7 @@ void NMOS6502::Core::exec_cycle() {
         rm_zi(0x55, s.x, set_nz(s.a ^= s.bus.d)); // eor zpx
         rmw_zx(0x56, Op{s}.lsr(s.bus.d)); // lsr zpx
         rmw_zx(0x57, Op{s}.ud_sre(s.bus.d)); // sre zpx
-
-        case mc(0x58, 0): // cli
-            schedule(OPC::dispatch_post_cli);
-            break;
-
+        sched(0x58, OPC::dispatch_post_cli); // cli
         rm_ai(0x59, s.y, set_nz(s.a ^= s.bus.d)); // eor absy
         sb(0x5a,); // nop
         rmw_ai(0x5b, s.y, Op{s}.ud_sre(s.bus.d)); // sre absy
@@ -899,26 +939,7 @@ void NMOS6502::Core::exec_cycle() {
         rm_ai(0x5d, s.x, set_nz(s.a ^= s.bus.d)); // eor absx
         rmw_ai(0x5e, s.x, Op{s}.lsr(s.bus.d)); // lsr absx
         rmw_ai(0x5f, s.x, Op{s}.ud_sre(s.bus.d)); // sre absx
-
-        case mc(0x60, 0): // rts
-            s.bus.a = s.sp;
-            s.sp = sp(s.sp + 2);
-            break;
-        case mc(0x60, 1):
-            s.bus.a = sp(s.bus.a + 1);
-            break;
-        case mc(0x60, 2):
-            s.pc = s.bus.d;
-            s.bus.a = sp(s.bus.a + 1);
-            break;
-        case mc(0x60, 3):
-            s.bus.a = s.pc | (s.bus.d << 8);
-            break;
-        case mc(0x60, 4):
-            s.bus.a += 1; // pc + 1
-            schedule(OPC::dispatch);
-            break;
-
+        msc_rts(0x60); // rts
         rm_izx(0x61, Op{s}.adc()); // adc izx
         hlt(0x62);
         ud_izx(0x63, Op{s}.ud_rra(s.bus.d)); // rra izx
@@ -926,40 +947,11 @@ void NMOS6502::Core::exec_cycle() {
         rm_z(0x65, Op{s}.adc()); // adc zp
         rmw_z(0x66, Op{s}.ror(s.bus.d)); // ror zp
         rmw_z(0x67, Op{s}.ud_rra(s.bus.d)); // rra zp
-
-        case mc(0x68, 0): // pla
-            s.pc = s.bus.a;
-            s.bus.a = s.sp;
-            break;
-        case mc(0x68, 1):
-            s.sp = sp(s.sp + 1);
-            s.bus.a = s.sp;
-            break;
-        case mc(0x68, 2):
-            set_nz(s.a = s.bus.d);
-            s.bus.a = s.pc;
-            schedule(OPC::dispatch);
-            break;
-
+        plr(0x68, set_nz(s.a = s.bus.d)); // pla
         rm_i(0x69, Op{s}.adc()); // adc imm
         sb(0x6a, Op{s}.ror(s.a)); // ror
         rm_i(0x6b, Op{s}.ud_arr()); // arr imm
-    
-        case mc(0x6c, 0): // jmp ind
-            read_al();
-            break;
-        case mc(0x6c, 1):
-            read_ah();
-            break;
-        case mc(0x6c, 2):
-            s.aux = s.bus.d;
-            s.bus.a = (s.bus.a & 0xff00) | ((s.bus.a + 1) & 0xff); // the 'missing carry propagation' feature
-            break;
-        case mc(0x6c, 3):
-            read_ah();
-            schedule(OPC::dispatch);
-            break;
-
+        msc_jmp_i(0x6c); // jmp ind
         rm_a(0x6d, Op{s}.adc()); // adc abs
         rmw_a(0x6e, Op{s}.ror(s.bus.d)); // ror abs
         rmw_a(0x6f, Op{s}.ud_rra(s.bus.d)); // rra abs
@@ -971,11 +963,7 @@ void NMOS6502::Core::exec_cycle() {
         rm_zi(0x75, s.x, Op{s}.adc()); // adc zpx
         rmw_zx(0x76, Op{s}.ror(s.bus.d)); // ror zpx
         rmw_zx(0x77, Op{s}.ud_rra(s.bus.d)); // rra zpx
-
-        case mc(0x78, 0): // sei
-            schedule(OPC::dispatch_post_sei);
-            break;
-
+        sched(0x78, OPC::dispatch_post_sei); // sei
         rm_ai(0x79, s.y, Op{s}.adc()); // adc absy
         sb(0x7a,); // nop
         rmw_ai(0x7b, s.y, Op{s}.ud_rra(s.bus.d)); // rra absy
