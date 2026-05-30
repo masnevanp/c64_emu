@@ -855,7 +855,7 @@ void MOS6502::Core::exec_cycle() {
     switch (s.mcc++) {
          m_brk(0x00); // brk
         rm_izx(0x01, Op{s}.ora()); // ora izx
-           hlt(0x02);
+           hlt(0x02); // hlt
         ud_izx(0x03, Op{s}.ud_slo()); // slo izx
           rm_z(0x04, ); // nop zp
           rm_z(0x05, Op{s}.ora()); // ora zp
@@ -871,7 +871,7 @@ void MOS6502::Core::exec_cycle() {
          rmw_a(0x0f, Op{s}.ud_slo()); // slo abs
            brc(0x10, Flag::N); // bpl
         rm_izy(0x11, Op{s}.ora()); // ora izy
-           hlt(0x12);
+           hlt(0x12); // hlt
         ud_izy(0x13, Op{s}.ud_slo()); // slo izy
          rm_zi(0x14, s.x, ); // nop zpx
          rm_zi(0x15, s.x, Op{s}.ora()); // ora zpx
@@ -887,7 +887,7 @@ void MOS6502::Core::exec_cycle() {
         rmw_ai(0x1f, s.x, Op{s}.ud_slo()); // slo absx
           m_js(0x20); // jsr
         rm_izx(0x21, Op{s}.and_()); // and izx
-           hlt(0x22);
+           hlt(0x22); // hlt
         ud_izx(0x23, Op{s}.ud_rla()); // rla izx
           rm_z(0x24, Op{s}.bit()); // bit zp
           rm_z(0x25, Op{s}.and_()); // and zp
@@ -903,7 +903,7 @@ void MOS6502::Core::exec_cycle() {
          rmw_a(0x2f, Op{s}.ud_rla()); // rla abs
            brs(0x30, Flag::N); // bmi
         rm_izy(0x31, Op{s}.and_()); // and izy
-           hlt(0x32);
+           hlt(0x32); // hlt
         ud_izy(0x33, Op{s}.ud_rla()); // rla izy
          rm_zi(0x34, s.x, ); // nop zpx
          rm_zi(0x35, s.x, Op{s}.and_()); // and zpx
@@ -919,7 +919,7 @@ void MOS6502::Core::exec_cycle() {
         rmw_ai(0x3f, s.x, Op{s}.ud_rla()); // rla absx
          m_rti(0x40); // rti
         rm_izx(0x41, Op{s}.eor()); // eor izx
-           hlt(0x42);
+           hlt(0x42); // hlt
         ud_izx(0x43, Op{s}.ud_sre()); // sre izx
           rm_z(0x44, ); // nop zp
           rm_z(0x45, Op{s}.eor()); // eor zp
@@ -935,7 +935,7 @@ void MOS6502::Core::exec_cycle() {
          rmw_a(0x4f, Op{s}.ud_sre()); // sre abs
            brc(0x50, Flag::V); // bvc
         rm_izy(0x51, Op{s}.eor()); // eor izy
-           hlt(0x52);
+           hlt(0x52); // hlt
         ud_izy(0x53, Op{s}.ud_sre()); // sre izy
          rm_zi(0x54, s.x, ); // nop zpx
          rm_zi(0x55, s.x, Op{s}.eor()); // eor zpx
@@ -951,7 +951,7 @@ void MOS6502::Core::exec_cycle() {
         rmw_ai(0x5f, s.x, Op{s}.ud_sre()); // sre absx
          m_rts(0x60); // rts
         rm_izx(0x61, Op{s}.adc()); // adc izx
-           hlt(0x62);
+           hlt(0x62); // hlt
         ud_izx(0x63, Op{s}.ud_rra()); // rra izx
           rm_z(0x64, ); // nop zp
           rm_z(0x65, Op{s}.adc()); // adc zp
@@ -967,7 +967,7 @@ void MOS6502::Core::exec_cycle() {
          rmw_a(0x6f, Op{s}.ud_rra()); // rra abs
            brs(0x70, Flag::V); // bvs
         rm_izy(0x71, Op{s}.adc()); // adc izy
-           hlt(0x72);
+           hlt(0x72); // hlt
         ud_izy(0x73, Op{s}.ud_rra()); // rra izy
          rm_zi(0x74, s.x, ); // nop zpx
          rm_zi(0x75, s.x, Op{s}.adc()); // adc zpx
@@ -999,7 +999,7 @@ void MOS6502::Core::exec_cycle() {
           st_a(0x8f, s.a & s.x); // sax abs
            brc(0x90, Flag::C); // bcc
         st_izy(0x91); // sta izy
-           hlt(0x92);
+           hlt(0x92); // hlt
         ud_ahx(0x93); // ahx izy
          st_zi(0x94, s.x, s.y); // sty zpx
          st_zi(0x95, s.x, s.a); // sta zpx
@@ -1031,7 +1031,7 @@ void MOS6502::Core::exec_cycle() {
           rm_a(0xaf, Op{s}.lax()); // lax abs
            brs(0xb0, Flag::C); // bcs
         rm_izy(0xb1, Op{s}.ldr(s.a)); // lda izy
-           hlt(0xb2);
+           hlt(0xb2); // hlt
         rm_izy(0xb3, Op{s}.lax()); // lax izy
          rm_zi(0xb4, s.x, Op{s}.ldr(s.y)); // ldy zpx
          rm_zi(0xb5, s.x, Op{s}.ldr(s.a)); // lda zpx
@@ -1063,7 +1063,7 @@ void MOS6502::Core::exec_cycle() {
          rmw_a(0xcf, Op{s}.ud_dcp()); // dcp abs
            brc(0xd0, Flag::Z); // bne
         rm_izy(0xd1, Op{s}.cmp(s.a)); // cmp izy
-           hlt(0xd2);
+           hlt(0xd2); // hlt
         ud_izy(0xd3, Op{s}.ud_dcp()); // dcp izy
          rm_zi(0xd4, s.x, ); // nop zpx
          rm_zi(0xd5, s.x, Op{s}.cmp(s.a)); // cmp zpx
@@ -1095,7 +1095,7 @@ void MOS6502::Core::exec_cycle() {
          rmw_a(0xef, Op{s}.ud_isc()); // isc abs
            brs(0xf0, Flag::Z); // beq
         rm_izy(0xf1, Op{s}.sbc()); // sbc izy
-           hlt(0xf2);
+           hlt(0xf2); // hlt
         ud_izy(0xf3, Op{s}.ud_isc()); // isc izy
          rm_zi(0xf4, s.x, ); // nop zpx
          rm_zi(0xf5, s.x, Op{s}.sbc()); // sbc zpx
