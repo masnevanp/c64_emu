@@ -65,32 +65,26 @@ public:
             void operator()(const RW rw_) { rw = rw_; }
         };
 
+        Bus bus;
+
         u16 mcc; // micro-code counter
 
         u16 pc;
+        u16 aux;
         u16 sp;
 
-        u16 aux;
-
-        Bus bus;
-    
         u8 p;
         u8 a;
         u8 x;
         u8 y;
 
         u8 nmi_act;
-        u8 nmi_timer;
         u8 irq_act;
+        u8 nmi_timer;
         u8 irq_timer;
         u8 brk_srcs;
 
         u16 opc() const { return mcc >> 3; }
-
-        void set(Flag f, bool set = true) { p = set ? p | f : p & ~f; }
-        void clr(Flag f) { p &= ~f; }
-        bool is_set(Flag f) const { return p & f; }
-        bool is_clr(Flag f) const { return !is_set(f); }
     };
 
     State& s;

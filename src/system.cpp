@@ -765,7 +765,7 @@ void System::C64::do_load() {
         }
 
         //'return' status to kernal routine
-        cpu.s.clr(NMOS6502::Flag::C); // no error
+        cpu.s.p &= ~NMOS6502::Flag::C; // no error
         s.ram[0x90] = 0x00; // io status ok
     } else {
         cpu.s.pc = 0xf704; // --> file not found
@@ -792,7 +792,7 @@ void System::C64::do_save() {
     if (filename.length() == 0) {
         // TODO: error_code enum(s)
         cpu.s.a = 0x08; // missing filename
-        cpu.s.set(NMOS6502::Flag::C); // error
+        cpu.s.p |= NMOS6502::Flag::C; // error
         return;
     }
 
@@ -805,12 +805,12 @@ void System::C64::do_save() {
 
     if (do_save(filepath, start_addr, &s.ram[start_addr], sz)) {
         // status
-        cpu.s.clr(NMOS6502::Flag::C); // no error
+        cpu.s.p &= ~NMOS6502::Flag::C; // no error
         s.ram[0x90] = 0x00; // io status ok
         Log::info("Saved '%s', %d bytes", filepath.c_str(), int(sz + 2));
     } else {
         cpu.s.a = 0x07; // not output file
-        cpu.s.set(NMOS6502::Flag::C); // error
+        cpu.s.p |= NMOS6502::Flag::C; // error
         Log::error("Failed to save '%s'", filename.c_str());
     }
 }

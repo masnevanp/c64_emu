@@ -16,7 +16,12 @@ namespace NMOS6502 {
 
         void schedule(u16 opc) { s.mcc = opc << 3; } // bits 0-2 encode the step (0..7)
 
-        void set_nz(const u8& res) { s.set(Flag::N, res & 0x80); s.set(Flag::Z, res == 0x00); }
+        void set(Flag f, bool set = true) { s.p = set ? s.p | f : s.p & ~f; }
+        void clr(Flag f) { s.p &= ~f; }
+        bool is_set(Flag f) const { return s.p & f; }
+        bool is_clr(Flag f) const { return !is_set(f); }
+
+        void set_nz(const u8& res) { set(Flag::N, res & 0x80); set(Flag::Z, res == 0x00); }
 
         u8 C() const { return s.p & Flag::C; } // carry
         u8 B() const { return C() ^ 1; } // borrow
@@ -35,54 +40,50 @@ namespace NMOS6502 {
                 schedule(OPC::dispatch);
             }
         }
-        void asl(u8& d) { s.set(Flag::C, d & 0x80); set_nz(d <<= 1); }
+        void and_()     { set_nz(s.a &= s.bus.d); }
+        void asl(u8& d) { set(Flag::C, d & 0x80); set_nz(d <<= 1); }
         void dec(u8& d) { set_nz(--d); }
+        void eor()      { set_nz(s.a ^= s.bus.d); }
         void inc(u8& d) { set_nz(++d); }
-        void lsr(u8& d) { s.clr(Flag::N); s.set(Flag::C, d & 0x01); s.set(Flag::Z, !(d >>= 1)); }
+        void lsr(u8& d) { clr(Flag::N); set(Flag::C, d & 0x01); set(Flag::Z, !(d >>= 1)); }
+        void ora()      { set_nz(s.a |= s.bus.d); }
         void rol(u8& d) {
             u8 old_c = s.p & Flag::C;
-            s.set(Flag::C, d & 0x80);
+            set(Flag::C, d & 0x80);
             d <<= 1;
             set_nz(d |= old_c);
         }
         void ror(u8& d) {
             u8 old_c = s.p << 7;
-            s.set(Flag::C, d & 0x01);
+            set(Flag::C, d & 0x01);
             d >>= 1;
             set_nz(d |= old_c);
         }
 
-        // TODO: check if we can use s.bus.d directly everywhere?
-        void bit(u8& d) { s.p = (s.p & 0x3f) | (d & 0xc0); s.set(Flag::Z, (s.a & d) == 0x00); }
-        void cmp(const u8& r) { s.set(Flag::C, r >= s.bus.d); set_nz(r - s.bus.d); }
+        void bit() { s.p = (s.p & 0x3f) | (s.bus.d & 0xc0); set(Flag::Z, (s.a & s.bus.d) == 0x00); }
+        void cmp(const u8& r) { set(Flag::C, r >= s.bus.d); set_nz(r - s.bus.d); }
         void adc();
         void sbc();
 
-        void ud_alr(u8& d) { s.a &= d; lsr(s.a); }
-        void ud_anc(u8& d) { set_nz(s.a &= d); s.set(Flag::C, s.a & 0x80); }
+        void ud_alr() { s.a &= s.bus.d; lsr(s.a); }
+        void ud_anc() { Op{s}.and_(); set(Flag::C, s.a & 0x80); }
         void ud_arr();
-        void ud_axs(u8& d) { s.x &= s.a; s.set(Flag::C, s.x >= d); set_nz(s.x -= d); }
-        void ud_dcp(u8& d) { --d; cmp(s.a); }
-        void ud_isc(u8& d) { ++d; sbc(); }
-        void ud_las(u8& d) { set_nz(s.a = s.x = (s.sp & d)); s.sp = sp(s.a); }
-        void ud_lxa(u8& d) { set_nz(s.a = s.x = (s.a | 0xee) & d); }
-        void ud_rla(u8& d) { rol(d); set_nz(s.a &= d); }
-        void ud_rra(u8& d) { ror(d); adc(); }
-        void ud_slo(u8& d) { s.set(Flag::C, d & 0x80); set_nz(s.a |= (d <<= 1)); }
-        void ud_sre(u8& d) { s.set(Flag::C, d & 0x01); set_nz(s.a ^= (d >>= 1)); }
-        //void ud_tas(u8& d) { s.sp = sp(s.a & s.x); s.bus.d = s.sp & (s.a1h + 0x01); }
-        void ud_xaa(u8& d) { set_nz(s.a = (s.a | 0xee) & s.x & d); }
+        void ud_axs() { s.x &= s.a; set(Flag::C, s.x >= s.bus.d); set_nz(s.x -= s.bus.d); }
+        void ud_dcp() { --s.bus.d; cmp(s.a); }
+        void ud_isc() { ++s.bus.d; sbc(); }
+        void ud_las() { set_nz(s.a = s.x = (s.sp & s.bus.d)); s.sp = sp(s.a); }
+        void ud_lxa() { set_nz(s.a = s.x = (s.a | 0xee) & s.bus.d); }
+        void ud_rla() { rol(s.bus.d); Op{s}.and_(); }
+        void ud_rra() { ror(s.bus.d); adc(); }
+        void ud_slo() { set(Flag::C, s.bus.d & 0x80); set_nz(s.a |= (s.bus.d <<= 1)); }
+        void ud_sre() { set(Flag::C, s.bus.d & 0x01); set_nz(s.a ^= (s.bus.d >>= 1)); }
+        void ud_xaa() { set_nz(s.a = (s.a | 0xee) & s.x & s.bus.d); }
 
-        void halt(u8 opc, u8 d) {
-            s.aux = (d << 8) | opc; // temp store for sig_halt()
-            s.pc = s.bus.a + 1;
-            s.bus.a = 0xffff;
-            schedule(OPC::halt);
-        }
+        void halt(u8 opc, u8 d);
     };
 
     void Op::adc() {
-        if (s.is_set(Flag::D)) {
+        if (is_set(Flag::D)) {
             /* "The Z flag is computed before performing any decimal adjust. In other words,
                 the Z flag reflects the result of a binary addition. The N and V flags are
                 computed after a decimal adjust of the low nibble, but before adjusting
@@ -95,44 +96,44 @@ namespace NMOS6502 {
                 if (res > 0x9) { co = 0x1; return (res + 0x6) & 0xf; }
                 else { co = 0x0; return res; }
             };
-            s.set(Flag::Z, ((s.a + s.bus.d + C()) & 0xff) == 0x00); // Z set based on binary result
+            set(Flag::Z, ((s.a + s.bus.d + C()) & 0xff) == 0x00); // Z set based on binary result
             u8 n1; u8 c1; u8 n2; u8 c2;
             n1 = adc_dec_nib((s.a & 0xf) + (s.bus.d & 0xf) + C(), c1);
             n2 = (s.a >> 4) + (s.bus.d >> 4) + c1;
             u8 r = (n2 << 4) | n1; // high nib not adjusted yet (N&V set based on this)
-            s.set(Flag::N, r & 0x80);
-            s.set(Flag::V, ((s.a ^ r) & (s.bus.d ^ r) & 0x80));
+            set(Flag::N, r & 0x80);
+            set(Flag::V, ((s.a ^ r) & (s.bus.d ^ r) & 0x80));
             n2 = adc_dec_nib(n2, c2);
-            s.set(Flag::C, c2); // decimal carry
+            set(Flag::C, c2); // decimal carry
             s.a = (n2 << 4) | n1;
         } else {
             u16 r = s.a + s.bus.d + C();
-            s.set(Flag::C, r & 0x100);
-            s.set(Flag::V, ((s.a ^ r) & (s.bus.d ^ r) & 0x80));
+            set(Flag::C, r & 0x100);
+            set(Flag::V, ((s.a ^ r) & (s.bus.d ^ r) & 0x80));
             set_nz(s.a = r);
         }
     }
 
     void Op::sbc() {
-        if (s.is_set(Flag::D)) {
+        if (is_set(Flag::D)) {
             auto sbc_dec_nib = [](u8 res, u8& co) -> u8 {
                 if (res > 0xf) { co = 0x1; return (res - 0x6) & 0xf; }
                 else { co = 0x0; return res; }
             };
-            s.set(Flag::Z, ((s.a - s.bus.d - B()) & 0xff) == 0x00);
+            set(Flag::Z, ((s.a - s.bus.d - B()) & 0xff) == 0x00);
             u8 n1; u8 c1; u8 n2; u8 c2;
             n1 = sbc_dec_nib((s.a & 0xf) - (s.bus.d & 0xf) - B(), c1);
             n2 = (s.a >> 4) - (s.bus.d >> 4) - c1;
             u8 r = (n2 << 4) | n1;
-            s.set(Flag::N, r & 0x80);
-            s.set(Flag::V, ((s.a ^ s.bus.d) & (s.a ^ r)) & 0x80);
+            set(Flag::N, r & 0x80);
+            set(Flag::V, ((s.a ^ s.bus.d) & (s.a ^ r)) & 0x80);
             n2 = sbc_dec_nib(n2, c2);
-            s.set(Flag::C, !c2);
+            set(Flag::C, !c2);
             s.a = (n2 << 4) | n1;
         } else {
             u16 r = s.a - s.bus.d - B();
-            s.set(Flag::C, r < 0x100);
-            s.set(Flag::V, ((s.a ^ s.bus.d) & (s.a ^ r)) & 0x80);
+            set(Flag::C, r < 0x100);
+            set(Flag::V, ((s.a ^ s.bus.d) & (s.a ^ r)) & 0x80);
             set_nz(s.a = r);
         }
     }
@@ -141,28 +142,35 @@ namespace NMOS6502 {
         /* Totally based on c64doc.txt by John West & Marko Mäkelä.
             (http://www.6502.org/users/andre/petindex/local/64doc.txt)
         */
-        if (s.is_set(Flag::D)) {
+        if (is_set(Flag::D)) {
             s.bus.d &= s.a;
 
             u8 ah = s.bus.d >> 4;
             u8 al = s.bus.d & 0xf;
 
-            s.set(Flag::N, s.is_set(Flag::C));
+            set(Flag::N, is_set(Flag::C));
             s.a = (s.bus.d >> 1) | (s.p << 7);
-            s.set(Flag::Z, s.a == 0x00);
-            s.set(Flag::V, (s.bus.d ^ s.a) & 0x40);
+            set(Flag::Z, s.a == 0x00);
+            set(Flag::V, (s.bus.d ^ s.a) & 0x40);
 
             if (al + (al & 0x1) > 0x5) s.a = (s.a & 0xf0) | ((s.a + 0x6) & 0xf);
-            if ((ah + (ah & 0x1)) > 0x5) { s.set(Flag::C); s.a += 0x60; }
-            else s.clr(Flag::C);
+            if ((ah + (ah & 0x1)) > 0x5) { set(Flag::C); s.a += 0x60; }
+            else clr(Flag::C);
         } else {
             s.a &= s.bus.d;
             s.a >>= 1;
             s.a |= (s.p << 7);
             set_nz(s.a);
-            s.set(Flag::C, s.a & 0x40);
-            s.set(Flag::V, (s.a ^ (s.a << 1)) & 0x40);
+            set(Flag::C, s.a & 0x40);
+            set(Flag::V, (s.a ^ (s.a << 1)) & 0x40);
         }
+    }
+
+    void Op::halt(u8 opc, u8 d) {
+        s.aux = (d << 8) | opc; // temp store for sig_halt()
+        s.pc = s.bus.a + 1;
+        s.bus.a = 0xffff;
+        schedule(OPC::halt);
     }
 }
 
@@ -204,7 +212,7 @@ void NMOS6502::Core::exec_cycle() {
 
     auto set_nz = [&](u8 res) { Op{s}.set_nz(res); };
 
-    auto check_irq = [&]() { if (s.irq_act && s.is_clr(Flag::I)) s.brk_srcs |= Brk_src::irq; };
+    auto check_irq = [&]() { if (s.irq_act && Op{s}.is_clr(Flag::I)) s.brk_srcs |= Brk_src::irq; };
 
     auto read_al = [&]() { s.aux = s.bus.d; s.bus.a += 1; };
     auto read_ah = [&]() { s.bus.a = s.aux | (s.bus.d << 8); };
@@ -219,7 +227,7 @@ void NMOS6502::Core::exec_cycle() {
         - T0&T1 PC, and pushed b-flag according to the former (lower prio)
         - vector address according to the latter (higher prio)
     */
-    #define msc_brk(opc) \
+    #define m_brk(opc) \
         case mc(opc, 0): \
             s.pc = s.bus.a; \
             if (s.brk_srcs == Brk_src::sw) s.pc += 1; /*TODO: inc during dispatch?*/ \
@@ -247,11 +255,11 @@ void NMOS6502::Core::exec_cycle() {
             break; \
         case mc(opc, 5): \
             read_ah(); \
-            s.set(Flag::I); \
+            Op{s}.set(Flag::I); \
             schedule(OPC::dispatch_post_brk); \
             break; \
 
-    #define msc_jmp_a(opc) \
+    #define m_ja(opc) \
         case mc(opc, 0): \
             read_al(); \
             break; \
@@ -260,7 +268,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch); \
             break; \
 
-    #define msc_jmp_i(opc) \
+    #define m_ji(opc) \
         case mc(opc, 0): \
             read_al(); \
             break; \
@@ -277,7 +285,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch); \
             break; \
 
-    #define msc_jsr(opc) \
+    #define m_js(opc) \
         case mc(opc, 0): \
             s.aux = s.bus.d; \
             s.pc = s.bus.a + 1; \
@@ -300,7 +308,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch); \
             break; \
 
-    #define msc_rts(opc) \
+    #define m_rts(opc) \
         case mc(opc, 0): \
             s.bus.a = s.sp; \
             s.sp = sp(s.sp + 2); \
@@ -320,7 +328,7 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch); \
             break; \
 
-    #define msc_rti(opc) \
+    #define m_rti(opc) \
         case mc(opc, 0): \
             s.bus.a = s.sp; \
             s.sp = sp(s.sp + 3); \
@@ -341,16 +349,15 @@ void NMOS6502::Core::exec_cycle() {
             schedule(OPC::dispatch); \
             break; \
 
-    // bra if set
     #define brs(opc, flag) { \
         case mc(opc, 0): \
-            Op{s}.bra(s.is_set(flag)); \
+            Op{s}.bra(Op{s}.is_set(flag)); \
             break; \
     }
-    // bra if clr
+
     #define brc(opc, flag) { \
         case mc(opc, 0): \
-            Op{s}.bra(s.is_clr(flag)); \
+            Op{s}.bra(Op{s}.is_clr(flag)); \
             break; \
     }
 
@@ -736,6 +743,8 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
+    // ******** Undefined ********
+
     #define ud_izx(opc, op) { \
         case mc(opc, 0): \
             s.pc = s.bus.a + 1; \
@@ -792,7 +801,7 @@ void NMOS6502::Core::exec_cycle() {
             break; \
     }
 
-    #define ud_shi_ai(opc, ir1, ir2, op) { \
+    #define ud_ai(opc, ir1, ir2, op) { \
         case mc(opc, 0): \
             s.aux = s.bus.d + ir1; \
             s.pc = s.bus.a + 2; \
@@ -843,262 +852,262 @@ void NMOS6502::Core::exec_cycle() {
     }
 
     switch (s.mcc++) {
-        msc_brk(0x00); // brk
-        rm_izx(0x01, set_nz(s.a |= s.bus.d)); // ora izx
-        hlt(0x02);
-        ud_izx(0x03, Op{s}.ud_slo(s.bus.d)); // slo izx
-        rm_z(0x04,); // nop zp
-        rm_z(0x05, set_nz(s.a |= s.bus.d)); // ora zp
-        rmw_z(0x06, Op{s}.asl(s.bus.d)); // asl zp
-        rmw_z(0x07, Op{s}.ud_slo(s.bus.d)); // slo zp
-        phr(0x08, s.p | (Flag::B | Flag::u)); // php
-        rm_i(0x09, set_nz(s.a |= s.bus.d)); // ora imm
-        sb(0x0a, Op{s}.asl(s.a)); // asl
-        rm_i(0x0b, Op{s}.ud_anc(s.bus.d)); // anc imm
-        rm_a(0x0c, ); // nop abs
-        rm_a(0x0d, set_nz(s.a |= s.bus.d)); // ora abs
-        rmw_a(0x0e, Op{s}.asl(s.bus.d)); // asl abs
-        rmw_a(0x0f, Op{s}.ud_slo(s.bus.d)); // slo abs
-        brc(0x10, Flag::N); // bpl
-        rm_izy(0x11, set_nz(s.a |= s.bus.d)); // ora izy
-        hlt(0x12);
-        ud_izy(0x13, Op{s}.ud_slo(s.bus.d)); // slo izy
-        rm_zi(0x14, s.x,); // nop zpx
-        rm_zi(0x15, s.x, set_nz(s.a |= s.bus.d)); // ora zpx
+         m_brk(0x00); // brk
+        rm_izx(0x01, Op{s}.ora()); // ora izx
+           hlt(0x02);
+        ud_izx(0x03, Op{s}.ud_slo()); // slo izx
+          rm_z(0x04,); // nop zp
+          rm_z(0x05, Op{s}.ora()); // ora zp
+         rmw_z(0x06, Op{s}.asl(s.bus.d)); // asl zp
+         rmw_z(0x07, Op{s}.ud_slo()); // slo zp
+           phr(0x08, s.p | (Flag::B | Flag::u)); // php
+          rm_i(0x09, Op{s}.ora()); // ora imm
+            sb(0x0a, Op{s}.asl(s.a)); // asl
+          rm_i(0x0b, Op{s}.ud_anc()); // anc imm
+          rm_a(0x0c, ); // nop abs
+          rm_a(0x0d, Op{s}.ora()); // ora abs
+         rmw_a(0x0e, Op{s}.asl(s.bus.d)); // asl abs
+         rmw_a(0x0f, Op{s}.ud_slo()); // slo abs
+           brc(0x10, Flag::N); // bpl
+        rm_izy(0x11, Op{s}.ora()); // ora izy
+           hlt(0x12);
+        ud_izy(0x13, Op{s}.ud_slo()); // slo izy
+         rm_zi(0x14, s.x,); // nop zpx
+         rm_zi(0x15, s.x, Op{s}.ora()); // ora zpx
         rmw_zx(0x16, Op{s}.asl(s.bus.d)); // asl zpx
-        rmw_zx(0x17, Op{s}.ud_slo(s.bus.d)); // slo zpx
-        sb(0x18, s.clr(Flag::C)); // clc
-        rm_ai(0x19, s.y, set_nz(s.a |= s.bus.d)); // ora absy
-        sb(0x1a, ) // nop
-        rmw_ai(0x1b, s.y, Op{s}.ud_slo(s.bus.d)); // slo absy
-        rm_ai(0x1c, s.x, ); // nop absx
-        rm_ai(0x1d, s.x, set_nz(s.a |= s.bus.d)); // ora absx
+        rmw_zx(0x17, Op{s}.ud_slo()); // slo zpx
+            sb(0x18, Op{s}.clr(Flag::C)); // clc
+         rm_ai(0x19, s.y, Op{s}.ora()); // ora absy
+            sb(0x1a, ) // nop
+        rmw_ai(0x1b, s.y, Op{s}.ud_slo()); // slo absy
+         rm_ai(0x1c, s.x, ); // nop absx
+         rm_ai(0x1d, s.x, Op{s}.ora()); // ora absx
         rmw_ai(0x1e, s.x, Op{s}.asl(s.bus.d)); // asl absx
-        rmw_ai(0x1f, s.x, Op{s}.ud_slo(s.bus.d)); // slo absx
-        msc_jsr(0x20); // jsr
-        rm_izx(0x21, set_nz(s.a &= s.bus.d)); // and izx
-        hlt(0x22);
-        ud_izx(0x23, Op{s}.ud_rla(s.bus.d)); // rla izx
-        rm_z(0x24, Op{s}.bit(s.bus.d)); // bit zp
-        rm_z(0x25, set_nz(s.a &= s.bus.d)); // and zp
-        rmw_z(0x26, Op{s}.rol(s.bus.d)); // rol zp
-        rmw_z(0x27, Op{s}.ud_rla(s.bus.d)); // rla zp
-        plr(0x28, s.p = s.bus.d); // plp
-        rm_i(0x29, set_nz(s.a &= s.bus.d)); // and imm
-        sb(0x2a, Op{s}.rol(s.a)); // rol
-        rm_i(0x2b, Op{s}.ud_anc(s.bus.d)); // anc imm
-        rm_a(0x2c, Op{s}.bit(s.bus.d)); // bit abs
-        rm_a(0x2d, set_nz(s.a &= s.bus.d)); // and abs
-        rmw_a(0x2e, Op{s}.rol(s.bus.d)); // rol abs
-        rmw_a(0x2f, Op{s}.ud_rla(s.bus.d)); // rla abs
-        brs(0x30, Flag::N); // bmi
-        rm_izy(0x31, set_nz(s.a &= s.bus.d)); // and izy
-        hlt(0x32);
-        ud_izy(0x33, Op{s}.ud_rla(s.bus.d)); // rla izy
-        rm_zi(0x34, s.x,); // nop zpx
-        rm_zi(0x35, s.x, set_nz(s.a &= s.bus.d)); // and zpx
+        rmw_ai(0x1f, s.x, Op{s}.ud_slo()); // slo absx
+          m_js(0x20); // jsr
+        rm_izx(0x21, Op{s}.and_()); // and izx
+           hlt(0x22);
+        ud_izx(0x23, Op{s}.ud_rla()); // rla izx
+          rm_z(0x24, Op{s}.bit()); // bit zp
+          rm_z(0x25, Op{s}.and_()); // and zp
+         rmw_z(0x26, Op{s}.rol(s.bus.d)); // rol zp
+         rmw_z(0x27, Op{s}.ud_rla()); // rla zp
+           plr(0x28, s.p = s.bus.d); // plp
+          rm_i(0x29, Op{s}.and_()); // and imm
+            sb(0x2a, Op{s}.rol(s.a)); // rol
+          rm_i(0x2b, Op{s}.ud_anc()); // anc imm
+          rm_a(0x2c, Op{s}.bit()); // bit abs
+          rm_a(0x2d, Op{s}.and_()); // and abs
+         rmw_a(0x2e, Op{s}.rol(s.bus.d)); // rol abs
+         rmw_a(0x2f, Op{s}.ud_rla()); // rla abs
+           brs(0x30, Flag::N); // bmi
+        rm_izy(0x31, Op{s}.and_()); // and izy
+           hlt(0x32);
+        ud_izy(0x33, Op{s}.ud_rla()); // rla izy
+         rm_zi(0x34, s.x,); // nop zpx
+         rm_zi(0x35, s.x, Op{s}.and_()); // and zpx
         rmw_zx(0x36, Op{s}.rol(s.bus.d)); // rol zpx
-        rmw_zx(0x37, Op{s}.ud_rla(s.bus.d)); // rla zpx
-        sb(0x38, s.set(Flag::C)); // sec
-        rm_ai(0x39, s.y, set_nz(s.a &= s.bus.d)); // and absy
-        sb(0x3a,); // nop
-        rmw_ai(0x3b, s.y, Op{s}.ud_rla(s.bus.d)); // rla absy
-        rm_ai(0x3c, s.x,); // nop absx
-        rm_ai(0x3d, s.x, set_nz(s.a &= s.bus.d)); // and absx
+        rmw_zx(0x37, Op{s}.ud_rla()); // rla zpx
+            sb(0x38, Op{s}.set(Flag::C)); // sec
+         rm_ai(0x39, s.y, Op{s}.and_()); // and absy
+            sb(0x3a,); // nop
+        rmw_ai(0x3b, s.y, Op{s}.ud_rla()); // rla absy
+         rm_ai(0x3c, s.x,); // nop absx
+         rm_ai(0x3d, s.x, Op{s}.and_()); // and absx
         rmw_ai(0x3e, s.x, Op{s}.rol(s.bus.d)); // rol absx
-        rmw_ai(0x3f, s.x, Op{s}.ud_rla(s.bus.d)); // rla absx
-        msc_rti(0x40); // rti
-        rm_izx(0x41, set_nz(s.a ^= s.bus.d)); // eor izx
-        hlt(0x42);
-        ud_izx(0x43, Op{s}.ud_sre(s.bus.d)); // sre izx
-        rm_z(0x44,); // nop zp
-        rm_z(0x45, set_nz(s.a ^= s.bus.d)); // eor zp
-        rmw_z(0x46, Op{s}.lsr(s.bus.d)); // lsr zp
-        rmw_z(0x47, Op{s}.ud_sre(s.bus.d)); // sre zp
-        phr(0x48, s.a); // pha
-        rm_i(0x49, set_nz(s.a ^= s.bus.d)); // eor imm
-        sb(0x4a, Op{s}.lsr(s.a)); // lsr
-        rm_i(0x4b, Op{s}.ud_alr(s.bus.d)); // alr imm
-        msc_jmp_a(0x4c); // jmp abs
-        rm_a(0x4d, set_nz(s.a ^= s.bus.d)); // eor abs
-        rmw_a(0x4e, Op{s}.lsr(s.bus.d)); // lsr abs
-        rmw_a(0x4f, Op{s}.ud_sre(s.bus.d)); // sre abs
-        brc(0x50, Flag::V); // bvc
-        rm_izy(0x51, set_nz(s.a ^= s.bus.d)); // eor izy
-        hlt(0x52);
-        ud_izy(0x53, Op{s}.ud_sre(s.bus.d)); // sre izy
-        rm_zi(0x54, s.x,); // nop zpx
-        rm_zi(0x55, s.x, set_nz(s.a ^= s.bus.d)); // eor zpx
+        rmw_ai(0x3f, s.x, Op{s}.ud_rla()); // rla absx
+         m_rti(0x40); // rti
+        rm_izx(0x41, Op{s}.eor()); // eor izx
+           hlt(0x42);
+        ud_izx(0x43, Op{s}.ud_sre()); // sre izx
+          rm_z(0x44,); // nop zp
+          rm_z(0x45, Op{s}.eor()); // eor zp
+         rmw_z(0x46, Op{s}.lsr(s.bus.d)); // lsr zp
+         rmw_z(0x47, Op{s}.ud_sre()); // sre zp
+         phr(0x48, s.a); // pha
+          rm_i(0x49, Op{s}.eor()); // eor imm
+            sb(0x4a, Op{s}.lsr(s.a)); // lsr
+          rm_i(0x4b, Op{s}.ud_alr()); // alr imm
+          m_ja(0x4c); // jmp abs
+          rm_a(0x4d, Op{s}.eor()); // eor abs
+         rmw_a(0x4e, Op{s}.lsr(s.bus.d)); // lsr abs
+         rmw_a(0x4f, Op{s}.ud_sre()); // sre abs
+           brc(0x50, Flag::V); // bvc
+        rm_izy(0x51, Op{s}.eor()); // eor izy
+           hlt(0x52);
+        ud_izy(0x53, Op{s}.ud_sre()); // sre izy
+         rm_zi(0x54, s.x,); // nop zpx
+         rm_zi(0x55, s.x, Op{s}.eor()); // eor zpx
         rmw_zx(0x56, Op{s}.lsr(s.bus.d)); // lsr zpx
-        rmw_zx(0x57, Op{s}.ud_sre(s.bus.d)); // sre zpx
-        sched(0x58, OPC::dispatch_post_cli); // cli
-        rm_ai(0x59, s.y, set_nz(s.a ^= s.bus.d)); // eor absy
-        sb(0x5a,); // nop
-        rmw_ai(0x5b, s.y, Op{s}.ud_sre(s.bus.d)); // sre absy
-        rm_ai(0x5c, s.x,); // nop absx
-        rm_ai(0x5d, s.x, set_nz(s.a ^= s.bus.d)); // eor absx
+        rmw_zx(0x57, Op{s}.ud_sre()); // sre zpx
+         sched(0x58, OPC::dispatch_post_cli); // cli
+         rm_ai(0x59, s.y, Op{s}.eor()); // eor absy
+            sb(0x5a,); // nop
+        rmw_ai(0x5b, s.y, Op{s}.ud_sre()); // sre absy
+         rm_ai(0x5c, s.x,); // nop absx
+         rm_ai(0x5d, s.x, Op{s}.eor()); // eor absx
         rmw_ai(0x5e, s.x, Op{s}.lsr(s.bus.d)); // lsr absx
-        rmw_ai(0x5f, s.x, Op{s}.ud_sre(s.bus.d)); // sre absx
-        msc_rts(0x60); // rts
+        rmw_ai(0x5f, s.x, Op{s}.ud_sre()); // sre absx
+         m_rts(0x60); // rts
         rm_izx(0x61, Op{s}.adc()); // adc izx
-        hlt(0x62);
-        ud_izx(0x63, Op{s}.ud_rra(s.bus.d)); // rra izx
-        rm_z(0x64,); // nop zp
-        rm_z(0x65, Op{s}.adc()); // adc zp
-        rmw_z(0x66, Op{s}.ror(s.bus.d)); // ror zp
-        rmw_z(0x67, Op{s}.ud_rra(s.bus.d)); // rra zp
-        plr(0x68, set_nz(s.a = s.bus.d)); // pla
-        rm_i(0x69, Op{s}.adc()); // adc imm
-        sb(0x6a, Op{s}.ror(s.a)); // ror
-        rm_i(0x6b, Op{s}.ud_arr()); // arr imm
-        msc_jmp_i(0x6c); // jmp ind
-        rm_a(0x6d, Op{s}.adc()); // adc abs
-        rmw_a(0x6e, Op{s}.ror(s.bus.d)); // ror abs
-        rmw_a(0x6f, Op{s}.ud_rra(s.bus.d)); // rra abs
-        brs(0x70, Flag::V); // bvs
+           hlt(0x62);
+        ud_izx(0x63, Op{s}.ud_rra()); // rra izx
+          rm_z(0x64,); // nop zp
+          rm_z(0x65, Op{s}.adc()); // adc zp
+         rmw_z(0x66, Op{s}.ror(s.bus.d)); // ror zp
+         rmw_z(0x67, Op{s}.ud_rra()); // rra zp
+           plr(0x68, set_nz(s.a = s.bus.d)); // pla
+          rm_i(0x69, Op{s}.adc()); // adc imm
+            sb(0x6a, Op{s}.ror(s.a)); // ror
+          rm_i(0x6b, Op{s}.ud_arr()); // arr imm
+          m_ji(0x6c); // jmp ind
+          rm_a(0x6d, Op{s}.adc()); // adc abs
+         rmw_a(0x6e, Op{s}.ror(s.bus.d)); // ror abs
+         rmw_a(0x6f, Op{s}.ud_rra()); // rra abs
+           brs(0x70, Flag::V); // bvs
         rm_izy(0x71, Op{s}.adc()); // adc izy
-        hlt(0x72);
-        ud_izy(0x73, Op{s}.ud_rra(s.bus.d)); // rra izy
-        rm_zi(0x74, s.x,); // nop zpx
-        rm_zi(0x75, s.x, Op{s}.adc()); // adc zpx
+           hlt(0x72);
+        ud_izy(0x73, Op{s}.ud_rra()); // rra izy
+         rm_zi(0x74, s.x,); // nop zpx
+         rm_zi(0x75, s.x, Op{s}.adc()); // adc zpx
         rmw_zx(0x76, Op{s}.ror(s.bus.d)); // ror zpx
-        rmw_zx(0x77, Op{s}.ud_rra(s.bus.d)); // rra zpx
-        sched(0x78, OPC::dispatch_post_sei); // sei
-        rm_ai(0x79, s.y, Op{s}.adc()); // adc absy
-        sb(0x7a,); // nop
-        rmw_ai(0x7b, s.y, Op{s}.ud_rra(s.bus.d)); // rra absy
-        rm_ai(0x7c, s.x,); // nop absx
-        rm_ai(0x7d, s.x, Op{s}.adc()); // adc absx
+        rmw_zx(0x77, Op{s}.ud_rra()); // rra zpx
+         sched(0x78, OPC::dispatch_post_sei); // sei
+         rm_ai(0x79, s.y, Op{s}.adc()); // adc absy
+            sb(0x7a,); // nop
+        rmw_ai(0x7b, s.y, Op{s}.ud_rra()); // rra absy
+         rm_ai(0x7c, s.x,); // nop absx
+         rm_ai(0x7d, s.x, Op{s}.adc()); // adc absx
         rmw_ai(0x7e, s.x, Op{s}.ror(s.bus.d)); // ror absx
-        rmw_ai(0x7f, s.x, Op{s}.ud_rra(s.bus.d)); // rra absx
-        rm_i(0x80, ); // nop imm
+        rmw_ai(0x7f, s.x, Op{s}.ud_rra()); // rra absx
+          rm_i(0x80, ); // nop imm
         st_izx(0x81, s.a); // sta izx
-        rm_i(0x82, ); // nop imm
+          rm_i(0x82, ); // nop imm
         st_izx(0x83, s.a & s.x); // sax izx
-        st_z(0x84, s.y); // sty zp
-        st_z(0x85, s.a); // sta zp
-        st_z(0x86, s.x); // stx zp
-        st_z(0x87, s.a & s.x); // sax zp
-        sb(0x88, set_nz(--s.y)); // dey
-        rm_i(0x89, ); // nop imm
-        sb(0x8a, set_nz(s.a = s.x)); // txa
-        rm_i(0x8b, Op{s}.ud_xaa(s.bus.d)); // xaa imm
-        st_a(0x8c, s.y); // sty abs
-        st_a(0x8d, s.a); // sta abs
-        st_a(0x8e, s.x); // stx abs
-        st_a(0x8f, s.a & s.x); // sax abs
-        brc(0x90, Flag::C); // bcc
+          st_z(0x84, s.y); // sty zp
+          st_z(0x85, s.a); // sta zp
+          st_z(0x86, s.x); // stx zp
+          st_z(0x87, s.a & s.x); // sax zp
+            sb(0x88, Op{s}.dec(s.y)); // dey
+          rm_i(0x89, ); // nop imm
+            sb(0x8a, set_nz(s.a = s.x)); // txa
+          rm_i(0x8b, Op{s}.ud_xaa()); // xaa imm
+          st_a(0x8c, s.y); // sty abs
+          st_a(0x8d, s.a); // sta abs
+          st_a(0x8e, s.x); // stx abs
+          st_a(0x8f, s.a & s.x); // sax abs
+           brc(0x90, Flag::C); // bcc
         st_izy(0x91); // sta izy
-        hlt(0x92);
+           hlt(0x92);
         ud_ahx(0x93); // ahx izy
-        st_zi(0x94, s.x, s.y); // sty zpx
-        st_zi(0x95, s.x, s.a); // sta zpx
-        st_zi(0x96, s.y, s.x); // stx zpy
-        st_zi(0x97, s.y, s.a & s.x); // sax zpy
-        sb(0x98, set_nz(s.a = s.y)); // tya
-        st_ai(0x99, s.y); // sta absy
-        sb(0x9a, s.sp = sp(s.x)); // txs
-        ud_shi_ai(0x9b, s.y, s.x, (s.bus.d &= s.a, s.sp = sp(s.a & s.x))); // tas absy
-        ud_shi_ai(0x9c, s.x, s.y, ); // shy absx
-        st_ai(0x9d, s.x); // sta absx
-        ud_shi_ai(0x9e, s.y, s.x, ); // shx absy
-        ud_shi_ai(0x9f, s.y, s.x, s.bus.d &= s.a); // ahx absy
-        rm_i(0xa0, set_nz(s.y = s.bus.d)); // ldy imm
+         st_zi(0x94, s.x, s.y); // sty zpx
+         st_zi(0x95, s.x, s.a); // sta zpx
+         st_zi(0x96, s.y, s.x); // stx zpy
+         st_zi(0x97, s.y, s.a & s.x); // sax zpy
+            sb(0x98, set_nz(s.a = s.y)); // tya
+         st_ai(0x99, s.y); // sta absy
+            sb(0x9a, s.sp = sp(s.x)); // txs
+         ud_ai(0x9b, s.y, s.x, (s.bus.d &= s.a, s.sp = sp(s.a & s.x))); // tas absy
+         ud_ai(0x9c, s.x, s.y, ); // shy absx
+         st_ai(0x9d, s.x); // sta absx
+         ud_ai(0x9e, s.y, s.x, ); // shx absy
+         ud_ai(0x9f, s.y, s.x, s.bus.d &= s.a); // ahx absy
+          rm_i(0xa0, set_nz(s.y = s.bus.d)); // ldy imm
         rm_izx(0xa1, set_nz(s.a = s.bus.d)); // lda izx
-        rm_i(0xa2, set_nz(s.x = s.bus.d)); // ldx imm
+          rm_i(0xa2, set_nz(s.x = s.bus.d)); // ldx imm
         rm_izx(0xa3, set_nz(s.a = s.x = s.bus.d)); // lax izx
-        rm_z(0xa4, set_nz(s.y = s.bus.d)); // ldy zp
-        rm_z(0xa5, set_nz(s.a = s.bus.d)); // lda zp
-        rm_z(0xa6, set_nz(s.x = s.bus.d)); // ldx zp
-        rm_z(0xa7, set_nz(s.a = s.x = s.bus.d)); // lax zp
-        sb(0xa8, set_nz(s.y = s.a)); // tay
-        rm_i(0xa9, set_nz(s.a = s.bus.d)); // lda imm
-        sb(0xaa, set_nz(s.x = s.a)); // tax
-        rm_i(0xab, Op{s}.ud_lxa(s.bus.d)); // lxa imm
-        rm_a(0xac, set_nz(s.y = s.bus.d)); // ldy abs
-        rm_a(0xad, set_nz(s.a = s.bus.d)); // lda abs
-        rm_a(0xae, set_nz(s.x = s.bus.d)); // ldx abs
-        rm_a(0xaf, set_nz(s.a = s.x = s.bus.d)); // lax abs
-        brs(0xb0, Flag::C); // bcs
+          rm_z(0xa4, set_nz(s.y = s.bus.d)); // ldy zp
+          rm_z(0xa5, set_nz(s.a = s.bus.d)); // lda zp
+          rm_z(0xa6, set_nz(s.x = s.bus.d)); // ldx zp
+          rm_z(0xa7, set_nz(s.a = s.x = s.bus.d)); // lax zp
+            sb(0xa8, set_nz(s.y = s.a)); // tay
+          rm_i(0xa9, set_nz(s.a = s.bus.d)); // lda imm
+            sb(0xaa, set_nz(s.x = s.a)); // tax
+          rm_i(0xab, Op{s}.ud_lxa()); // lxa imm
+          rm_a(0xac, set_nz(s.y = s.bus.d)); // ldy abs
+          rm_a(0xad, set_nz(s.a = s.bus.d)); // lda abs
+          rm_a(0xae, set_nz(s.x = s.bus.d)); // ldx abs
+          rm_a(0xaf, set_nz(s.a = s.x = s.bus.d)); // lax abs
+           brs(0xb0, Flag::C); // bcs
         rm_izy(0xb1, set_nz(s.a = s.bus.d)); // lda izy
-        hlt(0xb2);
+           hlt(0xb2);
         rm_izy(0xb3, set_nz(s.a = s.x = s.bus.d)); // lax izy
-        rm_zi(0xb4, s.x, set_nz(s.y = s.bus.d)); // ldy zpx
-        rm_zi(0xb5, s.x, set_nz(s.a = s.bus.d)); // lda zpx
-        rm_zi(0xb6, s.y, set_nz(s.x = s.bus.d)); // ldx zpy
-        rm_zi(0xb7, s.y, set_nz(s.a = s.x = s.bus.d)); // lax zpy
-        sb(0xb8, s.clr(Flag::V)); // clv
-        rm_ai(0xb9, s.y, set_nz(s.a = s.bus.d)); // lda absy
-        sb(0xba, set_nz(s.x = u8(s.sp))); // tsx
-        rm_ai(0xbb, s.y, Op{s}.ud_las(s.bus.d)); // las absy
-        rm_ai(0xbc, s.x, set_nz(s.y = s.bus.d)); // ldy absx
-        rm_ai(0xbd, s.x, set_nz(s.a = s.bus.d)); // lda absx
-        rm_ai(0xbe, s.y, set_nz(s.x = s.bus.d)); // ldx absy
-        rm_ai(0xbf, s.y, set_nz(s.a = s.x = s.bus.d)); // lax absy
-        rm_i(0xc0, Op{s}.cmp(s.y)); // cpy imm
+         rm_zi(0xb4, s.x, set_nz(s.y = s.bus.d)); // ldy zpx
+         rm_zi(0xb5, s.x, set_nz(s.a = s.bus.d)); // lda zpx
+         rm_zi(0xb6, s.y, set_nz(s.x = s.bus.d)); // ldx zpy
+         rm_zi(0xb7, s.y, set_nz(s.a = s.x = s.bus.d)); // lax zpy
+            sb(0xb8, Op{s}.clr(Flag::V)); // clv
+         rm_ai(0xb9, s.y, set_nz(s.a = s.bus.d)); // lda absy
+            sb(0xba, set_nz(s.x = u8(s.sp))); // tsx
+         rm_ai(0xbb, s.y, Op{s}.ud_las()); // las absy
+         rm_ai(0xbc, s.x, set_nz(s.y = s.bus.d)); // ldy absx
+         rm_ai(0xbd, s.x, set_nz(s.a = s.bus.d)); // lda absx
+         rm_ai(0xbe, s.y, set_nz(s.x = s.bus.d)); // ldx absy
+         rm_ai(0xbf, s.y, set_nz(s.a = s.x = s.bus.d)); // lax absy
+          rm_i(0xc0, Op{s}.cmp(s.y)); // cpy imm
         rm_izx(0xc1, Op{s}.cmp(s.a)); // cmp izx
-        rm_i(0xc2, ); // nop imm
-        ud_izx(0xc3, Op{s}.ud_dcp(s.bus.d)); // dcp izx
-        rm_z(0xc4, Op{s}.cmp(s.y)); // cpy zp
-        rm_z(0xc5, Op{s}.cmp(s.a)); // cmp zp
-        rmw_z(0xc6, Op{s}.dec(s.bus.d)); // dec zp
-        rmw_z(0xc7, Op{s}.ud_dcp(s.bus.d)); // dcp zp
-        sb(0xc8, set_nz(++s.y)); // iny
-        rm_i(0xc9, Op{s}.cmp(s.a)); // cmp imm
-        sb(0xca, set_nz(--s.x)); // dex
-        rm_i(0xcb, Op{s}.ud_axs(s.bus.d)); // axs imm
-        rm_a(0xcc, Op{s}.cmp(s.y)); // cpy abs
-        rm_a(0xcd, Op{s}.cmp(s.a)); // cmp abs
-        rmw_a(0xce, Op{s}.dec(s.bus.d)); // dec abs
-        rmw_a(0xcf, Op{s}.ud_dcp(s.bus.d)); // dcp abs
-        brc(0xd0, Flag::Z); // bne
+          rm_i(0xc2, ); // nop imm
+        ud_izx(0xc3, Op{s}.ud_dcp()); // dcp izx
+          rm_z(0xc4, Op{s}.cmp(s.y)); // cpy zp
+          rm_z(0xc5, Op{s}.cmp(s.a)); // cmp zp
+         rmw_z(0xc6, Op{s}.dec(s.bus.d)); // dec zp
+         rmw_z(0xc7, Op{s}.ud_dcp()); // dcp zp
+            sb(0xc8, Op{s}.inc(s.y)); // iny
+          rm_i(0xc9, Op{s}.cmp(s.a)); // cmp imm
+            sb(0xca, Op{s}.dec(s.x)); // dex
+          rm_i(0xcb, Op{s}.ud_axs()); // axs imm
+          rm_a(0xcc, Op{s}.cmp(s.y)); // cpy abs
+          rm_a(0xcd, Op{s}.cmp(s.a)); // cmp abs
+         rmw_a(0xce, Op{s}.dec(s.bus.d)); // dec abs
+         rmw_a(0xcf, Op{s}.ud_dcp()); // dcp abs
+           brc(0xd0, Flag::Z); // bne
         rm_izy(0xd1, Op{s}.cmp(s.a)); // cmp izy
-        hlt(0xd2);
-        ud_izy(0xd3, Op{s}.ud_dcp(s.bus.d)); // dcp izy
-        rm_zi(0xd4, s.x,); // nop zpx
-        rm_zi(0xd5, s.x, Op{s}.cmp(s.a)); // cmp zpx
+           hlt(0xd2);
+        ud_izy(0xd3, Op{s}.ud_dcp()); // dcp izy
+         rm_zi(0xd4, s.x,); // nop zpx
+         rm_zi(0xd5, s.x, Op{s}.cmp(s.a)); // cmp zpx
         rmw_zx(0xd6, Op{s}.dec(s.bus.d)); // dec zpx
-        rmw_zx(0xd7, Op{s}.ud_dcp(s.bus.d)); // dcp zpx
-        sb(0xd8, s.clr(Flag::D)); // cld
-        rm_ai(0xd9, s.y, Op{s}.cmp(s.a)); // cmp absy
-        sb(0xda, ); // nop
-        rmw_ai(0xdb, s.y, Op{s}.ud_dcp(s.bus.d)); // dcp absy
-        rm_ai(0xdc, s.x,); // nop absx
-        rm_ai(0xdd, s.x, Op{s}.cmp(s.a)); // cmp absx
+        rmw_zx(0xd7, Op{s}.ud_dcp()); // dcp zpx
+            sb(0xd8, Op{s}.clr(Flag::D)); // cld
+         rm_ai(0xd9, s.y, Op{s}.cmp(s.a)); // cmp absy
+            sb(0xda, ); // nop
+        rmw_ai(0xdb, s.y, Op{s}.ud_dcp()); // dcp absy
+         rm_ai(0xdc, s.x,); // nop absx
+         rm_ai(0xdd, s.x, Op{s}.cmp(s.a)); // cmp absx
         rmw_ai(0xde, s.x, Op{s}.dec(s.bus.d)); // dec absx
-        rmw_ai(0xdf, s.x, Op{s}.ud_dcp(s.bus.d)); // dcp absx
-        rm_i(0xe0, Op{s}.cmp(s.x)); // cpx imm
+        rmw_ai(0xdf, s.x, Op{s}.ud_dcp()); // dcp absx
+          rm_i(0xe0, Op{s}.cmp(s.x)); // cpx imm
         rm_izx(0xe1, Op{s}.sbc()); // sbc izx
-        rm_i(0xe2, ); // nop imm
-        ud_izx(0xe3, Op{s}.ud_isc(s.bus.d)); // isc izx
-        rm_z(0xe4, Op{s}.cmp(s.x)); // cpx zp
-        rm_z(0xe5, Op{s}.sbc()); // sbc zp
-        rmw_z(0xe6, Op{s}.inc(s.bus.d)); // inc zp
-        rmw_z(0xe7, Op{s}.ud_isc(s.bus.d)); // isc zp
-        sb(0xe8, set_nz(++s.x)); // inx
-        rm_i(0xe9, Op{s}.sbc()); // sbc imm
-        sb(0xea,); // nop
-        rm_i(0xeb, Op{s}.sbc()); // sbc imm
-        rm_a(0xec, Op{s}.cmp(s.x)); // cpx abs
-        rm_a(0xed, Op{s}.sbc()); // sbc abs
-        rmw_a(0xee, Op{s}.inc(s.bus.d)); // inc abs
-        rmw_a(0xef, Op{s}.ud_isc(s.bus.d)); // isc abs
-        brs(0xf0, Flag::Z); // beq
+          rm_i(0xe2, ); // nop imm
+        ud_izx(0xe3, Op{s}.ud_isc()); // isc izx
+          rm_z(0xe4, Op{s}.cmp(s.x)); // cpx zp
+          rm_z(0xe5, Op{s}.sbc()); // sbc zp
+         rmw_z(0xe6, Op{s}.inc(s.bus.d)); // inc zp
+         rmw_z(0xe7, Op{s}.ud_isc()); // isc zp
+            sb(0xe8, Op{s}.inc(s.x)); // inx
+          rm_i(0xe9, Op{s}.sbc()); // sbc imm
+            sb(0xea,); // nop
+          rm_i(0xeb, Op{s}.sbc()); // sbc imm
+          rm_a(0xec, Op{s}.cmp(s.x)); // cpx abs
+          rm_a(0xed, Op{s}.sbc()); // sbc abs
+         rmw_a(0xee, Op{s}.inc(s.bus.d)); // inc abs
+         rmw_a(0xef, Op{s}.ud_isc()); // isc abs
+           brs(0xf0, Flag::Z); // beq
         rm_izy(0xf1, Op{s}.sbc()); // sbc izy
-        hlt(0xf2);
-        ud_izy(0xf3, Op{s}.ud_isc(s.bus.d)); // isc izy
-        rm_zi(0xf4, s.x,); // nop zpx
-        rm_zi(0xf5, s.x, Op{s}.sbc()); // sbc zpx
+           hlt(0xf2);
+        ud_izy(0xf3, Op{s}.ud_isc()); // isc izy
+         rm_zi(0xf4, s.x,); // nop zpx
+         rm_zi(0xf5, s.x, Op{s}.sbc()); // sbc zpx
         rmw_zx(0xf6, Op{s}.inc(s.bus.d)); // inc zpx
-        rmw_zx(0xf7, Op{s}.ud_isc(s.bus.d)); // isc zpx
-        sb(0xf8, s.set(Flag::D)); // sed
-        rm_ai(0xf9, s.y, Op{s}.sbc()); // sbc absy
-        sb(0xfa,); // nop
-        rmw_ai(0xfb, s.y, Op{s}.ud_isc(s.bus.d)); // isc absy
-        rm_ai(0xfc, s.x,); // nop absx
-        rm_ai(0xfd, s.x, Op{s}.sbc()); // sbc absx
+        rmw_zx(0xf7, Op{s}.ud_isc()); // isc zpx
+            sb(0xf8, Op{s}.set(Flag::D)); // sed
+         rm_ai(0xf9, s.y, Op{s}.sbc()); // sbc absy
+            sb(0xfa,); // nop
+        rmw_ai(0xfb, s.y, Op{s}.ud_isc()); // isc absy
+         rm_ai(0xfc, s.x,); // nop absx
+         rm_ai(0xfd, s.x, Op{s}.sbc()); // sbc absx
         rmw_ai(0xfe, s.x, Op{s}.inc(s.bus.d)); // inc absx
-        rmw_ai(0xff, s.x, Op{s}.ud_isc(s.bus.d)); // isc absx
+        rmw_ai(0xff, s.x, Op{s}.ud_isc()); // isc absx
 
         // ********************************************************************
 
@@ -1123,11 +1132,11 @@ void NMOS6502::Core::exec_cycle() {
         */
         case mc(OPC::dispatch_post_cli): 
             check_irq(); // irq taken on 'old' i-flag value
-            s.clr(Flag::I);
+            Op{s}.clr(Flag::I);
             goto irq_checked;
         case mc(OPC::dispatch_post_sei):
             check_irq(); // irq taken on 'old' i-flag value
-            s.set(Flag::I);
+            Op{s}.set(Flag::I);
             goto irq_checked;
         case mc(OPC::dispatch): // 'normal' T0 case (all interrupts taken normally)
             check_irq();
@@ -1180,7 +1189,7 @@ void NMOS6502::Core::exec_cycle() {
             break;
         case mc(OPC::reset, 6):
             read_ah();
-            s.set(Flag::I);
+            Op{s}.set(Flag::I);
             schedule(OPC::dispatch_post_brk);
             break;
     }
