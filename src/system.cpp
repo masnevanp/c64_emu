@@ -380,7 +380,7 @@ void System::C64::log_status() {
 
             Log::info("%s", buffer);
         } else if (cpu.s.opc() <= 0xff) {
-            instr_txt = as_lower(NMOS6502::Asm::instruction[cpu.s.opc()].mnemonic);
+            instr_txt = as_lower(MOS6502::Asm::instruction[cpu.s.opc()].mnemonic);
             Log::info("            > %s", instr_txt.c_str());
         }
 
@@ -765,7 +765,7 @@ void System::C64::do_load() {
         }
 
         //'return' status to kernal routine
-        cpu.s.p &= ~NMOS6502::Flag::C; // no error
+        cpu.s.p &= ~MOS6502::Flag::C; // no error
         s.ram[0x90] = 0x00; // io status ok
     } else {
         cpu.s.pc = 0xf704; // --> file not found
@@ -792,7 +792,7 @@ void System::C64::do_save() {
     if (filename.length() == 0) {
         // TODO: error_code enum(s)
         cpu.s.a = 0x08; // missing filename
-        cpu.s.p |= NMOS6502::Flag::C; // error
+        cpu.s.p |= MOS6502::Flag::C; // error
         return;
     }
 
@@ -805,12 +805,12 @@ void System::C64::do_save() {
 
     if (do_save(filepath, start_addr, &s.ram[start_addr], sz)) {
         // status
-        cpu.s.p &= ~NMOS6502::Flag::C; // no error
+        cpu.s.p &= ~MOS6502::Flag::C; // no error
         s.ram[0x90] = 0x00; // io status ok
         Log::info("Saved '%s', %d bytes", filepath.c_str(), int(sz + 2));
     } else {
         cpu.s.a = 0x07; // not output file
-        cpu.s.p |= NMOS6502::Flag::C; // error
+        cpu.s.p |= MOS6502::Flag::C; // error
         Log::error("Failed to save '%s'", filename.c_str());
     }
 }
@@ -824,10 +824,10 @@ void System::C64::install_kernal_tape_traps(u8* kernal, u8 trap_opc) {
     // trap loading (device 1)
     kernal[0xf539 - kernal_start] = trap_opc;
     kernal[0xf53a - kernal_start] = Trap_ID::load;
-    kernal[0xf53b - kernal_start] = NMOS6502::OPC::rts;
+    kernal[0xf53b - kernal_start] = MOS6502::OPC::rts;
 
     // trap saving (device 1)
     kernal[0xf65f - kernal_start] = trap_opc;
     kernal[0xf660 - kernal_start] = Trap_ID::save;
-    kernal[0xf661 - kernal_start] = NMOS6502::OPC::rts;
+    kernal[0xf661 - kernal_start] = MOS6502::OPC::rts;
 }

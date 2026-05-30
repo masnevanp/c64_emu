@@ -5,12 +5,12 @@
 #include <vector>
 #include <stdio.h>
 #include "common.h"
-#include "nmos6502/core.h"
-#include "nmos6502/asm.h"
+#include "mos6502/core.h"
+#include "mos6502/asm.h"
 
 namespace Dbg {
 
-using namespace NMOS6502;
+using namespace MOS6502;
 
 std::string flags_str(u8 p);
 
@@ -52,7 +52,7 @@ public:
 private:
     Line disasm(const std::size_t bin_pos) const {
         const auto opc = bin[bin_pos];
-        const auto& instr = NMOS6502::Asm::instruction[opc];
+        const auto& instr = MOS6502::Asm::instruction[opc];
         const u16 pc = start_addr + bin_pos;
 
         char instr_disasm[16];
@@ -76,7 +76,7 @@ private:
                     sprintf(instr_bytes, "%02X", bin[bin_pos]);
                     break; 
                 case 2:
-                    if (instr.addr_mode == NMOS6502::Asm::Addr_mode::rel) {
+                    if (instr.addr_mode == MOS6502::Asm::Addr_mode::rel) {
                         const u16 tgt_addr = pc + 2 + i8(bin[bin_pos + 1]);
                         sprintf(instr_disasm, instr.asm_format.c_str(), tgt_addr);
                         sprintf(instr_bytes, "%02X %02X", bin[bin_pos], bin[bin_pos + 1]);
@@ -109,7 +109,7 @@ auto disasm(const Bin& bin, const u16 start_addr = 0x0000) {
 
     for (std::size_t bin_pos = 0; bin_pos < std::size(bin); ) {
         lines.push_back(dis.at(bin_pos));
-        bin_pos += NMOS6502::Asm::instruction[bin[bin_pos]].size;
+        bin_pos += MOS6502::Asm::instruction[bin[bin_pos]].size;
     }
 
     return lines;
@@ -153,7 +153,7 @@ std::vector<std::string> disasm(const Bytes& bytes, const u16 start_addr = 0x000
                     sprintf(instr_bytes, "%02X", bytes[byte_pos]);
                     break; 
                 case 2:
-                    if (instr.addr_mode == NMOS6502::Addr_mode::rel) {
+                    if (instr.addr_mode == MOS6502::Addr_mode::rel) {
                         const u16 tgt_addr = pc + 2 + i8(bytes[byte_pos + 1]);
                         sprintf(instr_disasm, instr.asm_format.c_str(), tgt_addr);
                         sprintf(instr_bytes, "%02X %02X", bytes[byte_pos], bytes[byte_pos + 1]);
@@ -194,20 +194,20 @@ public:
     void tick(u32 cycles = 1, bool verbose = true);
 
     void tick_one() {
-        if (cpu.s.bus.rw == NMOS6502::Core::State::Bus::RW::r) cpu.s.bus.d = mem[cpu.s.bus.a];
+        if (cpu.s.bus.rw == MOS6502::Core::State::Bus::RW::r) cpu.s.bus.d = mem[cpu.s.bus.a];
         else mem[cpu.s.bus.a] = cpu.s.bus.d;
 
         cpu.tick();
         ++cn; ++tn;
         // BEWARE
-        if (cpu.s.opc() >= NMOS6502::OPC::dispatch_post_cli &&
-                cpu.s.opc() <= NMOS6502::OPC::dispatch_post_brk) tn = 0;
+        if (cpu.s.opc() >= MOS6502::OPC::dispatch_post_cli &&
+                cpu.s.opc() <= MOS6502::OPC::dispatch_post_brk) tn = 0;
     }
 
 private:
     void do_reset() { cpu.reset(); tick(7, false); cn = 0; tn = 0; }
 
-    NMOS6502::Sig_halt cpu_trap {
+    MOS6502::Sig_halt cpu_trap {
         [this](u8 opc, u8 d) {
             Log::error("****** CPU halted! (opc: %d, d: %d) ******", opc, d);
             Dbg::print_status(cpu, mem);

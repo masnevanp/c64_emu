@@ -6,11 +6,11 @@
 #include <iomanip>
 
 
-using namespace NMOS6502;
+using namespace MOS6502;
 
 
 std::string Dbg::flags_str(u8 p) {
-    using NMOS6502::Flag;
+    using MOS6502::Flag;
 
     std::string s = "........";
 

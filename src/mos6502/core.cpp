@@ -3,8 +3,8 @@
 
 
 
-namespace NMOS6502 {
-    using RW = NMOS6502::Core::State::Bus::RW;
+namespace MOS6502 {
+    using RW = MOS6502::Core::State::Bus::RW;
 
     enum Brk_src : u8 { sw = 0b001, nmi = 0b010, irq = 0b100, };
 
@@ -178,10 +178,10 @@ namespace NMOS6502 {
 }
 
 
-NMOS6502::Core::Core(State& s_, Sig_halt& sig_halt_) : s(s_), sig_halt(sig_halt_) {}
+MOS6502::Core::Core(State& s_, Sig_halt& sig_halt_) : s(s_), sig_halt(sig_halt_) {}
 
 
-void NMOS6502::Core::reset() {
+void MOS6502::Core::reset() {
     s.brk_srcs = 0;
     s.nmi_timer = s.irq_timer = 0;
     s.nmi_act = s.irq_act = false;
@@ -190,7 +190,7 @@ void NMOS6502::Core::reset() {
 }
 
 
-void NMOS6502::Core::set_nmi(bool act) {
+void MOS6502::Core::set_nmi(bool act) {
     if (act) {
         if (s.nmi_timer == 0x00) s.nmi_timer = 0x01;
     } else {
@@ -199,18 +199,18 @@ void NMOS6502::Core::set_nmi(bool act) {
     }
 }
 
-void NMOS6502::Core::set_irq(bool act) {
+void MOS6502::Core::set_irq(bool act) {
     if (act) { s.irq_timer |= 0b1; }
     else s.irq_timer = s.irq_act = 0x00;
 }
 
 
-static constexpr NMOS6502::u16 mc(NMOS6502::u16 opc, NMOS6502::u8 cn = 0) { // micro-code label
+static constexpr MOS6502::u16 mc(MOS6502::u16 opc, MOS6502::u8 cn = 0) { // micro-code label
     return (opc << 3) | (cn & 0b111);
 }
 
 
-void NMOS6502::Core::exec_cycle() {
+void MOS6502::Core::exec_cycle() {
     static constexpr u8 nmi_timer_handled = 0b10000000;
 
     auto check_irq = [&]() { if (s.irq_act && Op{s}.is_clr(Flag::I)) s.brk_srcs |= Brk_src::irq; };
@@ -1197,7 +1197,7 @@ void NMOS6502::Core::exec_cycle() {
 }
 
 
-void NMOS6502::Core::resume() {
+void MOS6502::Core::resume() {
     if (halted()) {
         s.bus.a = s.pc;
         Op{s}.schedule(OPC::dispatch);

@@ -415,7 +415,7 @@ struct T3 : public Base { // T3 Action_Replay
 
     void tick_frz() {
         // TODO: is this reliable?
-        if (s.cpu.opc() == NMOS6502::OPC::brk && s.cpu.bus.rw == NMOS6502::Core::State::Bus::w) {
+        if (s.cpu.opc() == MOS6502::OPC::brk && s.cpu.bus.rw == MOS6502::Core::State::Bus::w) {
             s.exp.ticker = Ticker::idle;
             System::set_exrom_game(true, false, s);
         }

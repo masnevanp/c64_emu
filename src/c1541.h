@@ -7,7 +7,7 @@
 #include "state.h"
 #include "utils.h"
 #include "files.h"
-#include "nmos6502/core.h"
+#include "mos6502/core.h"
 #include "menu.h"
 #include "dbg.h"
 
@@ -24,7 +24,7 @@
 
 namespace C1541 {
 
-using CPU = NMOS6502::Core;
+using CPU = MOS6502::Core;
 
 // CPU freq. ratio (C64 vs. C1541): 67/68 (darn close to 985248.45 / 1000000, 66/67 is also close)
 static constexpr int extra_cycle_freq = 67;
@@ -641,7 +641,7 @@ private:
     bool not_sync_set()       const { return s.via_pb_in & PB::sync; }
     void signal_byte_ready() {
         ca1_edge(0b0);
-        cpu.s.p |= NMOS6502::Flag::V; // TODO: SO-detection delay in the CPU (how many cycles?)
+        cpu.s.p |= MOS6502::Flag::V; // TODO: SO-detection delay in the CPU (how many cycles?)
     }
 
     void step_head(const u8 via_pb_out_now);
@@ -852,7 +852,7 @@ private:
         }
     }
 
-    /*NMOS6502::Sig cpu_trap {
+    /*MOS6502::Sig cpu_trap {
         [this]() {
             cpu.pc = 0xebff; // start of idle loop
             cpu.resume();
@@ -869,7 +869,7 @@ private:
         disk_carousel.insert(0, blank_disk, "Blank"); // TODO: handle 0 free slots case
     }
 
-    NMOS6502::Sig_halt cpu_trap {
+    MOS6502::Sig_halt cpu_trap {
         [this](u8 opc, u8 d) {
             Log::error("****** C1541 CPU halted! (opc: %d, d: %d) ******", opc, d);
             Dbg::print_status(cpu, s.ram);

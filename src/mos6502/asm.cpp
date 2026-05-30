@@ -3,13 +3,13 @@
 
 
 
-using Am = NMOS6502::Asm::Addr_mode;
+using Am = MOS6502::Asm::Addr_mode;
 
 // Table data derived from (thanks!):
 // - https://github.com/michael-0acf4/opcodes-json-6502
 // - https://github.com/Esshahn/pydisass6502/
 
-const NMOS6502::Asm::Instruction NMOS6502::Asm::instruction[256] = {
+const MOS6502::Asm::Instruction MOS6502::Asm::instruction[256] = {
     {0x00, 1, Am::impl, "BRK", "BRK"},
     {0x01, 2, Am::indx, "ORA", "ORA ($%02X,X)"},
     {0x02, 1, Am::impl, "HLT", "HLT"},

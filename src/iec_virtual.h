@@ -5,7 +5,7 @@
 #include <vector>
 #include <map>
 #include <algorithm>
-#include "nmos6502/core.h"
+#include "mos6502/core.h"
 #include "system.h"
 #include "utils.h"
 #include "files.h"

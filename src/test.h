@@ -4,7 +4,7 @@
 
 namespace Test {
 
-using namespace NMOS6502;
+using namespace MOS6502;
 
 void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) {
     auto mem_ = read_file("data/6502_functional_test/6502_functional_test.bin");
@@ -16,7 +16,7 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     mem[0xfffc] = 0x00; mem[0xfffd] = 0x04;
 
     Core::State cpu_state;
-    NMOS6502::Sig_halt sig_halt = [](u8 opc, u8 d) {
+    MOS6502::Sig_halt sig_halt = [](u8 opc, u8 d) {
         Log::error("****** CPU halted! (opc: %d, d: %d) ******", opc, d);
     };
 

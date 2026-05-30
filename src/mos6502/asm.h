@@ -1,11 +1,11 @@
-#ifndef NMOS6502_ASM_H_INCLUDED
-#define NMOS6502_ASM_H_INCLUDED
+#ifndef MOS6502_ASM_H_INCLUDED
+#define MOS6502_ASM_H_INCLUDED
 
 #include <string>
 #include "core.h"
 
 
-namespace NMOS6502::Asm {
+namespace MOS6502::Asm {
 
     enum class Addr_mode {
         impl, accu, abs, absx, absy, imm, ind, indx, indy, rel, zp, zpx, zpy
@@ -22,7 +22,7 @@ namespace NMOS6502::Asm {
 
     extern const Instruction instruction[256];
 
-} // namespace NMOS6502::Asm
+} // namespace MOS6502::Asm
 
 
-#endif // NMOS6502_ASM_H_INCLUDED
+#endif // MOS6502_ASM_H_INCLUDED

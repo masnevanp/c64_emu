@@ -1,15 +1,15 @@
 #ifndef COMMON_H_INCLUDED
 #define COMMON_H_INCLUDED
 
-#include "nmos6502/core.h"
+#include "mos6502/core.h"
 #include <string>
 #include <optional>
 #include <cstdio>
 
 
-using u8  = NMOS6502::u8;
-using i8  = NMOS6502::i8;
-using u16 = NMOS6502::u16;
+using u8  = MOS6502::u8;
+using i8  = MOS6502::i8;
+using u16 = MOS6502::u16;
 using i16 = int16_t;
 using u32 = uint32_t;
 using i32 = int32_t;

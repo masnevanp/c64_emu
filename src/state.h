@@ -253,7 +253,7 @@ struct C1541 {
 
     struct System {
         u8 ram[0x0800];
-        NMOS6502::Core::State cpu;
+        MOS6502::Core::State cpu;
         u8 irq_state;
     };
 
@@ -278,7 +278,7 @@ struct System {
     };
 
     struct Bus {
-        using RW = NMOS6502::Core::State::Bus::RW;
+        using RW = MOS6502::Core::State::Bus::RW;
 
         u16 addr;
         u8 data;
@@ -420,7 +420,7 @@ struct System {
 
     VIC_II vic;
 
-    NMOS6502::Core::State cpu;
+    MOS6502::Core::State cpu;
 
     CIA cia1;
     CIA cia2;

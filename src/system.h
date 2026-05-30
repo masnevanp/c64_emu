@@ -7,7 +7,7 @@
 #include "state.h"
 #include "utils.h"
 #include "dbg.h"
-#include "nmos6502/core.h"
+#include "mos6502/core.h"
 #include "vic_ii.h"
 #include "sid.h"
 #include "cia.h"
@@ -23,7 +23,7 @@ namespace System {
 
 class Bus;
 
-using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Address_space)
+using CPU = MOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Address_space)
 using CIA = typename CIA::Core;
 using TheSID = reSID_Wrapper; // 'The' due to nameclash
 using VIC = VIC_II::Core<Bus>;
@@ -585,7 +585,7 @@ private:
     Host::Input host_input{host_input_handlers};
 
     // TODO: verify that it is a valid kernal trap (e.g. 'addr_space.mapping(cpu.pc) == kernal')
-    NMOS6502::Sig_halt cpu_trap{
+    MOS6502::Sig_halt cpu_trap{
         [this](u8 trap_opc, u8 routine_id) {
             bool resume = true;
 
@@ -715,7 +715,7 @@ private:
 
 inline
 void C64::run_cycle() {
-    using RW = NMOS6502::Core::State::Bus::RW;
+    using RW = MOS6502::Core::State::Bus::RW;
 
     vic.tick();
 

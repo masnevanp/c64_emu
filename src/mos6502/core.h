@@ -1,5 +1,5 @@
-#ifndef NMOS6502_CORE_H_INCLUDED
-#define NMOS6502_CORE_H_INCLUDED
+#ifndef MOS6502_CORE_H_INCLUDED
+#define MOS6502_CORE_H_INCLUDED
 
 #include <functional>
 #include <cstdint>
@@ -14,7 +14,7 @@ Invaluable resources (thanks!):
 
 */
 
-namespace NMOS6502 {
+namespace MOS6502 {
 
 using u8 = uint8_t;
 using i8 = int8_t;
@@ -121,7 +121,7 @@ private:
     Sig_halt& sig_halt;
 };
 
-} // namespace NMOS6502
+} // namespace MOS6502
 
 
-#endif // NMOS6502_CORE_H_INCLUDED
+#endif // MOS6502_CORE_H_INCLUDED
