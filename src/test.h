@@ -181,8 +181,8 @@ exit:
     int te = t.elapsed();
     //std::cout << "=========================================================\n";
     std::cout << "\ncycle cnt: " << std::dec << sys.cn << ", ";
-    std::cout << " time(c1): " << te << ", ";
-    std::cout << " cycles/sec: " << (sys.cn / te * 1000) << "\n";
+    std::cout << " time(us): " << te << ", ";
+    std::cout << " cycles/sec: " << (sys.cn / te * 1000000) << "\n";
 }
 
 

@@ -97,32 +97,15 @@ public:
     void set_nmi(bool act);
     void set_irq(bool act);
 
-    void tick() {
-        if (s.irq_timer || s.nmi_timer) {
-            if (s.nmi_timer == 0x01) s.nmi_timer = 0x02;
-            else if (s.nmi_timer == 0x02) {
-                s.nmi_act = true;
-                s.nmi_timer = 0x03;
-            }
-
-            s.irq_timer <<= 1;
-            if (s.irq_timer & 0b100) {
-                s.irq_timer = 0;
-                s.irq_act = true;
-            }
-        }
-
-        exec_cycle();
-    }
+    void tick();
 
     bool at_fetch() const { return s.opc()>= OPC::dispatch_post_cli && s.opc() <= OPC::dispatch_post_brk; }
     bool halted() const   { return s.opc() == OPC::halt; }
     void resume();
 
 private:
-    void exec_cycle();
-
     Sig_halt& sig_halt;
+
 };
 
 } // namespace MOS6502

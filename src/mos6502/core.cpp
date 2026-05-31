@@ -852,8 +852,22 @@ static constexpr MOS6502::u16 mc(MOS6502::u16 opc, MOS6502::u8 cn = 0) { // micr
 }
 
 
-void MOS6502::Core::exec_cycle() {
+void MOS6502::Core::tick() {
     static constexpr u8 nmi_timer_handled = 0b10000000;
+
+    if (s.irq_timer || s.nmi_timer) {
+        if (s.nmi_timer == 0x01) s.nmi_timer = 0x02;
+        else if (s.nmi_timer == 0x02) {
+            s.nmi_act = true;
+            s.nmi_timer = 0x03;
+        }
+
+        s.irq_timer <<= 1;
+        if (s.irq_timer & 0b100) {
+            s.irq_timer = 0;
+            s.irq_act = true;
+        }
+    }
 
     switch (s.mcc++) {
          m_brk(0x00);                            // brk
