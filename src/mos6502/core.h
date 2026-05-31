@@ -104,8 +104,11 @@ public:
                 s.nmi_timer = 0x03;
             }
 
-            if (s.irq_timer & 0b10) s.irq_act = true;
             s.irq_timer <<= 1;
+            if (s.irq_timer & 0b100) {
+                s.irq_timer = 0;
+                s.irq_act = true;
+            }
         }
 
         exec_cycle();

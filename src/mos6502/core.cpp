@@ -8,8 +8,8 @@ namespace MOS6502 {
 
     enum Brk_src : u8 { sw = 0b001, nmi = 0b010, irq = 0b100, };
 
-    static u16 zp(u16 a) { return a & 0x00ff; }
-    static u16 sp(u16 a) { return (a & 0xff) | 0x0100; }
+    inline u16 zp(u16 a) { return a & 0x00ff; }
+    inline u16 sp(u16 a) { return (a & 0xff) | 0x0100; }
 
     struct Op {
         Core::State& s;
@@ -208,6 +208,645 @@ void MOS6502::Core::set_irq(bool act) {
 }
 
 
+// **************** Single Byte Instructions ****************
+
+#define sb(opc, op) { \
+    case mc(opc, 0): \
+        op; \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+// ******** Internal Execution On Memory Data ********
+
+#define ie_i(opc, op) { \
+    case mc(opc, 0): \
+        op; \
+        s.bus.a += 1; \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define ie_z(opc, op) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a + 1; \
+        s.bus.a = s.bus.d; \
+        break; \
+    case mc(opc, 1): \
+        op; \
+        s.bus.a = s.pc; \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define ie_a(opc, op) { \
+    case mc(opc, 0): \
+        s.aux = s.bus.d; \
+        s.pc = s.bus.a + 2; \
+        s.bus.a += 1; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = s.aux | (s.bus.d << 8); \
+        break; \
+    case mc(opc, 2): \
+        op; \
+        s.bus.a = s.pc; \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define ie_izx(opc, op) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a + 1; \
+        s.bus.a = s.bus.d; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = zp(s.bus.a + s.x); \
+        break; \
+    case mc(opc, 2): \
+        s.aux = s.bus.d; \
+        s.bus.a = zp(s.bus.a + 1); \
+        break; \
+    case mc(opc, 3): \
+        s.bus.a = s.aux | (s.bus.d << 8); \
+        break; \
+    case mc(opc, 4): \
+        op; \
+        s.bus.a = s.pc; \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define ie_ai(opc, ireg, op) { \
+    case mc(opc, 0): \
+        s.aux = s.bus.d + ireg; \
+        s.pc = s.bus.a + 2; \
+        s.bus.a += 1; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
+        s.mcc += (s.aux >> 8); \
+        break; \
+    case mc(opc, 2): \
+        op; \
+        s.bus.a = s.pc; \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+    case mc(opc, 3): \
+        s.bus.a += 0x100; \
+        break; \
+    case mc(opc, 4): \
+        op; \
+        s.bus.a = s.pc; \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define ie_zi(opc, ireg, op) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a + 1; \
+        s.bus.a = s.bus.d; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = zp(s.bus.a + ireg); \
+        break; \
+    case mc(opc, 2): \
+        op; \
+        s.bus.a = s.pc; \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define ie_izy(opc, op) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a + 1; \
+        s.bus.a = s.bus.d; \
+        break; \
+    case mc(opc, 1): \
+        s.aux = s.bus.d + s.y; \
+        s.bus.a = zp(s.bus.a + 1); \
+        break; \
+    case mc(opc, 2): \
+        s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
+        s.mcc += (s.aux >> 8); \
+        break; \
+    case mc(opc, 3): \
+        op; \
+        s.bus.a = s.pc; \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+    case mc(opc, 4): \
+        s.bus.a += 0x100; \
+        break; \
+    case mc(opc, 5): \
+        op; \
+        s.bus.a = s.pc; \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+// **************** Store Operations ****************
+
+#define st_z(opc, reg) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a + 1; \
+        s.bus.a = s.bus.d; \
+        s.bus.d = reg; \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define st_a(opc, reg) { \
+    case mc(opc, 0): \
+        s.aux = s.bus.d; \
+        s.pc = s.bus.a + 2; \
+        s.bus.a += 1; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = s.aux | (s.bus.d << 8); \
+        s.bus.d = reg; \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 2): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define st_izx(opc, reg) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a + 1; \
+        s.bus.a = s.bus.d; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = zp(s.bus.a + s.x); \
+        break; \
+    case mc(opc, 2): \
+        s.aux = s.bus.d; \
+        s.bus.a = zp(s.bus.a + 1); \
+        break; \
+    case mc(opc, 3): \
+        s.bus.a = s.aux | (s.bus.d << 8); \
+        s.bus.d = reg; \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 4): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define st_ai(opc, ireg) { \
+    case mc(opc, 0): \
+        s.aux = s.bus.d + ireg; \
+        s.pc = s.bus.a + 2; \
+        s.bus.a += 1; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
+        break; \
+    case mc(opc, 2): \
+        s.bus.a += (s.aux & 0x100); \
+        s.bus.d = s.a; \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 3): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define st_zi(opc, ireg, reg) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a + 1; \
+        s.bus.a = s.bus.d; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = zp(s.bus.a + ireg); \
+        s.bus.d = reg; \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 2): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define st_izy(opc) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a + 1; \
+        s.bus.a = s.bus.d; \
+        break; \
+    case mc(opc, 1): \
+        s.aux = s.bus.d + s.y; \
+        s.bus.a = zp(s.bus.a + 1); \
+        break; \
+    case mc(opc, 2): \
+        s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
+        break; \
+    case mc(opc, 3): \
+        s.bus.a += (s.aux & 0x100); \
+        s.bus.d = s.a; \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 4): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+// **************** Read-Modify-Write -operations ****************
+
+#define rmw_z(opc, op) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a + 1; \
+        s.bus.a = s.bus.d; \
+        break; \
+    case mc(opc, 1): \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 2): \
+        op; \
+        break; \
+    case mc(opc, 3): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define rmw_a(opc, op) { \
+    case mc(opc, 0): \
+        s.aux = s.bus.d; \
+        s.pc = s.bus.a + 2; \
+        s.bus.a += 1; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = s.aux | (s.bus.d << 8); \
+        break; \
+    case mc(opc, 2): \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 3): \
+        op; \
+        break; \
+    case mc(opc, 4): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define rmw_zx(opc, op) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a + 1; \
+        s.bus.a = s.bus.d; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = zp(s.bus.a + s.x); \
+        break; \
+    case mc(opc, 2): \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 3): \
+        op; \
+        break; \
+    case mc(opc, 4): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define rmw_ai(opc, ireg, op) { \
+    case mc(opc, 0): \
+        s.aux = s.bus.d + ireg; \
+        s.pc = s.bus.a + 2; \
+        s.bus.a += 1; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
+        break; \
+    case mc(opc, 2): \
+        s.bus.a += (s.aux & 0x100); \
+        break; \
+    case mc(opc, 3): \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 4): \
+        op; \
+        break; \
+    case mc(opc, 5): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+// **************** Miscellaneous Operations ****************
+
+/* Interrupt hijacking:
+    - happens if an interrupt of a higher priority is signalled before
+        the 'brk' execution of the lower priority reaches T5 (=T4 ph2 at latest).
+    - T0&T1 PC, and pushed b-flag according to the former (lower prio)
+    - vector address according to the latter (higher prio)
+*/
+#define m_brk(opc) \
+    case mc(opc, 0): \
+        s.pc = s.bus.a; \
+        if (s.brk_srcs == Brk_src::sw) s.pc += 1; /*TODO: inc during dispatch?*/ \
+        s.bus(s.sp, (s.pc >> 8), RW::w); \
+        break; \
+    case mc(opc, 1): \
+        s.bus(sp(s.bus.a - 1), s.pc); \
+        break; \
+    case mc(opc, 2): { \
+        const auto p = s.p | Flag::u; \
+        s.bus(sp(s.bus.a - 1), p); \
+        s.sp = sp(s.bus.a - 1); \
+        break; } \
+    case mc(opc, 3): \
+        if (s.nmi_timer & 0b11) /*Potential hijacking by nmi*/ { \
+            s.brk_srcs = Brk_src::nmi; \
+            s.nmi_timer = nmi_timer_handled; \
+        } \
+        s.bus.a = (s.brk_srcs & Brk_src::nmi) ? Vec::nmi : Vec::irq; \
+        s.brk_srcs = 0; \
+        s.bus(RW::r); \
+        break; \
+    case mc(opc, 4): \
+        s.aux = s.bus.d; \
+        s.bus.a += 1; \
+        break; \
+    case mc(opc, 5): \
+        s.bus.a = s.aux | (s.bus.d << 8); \
+        Op{s}.set(Flag::I); \
+        Op{s}.schedule(OPC::dispatch_post_brk); \
+        break; \
+
+#define m_ja(opc) \
+    case mc(opc, 0): \
+        s.aux = s.bus.d; \
+        s.bus.a += 1; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = s.aux | (s.bus.d << 8); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+
+#define m_ji(opc) \
+    case mc(opc, 0): \
+        s.aux = s.bus.d; \
+        s.bus.a += 1; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = s.aux | (s.bus.d << 8); \
+        break; \
+    case mc(opc, 2): \
+        s.aux = s.bus.d; \
+        /* the 'missing carry propagation' feature*/ \
+        s.bus.a = (s.bus.a & 0xff00) | ((s.bus.a + 1) & 0xff); \
+        break; \
+    case mc(opc, 3): \
+        s.bus.a = s.aux | (s.bus.d << 8); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+
+#define m_js(opc) \
+    case mc(opc, 0): \
+        s.aux = s.bus.d; \
+        s.pc = s.bus.a + 1; \
+        s.bus.a = s.sp; \
+        s.sp = sp(s.sp - 2); \
+        break; \
+    case mc(opc, 1): \
+        s.bus.d = (s.pc >> 8); \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 2): \
+        s.bus(sp(s.bus.a - 1), u8(s.pc)); \
+        break; \
+    case mc(opc, 3): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        break; \
+    case mc(opc, 4): \
+        s.bus.a = (s.aux | (s.bus.d << 8)); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+
+#define m_rts(opc) \
+    case mc(opc, 0): \
+        s.bus.a = s.sp; \
+        s.sp = sp(s.sp + 2); \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = sp(s.bus.a + 1); \
+        break; \
+    case mc(opc, 2): \
+        s.pc = s.bus.d; \
+        s.bus.a = sp(s.bus.a + 1); \
+        break; \
+    case mc(opc, 3): \
+        s.bus.a = s.pc | (s.bus.d << 8); \
+        break; \
+    case mc(opc, 4): \
+        s.bus.a += 1; \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+
+#define m_rti(opc) \
+    case mc(opc, 0): \
+        s.bus.a = s.sp; \
+        s.sp = sp(s.sp + 3); \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = sp(s.bus.a + 1); \
+        break; \
+    case mc(opc, 2): \
+        s.p = s.bus.d; \
+        s.bus.a = sp(s.bus.a + 1); \
+        break; \
+    case mc(opc, 3): \
+        s.pc = s.bus.d; \
+        s.bus.a = sp(s.bus.a + 1); \
+        break; \
+    case mc(opc, 4): \
+        s.bus.a = s.pc | (s.bus.d << 8); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+
+#define m_brs(opc, flag) { \
+    case mc(opc, 0): \
+        Op{s}.bra(Op{s}.is_set(flag)); \
+        break; \
+}
+
+#define m_brc(opc, flag) { \
+    case mc(opc, 0): \
+        Op{s}.bra(Op{s}.is_clr(flag)); \
+        break; \
+}
+
+#define m_phr(opc, reg) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a; \
+        s.bus(s.sp, reg, RW::w); \
+        s.sp = sp(s.sp - 1); \
+        break; \
+    case mc(opc, 1): \
+        s.bus(s.pc, RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define m_plr(opc, op) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a; \
+        s.bus.a = s.sp; \
+        break; \
+    case mc(opc, 1): \
+        s.sp = sp(s.sp + 1); \
+        s.bus.a = s.sp; \
+        break; \
+    case mc(opc, 2): \
+        op; \
+        s.bus.a = s.pc; \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define m_hlt(opc) { \
+    case mc(opc, 0): \
+        Op{s}.halt(opc, s.bus.d); \
+        break; \
+}
+
+#define m_sch(opc, nxt) { \
+    case mc(opc, 0): \
+        Op{s}.schedule(nxt); \
+        break; \
+}
+
+// **************** Undefined ****************
+
+#define ud_izx(opc, op) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a + 1; \
+        s.bus.a = s.bus.d; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = zp(s.bus.a + s.x); \
+        break; \
+    case mc(opc, 2): \
+        s.aux = s.bus.d; \
+        s.bus.a = zp(s.bus.a + 1); \
+        break; \
+    case mc(opc, 3): \
+        s.bus.a = s.aux | (s.bus.d << 8); \
+        break; \
+    case mc(opc, 4): \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 5): \
+        op; \
+        break; \
+    case mc(opc, 6): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define ud_izy(opc, op) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a + 1; \
+        s.bus.a = s.bus.d; \
+        break; \
+    case mc(opc, 1): \
+        s.aux = s.bus.d + s.y; \
+        s.bus.a = zp(s.bus.a + 1); \
+        break; \
+    case mc(opc, 2): \
+        s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
+        break; \
+    case mc(opc, 3): \
+        s.bus.a += (s.aux & 0x100); \
+        break; \
+    case mc(opc, 4): \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 5): \
+        op; \
+        break; \
+    case mc(opc, 6): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define ud_ai(opc, ir1, ir2, op) { \
+    case mc(opc, 0): \
+        s.aux = s.bus.d + ir1; \
+        s.pc = s.bus.a + 2; \
+        s.bus.a += 1; \
+        break; \
+    case mc(opc, 1): \
+        s.bus.a = (s.bus.d << 8) | (s.aux & 0xff); \
+        break; \
+    case mc(opc, 2): \
+        s.bus.d = ir2 & ((s.bus.a + 0x100) >> 8); \
+        op; \
+        s.bus.a = (s.aux & 0x100) \
+            ? ((s.bus.d << 8) | (s.bus.a & 0xff)) \
+            : s.bus.a; \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 3): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+#define ud_ahx(opc) { \
+    case mc(opc, 0): \
+        s.pc = s.bus.a + 1; \
+        s.bus.a = s.bus.d; \
+        break; \
+    case mc(opc, 1): \
+        s.aux = s.bus.d + s.y; \
+        s.bus.a = zp(s.bus.a + 1); \
+        break; \
+    case mc(opc, 2): \
+        s.bus.a = (s.bus.d << 8) | (s.aux & 0xff); \
+        break; \
+    case mc(opc, 3): \
+        s.bus.d = s.a & s.x & ((s.bus.a + 0x100) >> 8); \
+        s.bus.a = (s.aux & 0x100) \
+            ? ((s.bus.d << 8) | (s.bus.a & 0xff)) \
+            : s.bus.a; \
+        s.bus(RW::w); \
+        break; \
+    case mc(opc, 4): \
+        s.bus.a = s.pc; \
+        s.bus(RW::r); \
+        Op{s}.schedule(OPC::dispatch); \
+        break; \
+}
+
+
 static constexpr MOS6502::u16 mc(MOS6502::u16 opc, MOS6502::u8 cn = 0) { // micro-code label
     return (opc << 3) | (cn & 0b111);
 }
@@ -215,644 +854,6 @@ static constexpr MOS6502::u16 mc(MOS6502::u16 opc, MOS6502::u8 cn = 0) { // micr
 
 void MOS6502::Core::exec_cycle() {
     static constexpr u8 nmi_timer_handled = 0b10000000;
-
-    // **************** Single Byte Instructions ****************
-
-    #define sb(opc, op) { \
-        case mc(opc, 0): \
-            op; \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    // ******** Internal Execution On Memory Data ********
-
-    #define ie_i(opc, op) { \
-        case mc(opc, 0): \
-            op; \
-            s.bus.a += 1; \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define ie_z(opc, op) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a + 1; \
-            s.bus.a = s.bus.d; \
-            break; \
-        case mc(opc, 1): \
-            op; \
-            s.bus.a = s.pc; \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define ie_a(opc, op) { \
-        case mc(opc, 0): \
-            s.aux = s.bus.d; \
-            s.pc = s.bus.a + 2; \
-            s.bus.a += 1; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = s.aux | (s.bus.d << 8); \
-            break; \
-        case mc(opc, 2): \
-            op; \
-            s.bus.a = s.pc; \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define ie_izx(opc, op) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a + 1; \
-            s.bus.a = s.bus.d; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = zp(s.bus.a + s.x); \
-            break; \
-        case mc(opc, 2): \
-            s.aux = s.bus.d; \
-            s.bus.a = zp(s.bus.a + 1); \
-            break; \
-        case mc(opc, 3): \
-            s.bus.a = s.aux | (s.bus.d << 8); \
-            break; \
-        case mc(opc, 4): \
-            op; \
-            s.bus.a = s.pc; \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define ie_ai(opc, ireg, op) { \
-        case mc(opc, 0): \
-            s.aux = s.bus.d + ireg; \
-            s.pc = s.bus.a + 2; \
-            s.bus.a += 1; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
-            s.mcc += (s.aux >> 8); \
-            break; \
-        case mc(opc, 2): \
-            op; \
-            s.bus.a = s.pc; \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-        case mc(opc, 3): \
-            s.bus.a += 0x100; \
-            break; \
-        case mc(opc, 4): \
-            op; \
-            s.bus.a = s.pc; \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define ie_zi(opc, ireg, op) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a + 1; \
-            s.bus.a = s.bus.d; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = zp(s.bus.a + ireg); \
-            break; \
-        case mc(opc, 2): \
-            op; \
-            s.bus.a = s.pc; \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define ie_izy(opc, op) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a + 1; \
-            s.bus.a = s.bus.d; \
-            break; \
-        case mc(opc, 1): \
-            s.aux = s.bus.d + s.y; \
-            s.bus.a = zp(s.bus.a + 1); \
-            break; \
-        case mc(opc, 2): \
-            s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
-            s.mcc += (s.aux >> 8); \
-            break; \
-        case mc(opc, 3): \
-            op; \
-            s.bus.a = s.pc; \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-        case mc(opc, 4): \
-            s.bus.a += 0x100; \
-            break; \
-        case mc(opc, 5): \
-            op; \
-            s.bus.a = s.pc; \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    // **************** Store Operations ****************
-
-    #define st_z(opc, reg) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a + 1; \
-            s.bus.a = s.bus.d; \
-            s.bus.d = reg; \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define st_a(opc, reg) { \
-        case mc(opc, 0): \
-            s.aux = s.bus.d; \
-            s.pc = s.bus.a + 2; \
-            s.bus.a += 1; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = s.aux | (s.bus.d << 8); \
-            s.bus.d = reg; \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 2): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define st_izx(opc, reg) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a + 1; \
-            s.bus.a = s.bus.d; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = zp(s.bus.a + s.x); \
-            break; \
-        case mc(opc, 2): \
-            s.aux = s.bus.d; \
-            s.bus.a = zp(s.bus.a + 1); \
-            break; \
-        case mc(opc, 3): \
-            s.bus.a = s.aux | (s.bus.d << 8); \
-            s.bus.d = reg; \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 4): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define st_ai(opc, ireg) { \
-        case mc(opc, 0): \
-            s.aux = s.bus.d + ireg; \
-            s.pc = s.bus.a + 2; \
-            s.bus.a += 1; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
-            break; \
-        case mc(opc, 2): \
-            s.bus.a += (s.aux & 0x100); \
-            s.bus.d = s.a; \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 3): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define st_zi(opc, ireg, reg) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a + 1; \
-            s.bus.a = s.bus.d; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = zp(s.bus.a + ireg); \
-            s.bus.d = reg; \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 2): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define st_izy(opc) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a + 1; \
-            s.bus.a = s.bus.d; \
-            break; \
-        case mc(opc, 1): \
-            s.aux = s.bus.d + s.y; \
-            s.bus.a = zp(s.bus.a + 1); \
-            break; \
-        case mc(opc, 2): \
-            s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
-            break; \
-        case mc(opc, 3): \
-            s.bus.a += (s.aux & 0x100); \
-            s.bus.d = s.a; \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 4): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    // **************** Read-Modify-Write -operations ****************
-
-    #define rmw_z(opc, op) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a + 1; \
-            s.bus.a = s.bus.d; \
-            break; \
-        case mc(opc, 1): \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 2): \
-            op; \
-            break; \
-        case mc(opc, 3): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define rmw_a(opc, op) { \
-        case mc(opc, 0): \
-            s.aux = s.bus.d; \
-            s.pc = s.bus.a + 2; \
-            s.bus.a += 1; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = s.aux | (s.bus.d << 8); \
-            break; \
-        case mc(opc, 2): \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 3): \
-            op; \
-            break; \
-        case mc(opc, 4): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define rmw_zx(opc, op) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a + 1; \
-            s.bus.a = s.bus.d; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = zp(s.bus.a + s.x); \
-            break; \
-        case mc(opc, 2): \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 3): \
-            op; \
-            break; \
-        case mc(opc, 4): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define rmw_ai(opc, ireg, op) { \
-        case mc(opc, 0): \
-            s.aux = s.bus.d + ireg; \
-            s.pc = s.bus.a + 2; \
-            s.bus.a += 1; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
-            break; \
-        case mc(opc, 2): \
-            s.bus.a += (s.aux & 0x100); \
-            break; \
-        case mc(opc, 3): \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 4): \
-            op; \
-            break; \
-        case mc(opc, 5): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    // **************** Miscellaneous Operations ****************
-
-    /* Interrupt hijacking:
-        - happens if an interrupt of a higher priority is signalled before
-            the 'brk' execution of the lower priority reaches T5 (=T4 ph2 at latest).
-        - T0&T1 PC, and pushed b-flag according to the former (lower prio)
-        - vector address according to the latter (higher prio)
-    */
-    #define m_brk(opc) \
-        case mc(opc, 0): \
-            s.pc = s.bus.a; \
-            if (s.brk_srcs == Brk_src::sw) s.pc += 1; /*TODO: inc during dispatch?*/ \
-            s.bus(s.sp, (s.pc >> 8), RW::w); \
-            break; \
-        case mc(opc, 1): \
-            s.bus(sp(s.bus.a - 1), s.pc); \
-            break; \
-        case mc(opc, 2): { \
-            const auto p = s.p | Flag::u; \
-            s.bus(sp(s.bus.a - 1), p); \
-            s.sp = sp(s.bus.a - 1); \
-            break; } \
-        case mc(opc, 3): \
-            if (s.nmi_timer & 0b11) /*Potential hijacking by nmi*/ { \
-                s.brk_srcs = Brk_src::nmi; \
-                s.nmi_timer = nmi_timer_handled; \
-            } \
-            s.bus.a = (s.brk_srcs & Brk_src::nmi) ? Vec::nmi : Vec::irq; \
-            s.brk_srcs = 0; \
-            s.bus(RW::r); \
-            break; \
-        case mc(opc, 4): \
-            s.aux = s.bus.d; \
-            s.bus.a += 1; \
-            break; \
-        case mc(opc, 5): \
-            s.bus.a = s.aux | (s.bus.d << 8); \
-            Op{s}.set(Flag::I); \
-            Op{s}.schedule(OPC::dispatch_post_brk); \
-            break; \
-
-    #define m_ja(opc) \
-        case mc(opc, 0): \
-            s.aux = s.bus.d; \
-            s.bus.a += 1; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = s.aux | (s.bus.d << 8); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-
-    #define m_ji(opc) \
-        case mc(opc, 0): \
-            s.aux = s.bus.d; \
-            s.bus.a += 1; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = s.aux | (s.bus.d << 8); \
-            break; \
-        case mc(opc, 2): \
-            s.aux = s.bus.d; \
-            /* the 'missing carry propagation' feature*/ \
-            s.bus.a = (s.bus.a & 0xff00) | ((s.bus.a + 1) & 0xff); \
-            break; \
-        case mc(opc, 3): \
-            s.bus.a = s.aux | (s.bus.d << 8); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-
-    #define m_js(opc) \
-        case mc(opc, 0): \
-            s.aux = s.bus.d; \
-            s.pc = s.bus.a + 1; \
-            s.bus.a = s.sp; \
-            s.sp = sp(s.sp - 2); \
-            break; \
-        case mc(opc, 1): \
-            s.bus.d = (s.pc >> 8); \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 2): \
-            s.bus(sp(s.bus.a - 1), u8(s.pc)); \
-            break; \
-        case mc(opc, 3): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            break; \
-        case mc(opc, 4): \
-            s.bus.a = (s.aux | (s.bus.d << 8)); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-
-    #define m_rts(opc) \
-        case mc(opc, 0): \
-            s.bus.a = s.sp; \
-            s.sp = sp(s.sp + 2); \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = sp(s.bus.a + 1); \
-            break; \
-        case mc(opc, 2): \
-            s.pc = s.bus.d; \
-            s.bus.a = sp(s.bus.a + 1); \
-            break; \
-        case mc(opc, 3): \
-            s.bus.a = s.pc | (s.bus.d << 8); \
-            break; \
-        case mc(opc, 4): \
-            s.bus.a += 1; \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-
-    #define m_rti(opc) \
-        case mc(opc, 0): \
-            s.bus.a = s.sp; \
-            s.sp = sp(s.sp + 3); \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = sp(s.bus.a + 1); \
-            break; \
-        case mc(opc, 2): \
-            s.p = s.bus.d; \
-            s.bus.a = sp(s.bus.a + 1); \
-            break; \
-        case mc(opc, 3): \
-            s.pc = s.bus.d; \
-            s.bus.a = sp(s.bus.a + 1); \
-            break; \
-        case mc(opc, 4): \
-            s.bus.a = s.pc | (s.bus.d << 8); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-
-    #define m_brs(opc, flag) { \
-        case mc(opc, 0): \
-            Op{s}.bra(Op{s}.is_set(flag)); \
-            break; \
-    }
-
-    #define m_brc(opc, flag) { \
-        case mc(opc, 0): \
-            Op{s}.bra(Op{s}.is_clr(flag)); \
-            break; \
-    }
-
-    #define m_phr(opc, reg) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a; \
-            s.bus(s.sp, reg, RW::w); \
-            s.sp = sp(s.sp - 1); \
-            break; \
-        case mc(opc, 1): \
-            s.bus(s.pc, RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define m_plr(opc, op) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a; \
-            s.bus.a = s.sp; \
-            break; \
-        case mc(opc, 1): \
-            s.sp = sp(s.sp + 1); \
-            s.bus.a = s.sp; \
-            break; \
-        case mc(opc, 2): \
-            op; \
-            s.bus.a = s.pc; \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define m_hlt(opc) { \
-        case mc(opc, 0): \
-            Op{s}.halt(opc, s.bus.d); \
-            break; \
-    }
-
-    #define m_sch(opc, nxt) { \
-        case mc(opc, 0): \
-            Op{s}.schedule(nxt); \
-            break; \
-    }
-
-    // **************** Undefined ****************
-
-    #define ud_izx(opc, op) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a + 1; \
-            s.bus.a = s.bus.d; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = zp(s.bus.a + s.x); \
-            break; \
-        case mc(opc, 2): \
-            s.aux = s.bus.d; \
-            s.bus.a = zp(s.bus.a + 1); \
-            break; \
-        case mc(opc, 3): \
-            s.bus.a = s.aux | (s.bus.d << 8); \
-            break; \
-        case mc(opc, 4): \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 5): \
-            op; \
-            break; \
-        case mc(opc, 6): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define ud_izy(opc, op) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a + 1; \
-            s.bus.a = s.bus.d; \
-            break; \
-        case mc(opc, 1): \
-            s.aux = s.bus.d + s.y; \
-            s.bus.a = zp(s.bus.a + 1); \
-            break; \
-        case mc(opc, 2): \
-            s.bus.a = (s.aux & 0xff) | (s.bus.d << 8); \
-            break; \
-        case mc(opc, 3): \
-            s.bus.a += (s.aux & 0x100); \
-            break; \
-        case mc(opc, 4): \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 5): \
-            op; \
-            break; \
-        case mc(opc, 6): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define ud_ai(opc, ir1, ir2, op) { \
-        case mc(opc, 0): \
-            s.aux = s.bus.d + ir1; \
-            s.pc = s.bus.a + 2; \
-            s.bus.a += 1; \
-            break; \
-        case mc(opc, 1): \
-            s.bus.a = (s.bus.d << 8) | (s.aux & 0xff); \
-            break; \
-        case mc(opc, 2): \
-            s.bus.d = ir2 & ((s.bus.a + 0x100) >> 8); \
-            op; \
-            s.bus.a = (s.aux & 0x100) \
-                ? ((s.bus.d << 8) | (s.bus.a & 0xff)) \
-                : s.bus.a; \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 3): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
-
-    #define ud_ahx(opc) { \
-        case mc(opc, 0): \
-            s.pc = s.bus.a + 1; \
-            s.bus.a = s.bus.d; \
-            break; \
-        case mc(opc, 1): \
-            s.aux = s.bus.d + s.y; \
-            s.bus.a = zp(s.bus.a + 1); \
-            break; \
-        case mc(opc, 2): \
-            s.bus.a = (s.bus.d << 8) | (s.aux & 0xff); \
-            break; \
-        case mc(opc, 3): \
-            s.bus.d = s.a & s.x & ((s.bus.a + 0x100) >> 8); \
-            s.bus.a = (s.aux & 0x100) \
-                ? ((s.bus.d << 8) | (s.bus.a & 0xff)) \
-                : s.bus.a; \
-            s.bus(RW::w); \
-            break; \
-        case mc(opc, 4): \
-            s.bus.a = s.pc; \
-            s.bus(RW::r); \
-            Op{s}.schedule(OPC::dispatch); \
-            break; \
-    }
 
     switch (s.mcc++) {
          m_brk(0x00);                            // brk
@@ -1116,7 +1117,7 @@ void MOS6502::Core::exec_cycle() {
 
         case mc(OPC::bra, 0): // bra, no page cross (hold ints)
             if (s.nmi_timer == 0x02) s.nmi_timer = 0x01;
-            if (s.irq_timer == 0b10) s.irq_timer = 0b01;
+            if (s.irq_timer & 0b11) s.irq_timer = 0b01;
             s.bus.a = s.pc;
             Op{s}.schedule(OPC::dispatch);
             break;
