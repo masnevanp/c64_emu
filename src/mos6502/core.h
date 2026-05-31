@@ -12,6 +12,7 @@ Invaluable resources (thanks!):
     https://www.nesdev.org/wiki/Visual6502wiki/6502_all_256_Opcodes
     https://www.masswerk.at/6502/6502_instruction_set.html
 
+    THE C64 Emulator Test Suite 2.15 by Wolfgang Lorenz
 */
 
 namespace MOS6502 {
