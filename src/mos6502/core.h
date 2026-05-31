@@ -99,7 +99,7 @@ public:
 
     void tick();
 
-    bool at_fetch() const { return s.opc()>= OPC::dispatch_post_cli && s.opc() <= OPC::dispatch_post_brk; }
+    bool at_fetch() const { return s.opc() >= OPC::dispatch_post_cli && s.opc() <= OPC::dispatch_post_brk; }
     bool halted() const   { return s.opc() == OPC::halt; }
     void resume();
 
