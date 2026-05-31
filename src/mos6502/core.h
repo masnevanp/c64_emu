@@ -84,7 +84,7 @@ public:
         u8 irq_timer;
         u8 brk_srcs;
 
-        u16 opc() const { return mcc >> 3; }
+        OPC opc() const { return OPC(mcc >> 3); }
     };
 
     State& s;
