@@ -942,7 +942,7 @@ void MOS6502::Core::tick() {
           ie_z(0x45, Op{s}.eor());               // eor zp
          rmw_z(0x46, Op{s}.lsr(s.bus.d));        // lsr zp
          rmw_z(0x47, Op{s}.ud_sre());            // sre zp
-       m_phr(0x48, s.a);                         // pha
+         m_phr(0x48, s.a);                       // pha
           ie_i(0x49, Op{s}.eor());               // eor imm
             sb(0x4a, Op{s}.lsr(s.a));            // lsr
           ie_i(0x4b, Op{s}.ud_alr());            // alr imm
