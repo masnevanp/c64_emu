@@ -222,7 +222,7 @@ void C1541::System::install_idle_trap() {
 
 /*void C1541::System::_dump(const CPU& cpu, u8* mem) {
     using namespace Dbg;
-    using namespace NMOS6502;
+    using namespace MOS6502;
 
     std::cout << "\npc: " << print_u16(cpu.pc);
     std::cout << "   sp: " << print_u16(cpu.spf);

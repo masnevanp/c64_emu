@@ -322,7 +322,7 @@ bool on_trap(System::CPU& cpu, u8* ram, Controller& iec_ctrl) {
             break;
         case IEC_routine::tksa:
             status = iec_ctrl.talk_s(cpu.s.a);
-            cpu.s.clr(NMOS6502::Flag::N);
+            cpu.s.clr(MOS6502::Flag::N);
             break;
         case IEC_routine::second:
             status = iec_ctrl.listen_s(cpu.s.a);
@@ -338,7 +338,7 @@ bool on_trap(System::CPU& cpu, u8* ram, Controller& iec_ctrl) {
             return false;
     }
 
-    cpu.s.clr(NMOS6502::Flag::C);
+    cpu.s.clr(MOS6502::Flag::C);
     ram[0x90] |= status; // TODO: should it be cleared in some cases??
 
     cpu.s.pc = 0xedee;  // jump to a 'rts'

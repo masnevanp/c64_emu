@@ -641,7 +641,7 @@ private:
     bool not_sync_set()       const { return s.via_pb_in & PB::sync; }
     void signal_byte_ready() {
         ca1_edge(0b0);
-        cpu.s.p |= MOS6502::Flag::V; // TODO: SO-detection delay in the CPU (how many cycles?)
+        cpu.s.set(MOS6502::Flag::V); // TODO: SO-detection delay in the CPU (how many cycles?)
     }
 
     void step_head(const u8 via_pb_out_now);

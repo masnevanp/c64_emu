@@ -86,6 +86,9 @@ public:
         u8 brk_srcs;
 
         OPC opc() const { return OPC(mcc >> 3); }
+
+        void set(Flag f, bool set = true) { p = set ? p | f : p & ~f; }
+        void clr(Flag f) { p &= ~f; }
     };
 
     State& s;

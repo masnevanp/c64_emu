@@ -18,12 +18,10 @@ namespace MOS6502 {
 
         void check_irq() { if (s.irq_act && is_clr(Flag::I)) s.brk_srcs |= Brk_src::irq; }
     
-        void set(Flag f, bool set = true) { s.p = set ? s.p | f : s.p & ~f; }
-        void clr(Flag f) { s.p &= ~f; }
         bool is_set(Flag f) const { return s.p & f; }
         bool is_clr(Flag f) const { return !is_set(f); }
 
-        void set_nz(const u8& res) { set(Flag::N, res & 0x80); set(Flag::Z, res == 0x00); }
+        void set_nz(const u8& res) { s.set(Flag::N, res & 0x80); s.set(Flag::Z, res == 0x00); }
 
         u8 C() const { return s.p & Flag::C; } // carry
         u8 B() const { return C() ^ 1; } // borrow
@@ -45,25 +43,25 @@ namespace MOS6502 {
 
         void adc();
         void and_()     { set_nz(s.a &= s.bus.d); }
-        void asl(u8& d) { set(Flag::C, d & 0x80); set_nz(d <<= 1); }
-        void bit()      { s.p = (s.p & 0x3f) | (s.bus.d & 0xc0); set(Flag::Z, (s.a & s.bus.d) == 0x00); }
-        void cmp(u8 r)  { set(Flag::C, r >= s.bus.d); set_nz(r - s.bus.d); }
+        void asl(u8& d) { s.set(Flag::C, d & 0x80); set_nz(d <<= 1); }
+        void bit()      { s.p = (s.p & 0x3f) | (s.bus.d & 0xc0); s.set(Flag::Z, (s.a & s.bus.d) == 0x00); }
+        void cmp(u8 r)  { s.set(Flag::C, r >= s.bus.d); set_nz(r - s.bus.d); }
         void dec(u8& d) { set_nz(--d); }
         void eor()      { set_nz(s.a ^= s.bus.d); }
         void inc(u8& d) { set_nz(++d); }
         void lax()      { set_nz(s.a = s.x = s.bus.d); }
         void ldr(u8& r) { set_nz(r = s.bus.d); }
-        void lsr(u8& d) { clr(Flag::N); set(Flag::C, d & 0x01); set(Flag::Z, !(d >>= 1)); }
+        void lsr(u8& d) { s.clr(Flag::N); s.set(Flag::C, d & 0x01); s.set(Flag::Z, !(d >>= 1)); }
         void ora()      { set_nz(s.a |= s.bus.d); }
         void rol(u8& d) {
             const u8 old_c = s.p & Flag::C;
-            set(Flag::C, d & 0x80);
+            s.set(Flag::C, d & 0x80);
             d <<= 1;
             set_nz(d |= old_c);
         }
         void ror(u8& d) {
             const u8 old_c = s.p << 7;
-            set(Flag::C, d & 0x01);
+            s.set(Flag::C, d & 0x01);
             d >>= 1;
             set_nz(d |= old_c);
         }
@@ -71,17 +69,17 @@ namespace MOS6502 {
         void trr(u8 sr, u8& tr) { set_nz(tr = sr); }
 
         void ud_alr() { s.a &= s.bus.d; lsr(s.a); }
-        void ud_anc() { Op{s}.and_(); set(Flag::C, s.a & 0x80); }
+        void ud_anc() { Op{s}.and_(); s.set(Flag::C, s.a & 0x80); }
         void ud_arr();
-        void ud_axs() { s.x &= s.a; set(Flag::C, s.x >= s.bus.d); set_nz(s.x -= s.bus.d); }
+        void ud_axs() { s.x &= s.a; s.set(Flag::C, s.x >= s.bus.d); set_nz(s.x -= s.bus.d); }
         void ud_dcp() { --s.bus.d; cmp(s.a); }
         void ud_isc() { ++s.bus.d; sbc(); }
         void ud_las() { set_nz(s.a = s.x = (s.sp & s.bus.d)); s.sp = sp(s.a); }
         void ud_lxa() { set_nz(s.a = s.x = (s.a | 0xee) & s.bus.d); }
         void ud_rla() { rol(s.bus.d); Op{s}.and_(); }
         void ud_rra() { ror(s.bus.d); adc(); }
-        void ud_slo() { set(Flag::C, s.bus.d & 0x80); set_nz(s.a |= (s.bus.d <<= 1)); }
-        void ud_sre() { set(Flag::C, s.bus.d & 0x01); set_nz(s.a ^= (s.bus.d >>= 1)); }
+        void ud_slo() { s.set(Flag::C, s.bus.d & 0x80); set_nz(s.a |= (s.bus.d <<= 1)); }
+        void ud_sre() { s.set(Flag::C, s.bus.d & 0x01); set_nz(s.a ^= (s.bus.d >>= 1)); }
         void ud_tas() { s.bus.d &= s.a; s.sp = sp(s.a & s.x); }
         void ud_xaa() { set_nz(s.a = (s.a | 0xee) & s.x & s.bus.d); }
 
@@ -102,20 +100,20 @@ namespace MOS6502 {
                 if (res > 0x9) { co = 0x1; return (res + 0x6) & 0xf; }
                 else { co = 0x0; return res; }
             };
-            set(Flag::Z, ((s.a + s.bus.d + C()) & 0xff) == 0x00); // Z set based on binary result
+            s.set(Flag::Z, ((s.a + s.bus.d + C()) & 0xff) == 0x00); // Z set based on binary result
             u8 n1; u8 c1; u8 n2; u8 c2;
             n1 = adc_dec_nib((s.a & 0xf) + (s.bus.d & 0xf) + C(), c1);
             n2 = (s.a >> 4) + (s.bus.d >> 4) + c1;
             u8 r = (n2 << 4) | n1; // high nib not adjusted yet (N&V set based on this)
-            set(Flag::N, r & 0x80);
-            set(Flag::V, ((s.a ^ r) & (s.bus.d ^ r) & 0x80));
+            s.set(Flag::N, r & 0x80);
+            s.set(Flag::V, ((s.a ^ r) & (s.bus.d ^ r) & 0x80));
             n2 = adc_dec_nib(n2, c2);
-            set(Flag::C, c2); // decimal carry
+            s.set(Flag::C, c2); // decimal carry
             s.a = (n2 << 4) | n1;
         } else {
             u16 r = s.a + s.bus.d + C();
-            set(Flag::C, r & 0x100);
-            set(Flag::V, ((s.a ^ r) & (s.bus.d ^ r) & 0x80));
+            s.set(Flag::C, r & 0x100);
+            s.set(Flag::V, ((s.a ^ r) & (s.bus.d ^ r) & 0x80));
             set_nz(s.a = r);
         }
     }
@@ -126,20 +124,20 @@ namespace MOS6502 {
                 if (res > 0xf) { co = 0x1; return (res - 0x6) & 0xf; }
                 else { co = 0x0; return res; }
             };
-            set(Flag::Z, ((s.a - s.bus.d - B()) & 0xff) == 0x00);
+            s.set(Flag::Z, ((s.a - s.bus.d - B()) & 0xff) == 0x00);
             u8 n1; u8 c1; u8 n2; u8 c2;
             n1 = sbc_dec_nib((s.a & 0xf) - (s.bus.d & 0xf) - B(), c1);
             n2 = (s.a >> 4) - (s.bus.d >> 4) - c1;
             u8 r = (n2 << 4) | n1;
-            set(Flag::N, r & 0x80);
-            set(Flag::V, ((s.a ^ s.bus.d) & (s.a ^ r)) & 0x80);
+            s.set(Flag::N, r & 0x80);
+            s.set(Flag::V, ((s.a ^ s.bus.d) & (s.a ^ r)) & 0x80);
             n2 = sbc_dec_nib(n2, c2);
-            set(Flag::C, !c2);
+            s.set(Flag::C, !c2);
             s.a = (n2 << 4) | n1;
         } else {
             u16 r = s.a - s.bus.d - B();
-            set(Flag::C, r < 0x100);
-            set(Flag::V, ((s.a ^ s.bus.d) & (s.a ^ r)) & 0x80);
+            s.set(Flag::C, r < 0x100);
+            s.set(Flag::V, ((s.a ^ s.bus.d) & (s.a ^ r)) & 0x80);
             set_nz(s.a = r);
         }
     }
@@ -154,21 +152,21 @@ namespace MOS6502 {
             u8 ah = s.bus.d >> 4;
             u8 al = s.bus.d & 0xf;
 
-            set(Flag::N, is_set(Flag::C));
+            s.set(Flag::N, is_set(Flag::C));
             s.a = (s.bus.d >> 1) | (s.p << 7);
-            set(Flag::Z, s.a == 0x00);
-            set(Flag::V, (s.bus.d ^ s.a) & 0x40);
+            s.set(Flag::Z, s.a == 0x00);
+            s.set(Flag::V, (s.bus.d ^ s.a) & 0x40);
 
             if (al + (al & 0x1) > 0x5) s.a = (s.a & 0xf0) | ((s.a + 0x6) & 0xf);
-            if ((ah + (ah & 0x1)) > 0x5) { set(Flag::C); s.a += 0x60; }
-            else clr(Flag::C);
+            if ((ah + (ah & 0x1)) > 0x5) { s.set(Flag::C); s.a += 0x60; }
+            else s.clr(Flag::C);
         } else {
             s.a &= s.bus.d;
             s.a >>= 1;
             s.a |= (s.p << 7);
             set_nz(s.a);
-            set(Flag::C, s.a & 0x40);
-            set(Flag::V, (s.a ^ (s.a << 1)) & 0x40);
+            s.set(Flag::C, s.a & 0x40);
+            s.set(Flag::V, (s.a ^ (s.a << 1)) & 0x40);
         }
     }
 
@@ -563,8 +561,6 @@ void MOS6502::Core::set_irq(bool act) {
 */
 #define m_brk(opc) \
     case mc(opc, 0): \
-        s.pc = s.bus.a; \
-        if (s.brk_srcs == Brk_src::sw) s.pc += 1; /*TODO: inc during dispatch?*/ \
         s.bus(s.sp, (s.pc >> 8), RW::w); \
         break; \
     case mc(opc, 1): \
@@ -590,7 +586,7 @@ void MOS6502::Core::set_irq(bool act) {
         break; \
     case mc(opc, 5): \
         s.bus.a = s.aux | (s.bus.d << 8); \
-        Op{s}.set(Flag::I); \
+        s.set(Flag::I); \
         Op{s}.schedule(OPC::dispatch_post_brk); \
         break; \
 
@@ -894,7 +890,7 @@ void MOS6502::Core::tick() {
          ie_zi(0x15, s.x, Op{s}.ora());          // ora zpx
         rmw_zx(0x16, Op{s}.asl(s.bus.d));        // asl zpx
         rmw_zx(0x17, Op{s}.ud_slo());            // slo zpx
-            sb(0x18, Op{s}.clr(Flag::C));        // clc
+            sb(0x18, s.clr(Flag::C));            // clc
          ie_ai(0x19, s.y, Op{s}.ora());          // ora absy
             sb(0x1a, );                          // nop
         rmw_ai(0x1b, s.y, Op{s}.ud_slo());       // slo absy
@@ -926,7 +922,7 @@ void MOS6502::Core::tick() {
          ie_zi(0x35, s.x, Op{s}.and_());         // and zpx
         rmw_zx(0x36, Op{s}.rol(s.bus.d));        // rol zpx
         rmw_zx(0x37, Op{s}.ud_rla());            // rla zpx
-            sb(0x38, Op{s}.set(Flag::C));        // sec
+            sb(0x38, s.set(Flag::C));            // sec
          ie_ai(0x39, s.y, Op{s}.and_());         // and absy
             sb(0x3a, );                          // nop
         rmw_ai(0x3b, s.y, Op{s}.ud_rla());       // rla absy
@@ -1054,7 +1050,7 @@ void MOS6502::Core::tick() {
          ie_zi(0xb5, s.x, Op{s}.ldr(s.a));       // lda zpx
          ie_zi(0xb6, s.y, Op{s}.ldr(s.x));       // ldx zpy
          ie_zi(0xb7, s.y, Op{s}.lax());          // lax zpy
-            sb(0xb8, Op{s}.clr(Flag::V));        // clv
+            sb(0xb8, s.clr(Flag::V));            // clv
          ie_ai(0xb9, s.y, Op{s}.ldr(s.a));       // lda absy
             sb(0xba, Op{s}.trr(u8(s.sp), s.x));  // tsx
          ie_ai(0xbb, s.y, Op{s}.ud_las());       // las absy
@@ -1086,7 +1082,7 @@ void MOS6502::Core::tick() {
          ie_zi(0xd5, s.x, Op{s}.cmp(s.a));       // cmp zpx
         rmw_zx(0xd6, Op{s}.dec(s.bus.d));        // dec zpx
         rmw_zx(0xd7, Op{s}.ud_dcp());            // dcp zpx
-            sb(0xd8, Op{s}.clr(Flag::D));        // cld
+            sb(0xd8, s.clr(Flag::D));            // cld
          ie_ai(0xd9, s.y, Op{s}.cmp(s.a));       // cmp absy
             sb(0xda, );                          // nop
         rmw_ai(0xdb, s.y, Op{s}.ud_dcp());       // dcp absy
@@ -1118,7 +1114,7 @@ void MOS6502::Core::tick() {
          ie_zi(0xf5, s.x, Op{s}.sbc());          // sbc zpx
         rmw_zx(0xf6, Op{s}.inc(s.bus.d));        // inc zpx
         rmw_zx(0xf7, Op{s}.ud_isc());            // isc zpx
-            sb(0xf8, Op{s}.set(Flag::D));        // sed
+            sb(0xf8, s.set(Flag::D));            // sed
          ie_ai(0xf9, s.y, Op{s}.sbc());          // sbc absy
             sb(0xfa, );                          // nop
         rmw_ai(0xfb, s.y, Op{s}.ud_isc());       // isc absy
@@ -1150,11 +1146,11 @@ void MOS6502::Core::tick() {
         */
         case mc(OPC::dispatch_post_cli): 
             Op{s}.check_irq(); // irq taken on 'old' i-flag value
-            Op{s}.clr(Flag::I);
+            s.clr(Flag::I);
             goto irq_checked;
         case mc(OPC::dispatch_post_sei):
             Op{s}.check_irq(); // irq taken on 'old' i-flag value
-            Op{s}.set(Flag::I);
+            s.set(Flag::I);
             goto irq_checked;
         case mc(OPC::dispatch): // 'normal' T0 case (all interrupts taken normally)
             Op{s}.check_irq();
@@ -1168,13 +1164,15 @@ void MOS6502::Core::tick() {
             // fall through
         case mc(OPC::dispatch_post_brk):
             if (s.brk_srcs) {
+                s.pc = s.bus.a;
                 s.p &= ~Flag::B;
                 Op{s}.schedule(OPC::brk);
             } else {
                 s.bus.a += 1; // inc pc
                 if (s.bus.d == OPC::brk) {
+                    s.pc = s.bus.a + 1;
                     s.p |= Flag::B;
-                    s.brk_srcs = Brk_src::sw;
+                    // s.brk_srcs = Brk_src::sw; // redundant...
                 }
                 Op{s}.schedule(OPC(s.bus.d));
             }
@@ -1208,7 +1206,7 @@ void MOS6502::Core::tick() {
             break;
         case mc(OPC::reset, 6):
             s.bus.a = s.aux | (s.bus.d << 8);
-            Op{s}.set(Flag::I);
+            s.set(Flag::I);
             Op{s}.schedule(OPC::dispatch_post_brk);
             break;
     }
