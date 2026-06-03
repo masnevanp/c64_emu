@@ -1147,15 +1147,15 @@ void MOS6502::Core::tick() {
         case mc(OPC::dispatch_post_cli): 
             Op{s}.check_irq(); // irq taken on 'old' i-flag value
             s.clr(Flag::I);
-            goto irq_checked;
+            goto check_nmi;
         case mc(OPC::dispatch_post_sei):
             Op{s}.check_irq(); // irq taken on 'old' i-flag value
             s.set(Flag::I);
-            goto irq_checked;
+            goto check_nmi;
         case mc(OPC::dispatch): // 'normal' T0 case (all interrupts taken normally)
             Op{s}.check_irq();
 
-            irq_checked:
+            check_nmi:
             if (s.nmi_act) {
                 s.brk_srcs |= Brk_src::nmi;
                 s.nmi_act = false;
