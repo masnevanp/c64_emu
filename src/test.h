@@ -4,7 +4,7 @@
 
 namespace Test {
 
-using namespace NMOS6502;
+using namespace MOS6502;
 
 void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) {
     auto mem_ = read_file("data/6502_functional_test/6502_functional_test.bin");
@@ -16,13 +16,16 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     mem[0xfffc] = 0x00; mem[0xfffd] = 0x04;
 
     Core::State cpu_state;
-    Sig sig_halt = [](){ Log::error("CPU halted!"); };
+    MOS6502::Sig_halt sig_halt = [](u8 opc, u8 d) {
+        Log::error("****** CPU halted! (opc: %d, d: %d) ******", opc, d);
+    };
+
     Core cpu{cpu_state, sig_halt};
     cpu.reset();
 
     for (int i = 0; i < 7; ++i) { // do reset...
-        if (cpu.mrw() == MC::RW::r) cpu.mdr() = mem[cpu.mar()];
-        else mem[cpu.mar()] = cpu.mdr();
+        if (cpu.s.bus.rw == Core::State::Bus::r) cpu.s.bus.d = mem[cpu.s.bus.a];
+        else mem[cpu.s.bus.a] = cpu.s.bus.d;
         cpu.tick();
     }
     cpu.s.p = 0x00;
@@ -30,8 +33,14 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     int op_cnt = 0;
     Timer t;
     for (int prev_pc = cpu.s.pc, psc = 0, step = false, output = false; psc < 15; ++psc) {
-        // BEWARE
-        if (cpu.mop().mopc >= MC::MOPC::dispatch_cli && cpu.mop().mopc <= MC::MOPC::dispatch_brk) {
+        if (cpu.s.bus.rw == Core::State::Bus::r) cpu.s.bus.d = mem[cpu.s.bus.a];
+        else mem[cpu.s.bus.a] = cpu.s.bus.d;
+
+        //std::cout << "  " << Dbg::print_u16(cpu.s.bus.a) << ' ' << Dbg::print_u8(cpu.s.bus.d)
+        //            << (cpu.s.bus.rw ? " r " : " w ");
+
+        if (cpu.at_fetch()) {
+            cpu.s.pc = cpu.s.bus.a;
             if (cpu.s.pc == step_from_pc) step = true;
             if (cpu.s.pc == output_from_pc) output = true;
             if (step || output) {
@@ -40,6 +49,12 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
                 if (step) getchar();
             }
 
+            /*
+            std::cout << "\n";
+            Dbg::print_status(cpu, mem);
+            const auto bytes = Bytes{{mem[cpu.s.pc], mem[u16(cpu.s.pc + 1)], mem[u16(cpu.s.pc + 2)]}};
+            std::cout << "  > " + as_lower(Dbg::disasm_first(bytes, cpu.s.pc).text) << "\n\n";
+            */
             if (prev_pc != cpu.s.pc) {
                 prev_pc = cpu.s.pc;
                 psc = 0; // 'pc stuck' counter
@@ -48,8 +63,6 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
             ++op_cnt;
         }
 
-        if (cpu.mrw() == MC::RW::r) cpu.mdr() = mem[cpu.mar()];
-        else mem[cpu.mar()] = cpu.mdr();
         cpu.tick();
     }
     int te = t.elapsed();
@@ -61,7 +74,7 @@ void run_6502_func_test(u16 step_from_pc = 0xffff, u16 output_from_pc = 0xffff) 
     std::cout << " op/sec: " << (int)(op_cnt / te * 1000) << "\n";
     std::cout << "=========================================================\n";
     std::cout << ((cpu.s.pc == 0x3469) ? "### PASS ###" : "### FAIL ###");
-    std::cout << "\n";
+    std::cout << std::endl;
 }
 
 
@@ -84,7 +97,7 @@ void run_test_suite()
 
         sys.cpu.s.sp = 0x1fd;
         sys.cpu.s.p = 0x04;
-        sys.cpu.s.pc = 0x0801;
+        sys.cpu.s.pc = sys.cpu.s.bus.a = 0x0801;
     };
 
     auto load = [&](const std::string& filename) {
@@ -117,11 +130,12 @@ void run_test_suite()
     };
 
     auto rts = [&]() {
-        sys.cpu.s.inc_sp();
+        sys.cpu.s.sp = ((sys.cpu.s.sp + 1) & 0xff) | 0x100;
         sys.cpu.s.pc = mem[sys.cpu.s.sp];
-        sys.cpu.s.inc_sp();
+        sys.cpu.s.sp = ((sys.cpu.s.sp + 1) & 0xff) | 0x100;
         sys.cpu.s.pc |= (mem[sys.cpu.s.sp] << 8);
         ++sys.cpu.s.pc;
+        sys.cpu.s.bus.a = sys.cpu.s.pc;
     };
 
     load("_start");
@@ -131,7 +145,7 @@ void run_test_suite()
         //if (sys.cpu.halted()) { std::cout << "\n[HALTED]"; goto exit; }
         if (sys.tn == 0) {
             //print_status(sys.cpu, sys.mem);
-            switch (sys.cpu.s.pc) {
+            switch (sys.cpu.s.bus.a) { // pc
                 case 0xffd2: // print chr
                     mem[0x030c] = 0;
                     std::cout << to_ascii_chr(sys.cpu.s.a);
@@ -149,7 +163,7 @@ void run_test_suite()
                     std::cout << " -> ";
                     load(filename);
                     rts();
-                    sys.cpu.s.pc = 0x0816;
+                    sys.cpu.s.bus.a = 0x0816; // pc
                     break;
                 }
                 case 0xffe4: // scan keyboard
@@ -167,8 +181,8 @@ exit:
     int te = t.elapsed();
     //std::cout << "=========================================================\n";
     std::cout << "\ncycle cnt: " << std::dec << sys.cn << ", ";
-    std::cout << " time(c1): " << te << ", ";
-    std::cout << " cycles/sec: " << (sys.cn / te * 1000) << "\n";
+    std::cout << " time(us): " << te << ", ";
+    std::cout << " cycles/sec: " << (sys.cn / te * 1000000) << "\n";
 }
 
 

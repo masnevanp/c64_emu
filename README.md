@@ -1,5 +1,7 @@
 # c64_emu (WIP) - An almost unusable [Commodore 64](https://en.wikipedia.org/wiki/Commodore_64) emulator.
 
+[NOTE! This document is out of date...]
+
 A hobby project I work on randomly, and just for fun. Not very usable yet, and it might stay that way... but that's OK. :)
 
 Tape/disk/cartridge support is not yet implemented, but there is a hack that allows programs to be loaded directly to RAM:

@@ -367,23 +367,30 @@ void System::C64::log_status() {
     };
 
     auto line_4 = [&]() {
-        const auto& dr = NMOS6502::MC::code[s.cpu.mcc].dr;
-        const auto& pc = s.cpu.pc;
-
         std::string instr_txt = "";
-        if (const bool fetch = (dr == NMOS6502::Ri8::ir); fetch) {
+        if (cpu.at_fetch()) {
+            const auto& pc = s.cpu.bus.a;
             const auto bytes = Bytes{{bus.peek(pc), bus.peek(pc + 1), bus.peek(pc + 2)}};
             instr_txt = "> " + as_lower(Dbg::disasm_first(bytes, pc).text);
-        } else {
-            instr_txt = "> " + as_lower(NMOS6502::instruction[s.cpu.ir].mnemonic);
+
+            const char pc_mapping = mapped_at(pc, RW::r);
+
+            const char* format = "pc:%04x [%c] %s";
+            sprintf(buffer, format, pc, pc_mapping, instr_txt.c_str());
+
+            Log::info("%s", buffer);
+        } else if (cpu.s.opc() <= 0xff) {
+            instr_txt = as_lower(MOS6502::Asm::instruction[cpu.s.opc()].mnemonic);
+            Log::info("            > %s", instr_txt.c_str());
         }
 
-        const char pc_mapping = mapped_at(s.cpu.pc, RW::r);
+        /*const char pc_mapping = mapped_at(s.cpu.pc, RW::r);
 
         const char* format = "pc:%04x [%c] %s";
         sprintf(buffer, format, s.cpu.pc, pc_mapping, instr_txt.c_str());
 
         Log::info("%s", buffer);
+        */
     };
 
     Log::info("");
@@ -488,7 +495,7 @@ void System::C64::step_forward(u8 key_code) {
             break;
         case kc::step_instr:
             if (!cpu.halted()) {
-                do run_cycle(); while (cpu.mop().dr != NMOS6502::Ri8::ir);
+                do run_cycle(); while (!cpu.at_fetch());
             }
             break;
         case kc::step_line:
@@ -758,7 +765,7 @@ void System::C64::do_load() {
         }
 
         //'return' status to kernal routine
-        cpu.s.clr(NMOS6502::Flag::C); // no error
+        cpu.s.clr(MOS6502::Flag::C); // no error
         s.ram[0x90] = 0x00; // io status ok
     } else {
         cpu.s.pc = 0xf704; // --> file not found
@@ -785,7 +792,7 @@ void System::C64::do_save() {
     if (filename.length() == 0) {
         // TODO: error_code enum(s)
         cpu.s.a = 0x08; // missing filename
-        cpu.s.set(NMOS6502::Flag::C); // error
+        cpu.s.set(MOS6502::Flag::C); // error
         return;
     }
 
@@ -798,12 +805,12 @@ void System::C64::do_save() {
 
     if (do_save(filepath, start_addr, &s.ram[start_addr], sz)) {
         // status
-        cpu.s.clr(NMOS6502::Flag::C); // no error
+        cpu.s.clr(MOS6502::Flag::C); // no error
         s.ram[0x90] = 0x00; // io status ok
         Log::info("Saved '%s', %d bytes", filepath.c_str(), int(sz + 2));
     } else {
         cpu.s.a = 0x07; // not output file
-        cpu.s.set(NMOS6502::Flag::C); // error
+        cpu.s.set(MOS6502::Flag::C); // error
         Log::error("Failed to save '%s'", filename.c_str());
     }
 }
@@ -817,10 +824,10 @@ void System::C64::install_kernal_tape_traps(u8* kernal, u8 trap_opc) {
     // trap loading (device 1)
     kernal[0xf539 - kernal_start] = trap_opc;
     kernal[0xf53a - kernal_start] = Trap_ID::load;
-    kernal[0xf53b - kernal_start] = NMOS6502::OPC::rts;
+    kernal[0xf53b - kernal_start] = MOS6502::OPC::rts;
 
     // trap saving (device 1)
     kernal[0xf65f - kernal_start] = trap_opc;
     kernal[0xf660 - kernal_start] = Trap_ID::save;
-    kernal[0xf661 - kernal_start] = NMOS6502::OPC::rts;
+    kernal[0xf661 - kernal_start] = MOS6502::OPC::rts;
 }

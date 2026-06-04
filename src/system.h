@@ -7,7 +7,7 @@
 #include "state.h"
 #include "utils.h"
 #include "dbg.h"
-#include "nmos6502/nmos6502_core.h"
+#include "mos6502/core.h"
 #include "vic_ii.h"
 #include "sid.h"
 #include "cia.h"
@@ -23,7 +23,7 @@ namespace System {
 
 class Bus;
 
-using CPU = NMOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Address_space)
+using CPU = MOS6502::Core; // 6510 IO port (addr 0&1) is implemented externally (in Address_space)
 using CIA = typename CIA::Core;
 using TheSID = reSID_Wrapper; // 'The' due to nameclash
 using VIC = VIC_II::Core<Bus>;
@@ -585,34 +585,30 @@ private:
     Host::Input host_input{host_input_handlers};
 
     // TODO: verify that it is a valid kernal trap (e.g. 'addr_space.mapping(cpu.pc) == kernal')
-    NMOS6502::Sig cpu_trap {
-        [this]() {
-            bool proceed = true;
+    MOS6502::Sig_halt cpu_trap{
+        [this](u8 trap_opc, u8 routine_id) {
+            bool resume = true;
 
-            const auto trap_opc = cpu.s.ir;
             switch (trap_opc) {
                 /*case Trap_OPC::IEC_virtual_routine:
                     handled = IEC_virtual::on_trap(c64.cpu, c64.s.ram, iec_ctrl);
                     break;*/
-                case Trap_OPC::tape_routine: {
-                    const auto routine_id = cpu.s.d;
-
+                case Trap_OPC::tape_routine:
                     switch (routine_id) {
                         case Trap_ID::load: do_load(); break;
                         case Trap_ID::save: do_save(); break;
                         default:
-                            proceed = false;
+                            resume = false;
                             Log::error("Unknown tape routine: %d", (int)routine_id);
                             break;
                     }
                     break;
-                }
                 default:
-                    proceed = false;
+                    resume = false;
                     break;
             }
 
-            if (proceed) {
+            if (resume) {
                 cpu.resume();
             } else {
                 Log::error("****** CPU halted! ******");
@@ -719,18 +715,22 @@ private:
 
 inline
 void C64::run_cycle() {
+    using RW = MOS6502::Core::State::Bus::RW;
+
     vic.tick();
 
-    const auto rw = cpu.mrw();
-    const auto rdy = s.ba || s.dma;
-    if (rdy && rw == NMOS6502::MC::RW::r) {
+    if (cpu.s.bus.rw == RW::w) {
         c1541.tick();
-    } else {
-        // 'Slip in' the C1541 cycle
-        if (rw == NMOS6502::MC::RW::w) c1541.tick();
-        bus.access(cpu.mar(), cpu.mdr(), rw);
+        bus.access(cpu.s.bus.a, cpu.s.bus.d, cpu.s.bus.rw);
         cpu.tick();
-        if (rw == NMOS6502::MC::RW::r) c1541.tick();
+    } else {
+        if (s.ba || s.dma) {
+            c1541.tick();
+        } else {
+            bus.access(cpu.s.bus.a, cpu.s.bus.d, cpu.s.bus.rw);
+            cpu.tick();
+            c1541.tick();
+        }
     }
 
     Expansion::tick(s, bus);

@@ -1,15 +1,15 @@
 #ifndef COMMON_H_INCLUDED
 #define COMMON_H_INCLUDED
 
-#include "nmos6502/nmos6502.h"
-#include "nmos6502/nmos6502_core.h"
+#include "mos6502/core.h"
+#include <string>
 #include <optional>
 #include <cstdio>
 
 
-using u8  = NMOS6502::u8;
-using i8  = NMOS6502::i8;
-using u16 = NMOS6502::u16;
+using u8  = MOS6502::u8;
+using i8  = MOS6502::i8;
+using u16 = MOS6502::u16;
 using i16 = int16_t;
 using u32 = uint32_t;
 using i32 = int32_t;
@@ -90,7 +90,7 @@ template<typename T>
 using Maybe = std::optional<T>;
 
 
-using Sig = NMOS6502::Sig;
+using Sig  = std::function<void (void)>;
 
 template<typename T>
 using Sig1 = std::function<void (T)>;

@@ -2,11 +2,12 @@
 #define C1541_H_INCLUDED
 
 #include <vector>
+#include <string>
 #include "common.h"
 #include "state.h"
 #include "utils.h"
 #include "files.h"
-#include "nmos6502/nmos6502_core.h"
+#include "mos6502/core.h"
 #include "menu.h"
 #include "dbg.h"
 
@@ -23,7 +24,7 @@
 
 namespace C1541 {
 
-using CPU = NMOS6502::Core;
+using CPU = MOS6502::Core;
 
 // CPU freq. ratio (C64 vs. C1541): 67/68 (darn close to 985248.45 / 1000000, 66/67 is also close)
 static constexpr int extra_cycle_freq = 67;
@@ -640,7 +641,7 @@ private:
     bool not_sync_set()       const { return s.via_pb_in & PB::sync; }
     void signal_byte_ready() {
         ca1_edge(0b0);
-        cpu.s.set(NMOS6502::Flag::V); // TODO: SO-detection delay in the CPU (how many cycles?)
+        cpu.s.set(MOS6502::Flag::V); // TODO: SO-detection delay in the CPU (how many cycles?)
     }
 
     void step_head(const u8 via_pb_out_now);
@@ -826,15 +827,19 @@ private:
         { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, //0xB000..
     };
 
-    void address_space_op(const u16& addr, u8& data, const u8& rw) {
-        switch (addr_map[u16(addr + 0x4000) >> 10][rw]) {
-            case rom_r:  data = rom[addr & 0x3fff];   return;
-            case ram_w:  s.ram[addr & 0x07ff] = data; return;
-            case ram_r:  data = s.ram[addr & 0x07ff]; return;
-            case via1_w: iec.via_w(addr & 0xf, data); return;
-            case via1_r: iec.via_r(addr & 0xf, data); return;
-            case via2_w: dc.via_w(addr & 0xf, data);  return;
-            case via2_r: dc.via_r(addr & 0xf, data);  return;
+    void bus_access() {
+        const auto& a{cpu.s.bus.a};
+        auto& d{cpu.s.bus.d};
+        const auto& rw{cpu.s.bus.rw};
+
+        switch (addr_map[u16(a + 0x4000) >> 10][rw]) {
+            case rom_r:  d = rom[a & 0x3fff];   return;
+            case ram_w:  s.ram[a & 0x07ff] = d; return;
+            case ram_r:  d = s.ram[a & 0x07ff]; return;
+            case via1_w: iec.via_w(a & 0xf, d); return;
+            case via1_r: iec.via_r(a & 0xf, d); return;
+            case via2_w: dc.via_w(a & 0xf, d);  return;
+            case via2_r: dc.via_r(a & 0xf, d);  return;
             case none: return;
         }
     }
@@ -847,7 +852,7 @@ private:
         }
     }
 
-    /*NMOS6502::Sig cpu_trap {
+    /*MOS6502::Sig cpu_trap {
         [this]() {
             cpu.pc = 0xebff; // start of idle loop
             cpu.resume();
@@ -864,9 +869,9 @@ private:
         disk_carousel.insert(0, blank_disk, "Blank"); // TODO: handle 0 free slots case
     }
 
-    NMOS6502::Sig cpu_trap {
-        [this]() {
-            Log::error("****** C1541 CPU halted! ******");
+    MOS6502::Sig_halt cpu_trap {
+        [this](u8 opc, u8 d) {
+            Log::error("****** C1541 CPU halted! (opc: %d, d: %d) ******", opc, d);
             Dbg::print_status(cpu, s.ram);
         }
     };

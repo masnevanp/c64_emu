@@ -13,3 +13,4 @@ c64_emu.depend
 c64_emu.layout
 c64_emu.dev
 Makefile.win
+*_old.*

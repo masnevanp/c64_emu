@@ -414,12 +414,8 @@ struct T3 : public Base { // T3 Action_Replay
     void reset() { upd_ctrl(0); }
 
     void tick_frz() {
-        const auto rw = NMOS6502::MC::code[s.cpu.mcc].rw;
-        const auto mopc = NMOS6502::MC::code[s.cpu.mcc].mopc;
-
-        // Wait for return address to be pushed before switching...
-        // TODO: is this correct?
-        if (rw == NMOS6502::MC::RW::w && mopc == NMOS6502::MC::MOPC::brk) {
+        // TODO: is this reliable?
+        if (s.cpu.opc() == MOS6502::OPC::brk && s.cpu.bus.rw == MOS6502::Core::State::Bus::w) {
             s.exp.ticker = Ticker::idle;
             System::set_exrom_game(true, false, s);
         }

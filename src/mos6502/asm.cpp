@@ -1,24 +1,15 @@
 
-#include "nmos6502.h"
+#include "asm.h"
 
 
-const std::string NMOS6502::Ri16_str[] = {
-    "zp16", "pc", "d_ir", "a1", "a2", "sp16", "p_a", "y_x", "a3", "a4" // TODO: big-endian versions
-};
 
-const std::string NMOS6502::Ri8_str[] = {
-    "zp", "zph", "pcl", "pch", "d", "ir", "a1l", "a1h", "a2l", "a2h",
-    "sp", "sph", "p", "a", "x", "y", "a3l", "a3h", "a4l", "a4h",
-};
-
-
-using Am = NMOS6502::Addr_mode;
+using Am = MOS6502::Asm::Addr_mode;
 
 // Table data derived from (thanks!):
 // - https://github.com/michael-0acf4/opcodes-json-6502
 // - https://github.com/Esshahn/pydisass6502/
 
-const NMOS6502::Instruction NMOS6502::instruction[256] = {
+const MOS6502::Asm::Instruction MOS6502::Asm::instruction[256] = {
     {0x00, 1, Am::impl, "BRK", "BRK"},
     {0x01, 2, Am::indx, "ORA", "ORA ($%02X,X)"},
     {0x02, 1, Am::impl, "HLT", "HLT"},
@@ -201,7 +192,7 @@ const NMOS6502::Instruction NMOS6502::instruction[256] = {
     {0xb3, 2, Am::indy, "LAX", "LAX ($%02X),Y"},
     {0xb4, 2, Am::zpx,  "LDY", "LDY $%02X,X"},
     {0xb5, 2, Am::zpx,  "LDA", "LDA $%02X,X"},
-    {0xb6, 2, Am::zpy,  "LDX", "LDX $%02X,X"},
+    {0xb6, 2, Am::zpy,  "LDX", "LDX $%02X,Y"},
     {0xb7, 2, Am::zpy,  "LAX", "LAX $%02X,Y"},
     {0xb8, 1, Am::impl, "CLV", "CLV"},
     {0xb9, 3, Am::absy, "LDA", "LDA $%02X%02X,Y"},
