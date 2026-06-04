@@ -23,7 +23,7 @@ using u16 = uint16_t;
 
 using Sig_halt = std::function<void (u8, u8)>;
 
-struct Vec { enum a : u16 { nmi = 0xfffa, rst = 0xfffc, irq = 0xfffe, }; };
+enum Vec : u16 { nmi = 0xfffa, rst = 0xfffc, irq = 0xfffe, };
 
 enum Flag : u8 { // nvubdizc, u = unused (bit 5)
     N = 0b10000000, V = 0b01000000, u = 0b00100000, B = 0b00010000,
@@ -84,7 +84,8 @@ public:
         u8 irq_act;
         u8 nmi_timer;
         u8 irq_timer;
-        u8 brk_req;
+
+        u16 brk_vec;
 
         OPC opc() const { return OPC(mcc >> 3); }
 

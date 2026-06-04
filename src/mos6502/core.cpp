@@ -6,8 +6,6 @@
 namespace MOS6502 {
     using RW = MOS6502::Core::State::Bus::RW;
 
-    enum Brk_req : u8 { nmi = 1, irq = 2 };
-
     inline u16 zp(u16 a) { return a & 0x00ff; }
     inline u16 sp(u16 a) { return (a & 0xff) | 0x0100; }
 
@@ -16,7 +14,7 @@ namespace MOS6502 {
 
         void schedule(u16 opc) { s.mcc = opc << 3; } // bits 0-2 encode the step (0..7)
 
-        void check_irq() { if (s.irq_act && is_clr(Flag::I)) s.brk_req |= Brk_req::irq; }
+        void check_irq() { if (s.irq_act && is_clr(Flag::I)) s.brk_vec = Vec::irq; }
     
         bool is_set(Flag f) const { return s.p & f; }
         bool is_clr(Flag f) const { return !is_set(f); }
@@ -184,7 +182,7 @@ MOS6502::Core::Core(State& s_, Sig_halt& sig_halt_) : s(s_), sig_halt(sig_halt_)
 
 
 void MOS6502::Core::reset() {
-    s.brk_req = 0;
+    s.brk_vec = 0;
     s.nmi_timer = s.irq_timer = 0;
     s.nmi_act = s.irq_act = false;
     s.bus(RW::r);
@@ -574,11 +572,11 @@ void MOS6502::Core::set_irq(bool act) {
         break; } \
     case mc(opc, 3): \
         if (s.nmi_timer & 0b11) /*Potential hijacking by nmi*/ { \
-            s.brk_req = Brk_req::nmi; \
+            s.brk_vec = Vec::nmi; \
             s.nmi_timer = nmi_timer_handled; \
         } \
-        s.bus.a = (s.brk_req & Brk_req::nmi) ? Vec::nmi : Vec::irq; \
-        s.brk_req = 0; \
+        s.bus.a = s.brk_vec; \
+        s.brk_vec = 0; \
         s.bus(RW::r); \
         break; \
     case mc(opc, 4): \
@@ -1159,23 +1157,26 @@ void MOS6502::Core::tick() {
 
             check_nmi:
             if (s.nmi_act) {
-                s.brk_req |= Brk_req::nmi;
+                s.brk_vec = Vec::nmi;
                 s.nmi_act = false;
                 if (s.nmi_timer) s.nmi_timer = nmi_timer_handled;
             }
             // fall through
         case mc(OPC::dispatch_post_brk):
-            if (s.brk_req) {
+            if (!s.brk_vec) {
+                s.bus.a += 1; // 'inc pc'
+                if (s.bus.d != OPC::brk) {
+                    Op{s}.schedule(OPC(s.bus.d));
+                } else {
+                    s.pc = s.bus.a + 1;
+                    s.p |= Flag::B;
+                    s.brk_vec = Vec::irq;
+                    Op{s}.schedule(OPC(s.bus.d));
+                }
+            } else {
                 s.pc = s.bus.a;
                 s.p &= ~Flag::B;
                 Op{s}.schedule(OPC::brk);
-            } else {
-                s.bus.a += 1; // 'inc pc'
-                if (s.bus.d == OPC::brk) {
-                    s.pc = s.bus.a + 1;
-                    s.p |= Flag::B;
-                }
-                Op{s}.schedule(OPC(s.bus.d));
             }
             break;
 
