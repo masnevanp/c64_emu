@@ -6,7 +6,7 @@
 namespace MOS6502 {
     using RW = MOS6502::Core::State::Bus::RW;
 
-    enum Brk_src : u8 { sw = 0b001, nmi = 0b010, irq = 0b100, };
+    enum Brk_req : u8 { nmi = 1, irq = 2 };
 
     inline u16 zp(u16 a) { return a & 0x00ff; }
     inline u16 sp(u16 a) { return (a & 0xff) | 0x0100; }
@@ -16,7 +16,7 @@ namespace MOS6502 {
 
         void schedule(u16 opc) { s.mcc = opc << 3; } // bits 0-2 encode the step (0..7)
 
-        void check_irq() { if (s.irq_act && is_clr(Flag::I)) s.brk_srcs |= Brk_src::irq; }
+        void check_irq() { if (s.irq_act && is_clr(Flag::I)) s.brk_req |= Brk_req::irq; }
     
         bool is_set(Flag f) const { return s.p & f; }
         bool is_clr(Flag f) const { return !is_set(f); }
@@ -67,6 +67,7 @@ namespace MOS6502 {
         }
         void sbc();
         void trr(u8 sr, u8& tr) { set_nz(tr = sr); }
+        void txs() { s.sp = sp(s.x); }
 
         void ud_alr() { s.a &= s.bus.d; lsr(s.a); }
         void ud_anc() { Op{s}.and_(); s.set(Flag::C, s.a & 0x80); }
@@ -183,7 +184,7 @@ MOS6502::Core::Core(State& s_, Sig_halt& sig_halt_) : s(s_), sig_halt(sig_halt_)
 
 
 void MOS6502::Core::reset() {
-    s.brk_srcs = 0;
+    s.brk_req = 0;
     s.nmi_timer = s.irq_timer = 0;
     s.nmi_act = s.irq_act = false;
     s.bus(RW::r);
@@ -573,11 +574,11 @@ void MOS6502::Core::set_irq(bool act) {
         break; } \
     case mc(opc, 3): \
         if (s.nmi_timer & 0b11) /*Potential hijacking by nmi*/ { \
-            s.brk_srcs = Brk_src::nmi; \
+            s.brk_req = Brk_req::nmi; \
             s.nmi_timer = nmi_timer_handled; \
         } \
-        s.bus.a = (s.brk_srcs & Brk_src::nmi) ? Vec::nmi : Vec::irq; \
-        s.brk_srcs = 0; \
+        s.bus.a = (s.brk_req & Brk_req::nmi) ? Vec::nmi : Vec::irq; \
+        s.brk_req = 0; \
         s.bus(RW::r); \
         break; \
     case mc(opc, 4): \
@@ -1020,7 +1021,7 @@ void MOS6502::Core::tick() {
          st_zi(0x97, s.y, s.a & s.x);            // sax zpy
             sb(0x98, Op{s}.trr(s.y, s.a));       // tya
          st_ai(0x99, s.y);                       // sta absy
-            sb(0x9a, s.sp = sp(s.x));            // txs
+            sb(0x9a, Op{s}.txs());               // txs
          ud_ai(0x9b, s.y, s.x, Op{s}.ud_tas());  // tas absy
          ud_ai(0x9c, s.x, s.y, );                // shy absx
          st_ai(0x9d, s.x);                       // sta absx
@@ -1141,7 +1142,8 @@ void MOS6502::Core::tick() {
 
         // --------------------------------------------------------------------
 
-        /* cli&sei feature: change not be visible at next T0 (dispatch)
+        /*
+            cli&sei feature: change not be visible at next T0 (dispatch)
             (http://visual6502.org/wiki/index.php?title=6502_Timing_of_Interrupt_Handling)
         */
         case mc(OPC::dispatch_post_cli): 
@@ -1157,22 +1159,21 @@ void MOS6502::Core::tick() {
 
             check_nmi:
             if (s.nmi_act) {
-                s.brk_srcs |= Brk_src::nmi;
+                s.brk_req |= Brk_req::nmi;
                 s.nmi_act = false;
                 if (s.nmi_timer) s.nmi_timer = nmi_timer_handled;
             }
             // fall through
         case mc(OPC::dispatch_post_brk):
-            if (s.brk_srcs) {
+            if (s.brk_req) {
                 s.pc = s.bus.a;
                 s.p &= ~Flag::B;
                 Op{s}.schedule(OPC::brk);
             } else {
-                s.bus.a += 1; // inc pc
+                s.bus.a += 1; // 'inc pc'
                 if (s.bus.d == OPC::brk) {
                     s.pc = s.bus.a + 1;
                     s.p |= Flag::B;
-                    // s.brk_srcs = Brk_src::sw; // redundant...
                 }
                 Op{s}.schedule(OPC(s.bus.d));
             }

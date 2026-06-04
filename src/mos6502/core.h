@@ -48,12 +48,13 @@ public:
         struct Bus {
             enum RW : u8 { w = 0, r = 1 };
 
-            /* Bus access params (addr, data, r/w).
-                The read/write is expected to happen before tick(), e.g.:
-                for (;;) {
-                    bus_access(core.s.bus);
-                    core.tick();
-                }
+            /*
+                Bus access params (addr, data, r/w). The read/write is expected
+                to happen before each tick(), e.g.:
+                    for (;;) {
+                        handle_bus_access(core.s.bus);
+                        core.tick();
+                    }
             */
             u16 a;
             u8 d;
@@ -83,7 +84,7 @@ public:
         u8 irq_act;
         u8 nmi_timer;
         u8 irq_timer;
-        u8 brk_srcs;
+        u8 brk_req;
 
         OPC opc() const { return OPC(mcc >> 3); }
 
