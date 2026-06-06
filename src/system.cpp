@@ -371,7 +371,7 @@ void System::C64::log_status() {
         if (cpu.at_fetch()) {
             const auto& pc = s.cpu.bus.a;
             const auto bytes = Bytes{{bus.peek(pc), bus.peek(pc + 1), bus.peek(pc + 2)}};
-            instr_txt = "> " + as_lower(Dbg::disasm_first(bytes, pc).text);
+            instr_txt = "> " + as_lower(MOS6502::Asm::disasm_first(bytes, pc).text);
 
             const char pc_mapping = mapped_at(pc, RW::r);
 
