@@ -316,9 +316,9 @@ struct Performance {
         },
     };
 
-    Choice<bool> audio_pitch_shift{
+    Choice<bool> sid_clock{
         {false, true},
-        {"Fixed", "Shift"},
+        {"Fixed (PAL)", "Match FPS"},
     };
 
     static constexpr int min_sync_points = 1;
@@ -678,15 +678,15 @@ private:
                 // TODO: fade in sound after change (hide the blips...)?
                 deferred = [&]() {
                     vid_out.reconfig();
-                    sid.reconfig(perf.frame_rate, perf.audio_pitch_shift);
+                    sid.reconfig(perf.frame_rate, perf.sid_clock);
                     //pre_run();
                 };
             }
         },
         // TODO: defer also the following two?
-        {"Audio pitch", perf.audio_pitch_shift,
+        {"SID clock", perf.sid_clock,
             [&]() {
-                sid.reconfig(perf.frame_rate, perf.audio_pitch_shift);
+                sid.reconfig(perf.frame_rate, perf.sid_clock);
             }
         },
         {"Latency", perf.latency,

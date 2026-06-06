@@ -2,8 +2,8 @@
 #include "sid.h"
 
 
-void reSID_Wrapper::reconfig(double frame_rate, bool pitch_shift) {
-    if (pitch_shift) {
+void reSID_Wrapper::reconfig(double frame_rate, bool sync_clock_to_frame_rate) {
+    if (sync_clock_to_frame_rate) {
         core.set_clock_freq(frame_rate * FRAME_CYCLE_COUNT);
         clock_speed_base = 1.0;
     } else {

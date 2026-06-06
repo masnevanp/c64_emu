@@ -35,7 +35,7 @@ public:
         last_tick_cycle = system_cycle;
     }
 
-    void reconfig(double frame_rate, bool pitch_shift);
+    void reconfig(double frame_rate, bool sync_clock_to_frame_rate);
 
     void reconfig(u16 audio_out_buf_sz_) { audio_out_buf_sz = audio_out.config(audio_out_buf_sz_); }
 
