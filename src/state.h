@@ -265,7 +265,7 @@ struct C1541 {
 
 struct System {
     enum class Mode {
-        none, clocked, stepped, // warp, debug...? 
+        none, clocked, stepped, unlimited
     };
 
     struct ROM {

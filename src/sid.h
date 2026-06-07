@@ -39,7 +39,11 @@ public:
 
     void reconfig(u16 audio_out_buf_sz_) { audio_out_buf_sz = audio_out.config(audio_out_buf_sz_); }
 
-    void output();
+    void sync(bool do_output = true) {
+        tick();
+        if (do_output) output();
+        buf_ptr = buf;
+    }
 
     // TODO: tick also on read of one/some of the regs (rnd generator(s)...)
     void r(const u8& ri, u8& data) { data = core.read(ri); }
@@ -87,6 +91,7 @@ private:
     };
 
     void tick();
+    void output();
 };
 
 

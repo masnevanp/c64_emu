@@ -167,7 +167,7 @@ namespace Key_code {
 
     enum System : u8 {
         nop = GS,
-        rst_cold, rst_warm, save_state, mode,
+        rst_cold, rst_warm, save_state, mode_stepped, mode_unlimited,
         step_cycle, step_instr, step_line, step_frame,
         swap_joy, tgl_fscr,
         exp_btn_1,

@@ -47,7 +47,7 @@ u8 Input::KC_LU_TBL[] = {
     /* 80..   : SDL_Keycode 40000039.. --> Key_code (80 = kc 40000039, 81 = kc 4000003a, ...) */
     // 80..8f
     ke::s_lck, kb::f1,    ke::f2,    kb::f3,    ke::f4,    kb::f5,    ke::f6,     kb::f7,
-    ke::f8, sy::rst_warm, sy::rst_cold, sy::tgl_fscr, sy::mode, sy::nop, sy::nop, ke::rstre,
+    ke::f8, sy::rst_warm, sy::rst_cold, sy::tgl_fscr, sy::mode_unlimited, sy::nop, sy::nop, ke::rstre,
     // 90..9f
     sy::rot_dsk,kb::home, sy::nop,   sy::nop,   sy::nop,   sy::nop,   kb::crs_r,  ke::crs_l,
     kb::crs_d, ke::crs_u, sy::nop,   J1|js::ju, kb::mul,   kb::minus, kb::plus,   kb::ret,
@@ -104,7 +104,7 @@ const u8 Input::SC_RALT_LU_TBL[] = { // SDL_Scancode with RALT modifier */
     sy::nop,   kb::mul,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
     // 40..4f
-    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::mode_stepped,   sy::nop,   sy::nop,
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::menu_ent,
     // 50..5f
     sy::menu_exit, sy::menu_down, sy::menu_up,

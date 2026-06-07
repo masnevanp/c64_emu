@@ -530,8 +530,11 @@ private:
                     case ks::rst_cold:     reset_cold();                       break;
                     case ks::rst_warm:     reset_warm();                       break;
                     case ks::save_state:   save_state_req();                   break;
-                    case ks::mode:
-                        s.mode = (s.mode == Mode::clocked) ? Mode::stepped : Mode::clocked;
+                    case ks::mode_stepped:
+                        s.mode = (s.mode == Mode::stepped) ? Mode::clocked : Mode::stepped;
+                        break;
+                    case ks::mode_unlimited:
+                        s.mode = Mode::unlimited;
                         break;
                     case ks::step_cycle:
                     case ks::step_instr:
@@ -564,6 +567,7 @@ private:
                 }
             } else {
                 if (code == ks::sys) menu.active = show_status = false;
+                else if (code == ks::mode_unlimited) s.mode = Mode::clocked;
             }
         },
 
@@ -637,6 +641,7 @@ private:
 
     void run_clocked();
     void run_stepped();
+    void run_unlimited();
 
     void step_forward(u8 key_code);
 

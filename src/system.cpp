@@ -251,8 +251,9 @@ void System::C64::run(Mode init_mode) {
     do {
         switch (s.mode) {
             case Mode::none: break;
-            case Mode::clocked: run_clocked(); break;
-            case Mode::stepped: run_stepped(); break;
+            case Mode::clocked:   run_clocked();   break;
+            case Mode::stepped:   run_stepped();   break;
+            case Mode::unlimited: run_unlimited(); break;
         }
         pre_run();
     }
@@ -415,6 +416,9 @@ void System::C64::pre_run() {
             sid.flush();
             log_status();
             break;
+        case Mode::unlimited:
+            sid.flush();
+            break;
     }
 }
 
@@ -437,7 +441,7 @@ void System::C64::run_clocked() {
             
             watch.start();
             
-            sid.output();
+            sid.sync();
 
             host_input.poll();
             
@@ -454,7 +458,7 @@ void System::C64::run_clocked() {
             
             watch.start();
             
-            sid.output();
+            sid.sync();
 
             host_input.poll();
         }
@@ -477,6 +481,25 @@ void System::C64::run_stepped() {
         frame_timer.wait_elapsed(Timer::one_second() / 50.0, true);
         host_input.poll();
         check_deferred();
+    }
+}
+
+
+void System::C64::run_unlimited() {
+    auto frame_done = [&]() {
+        const bool the_50th_frame = ((s.vic.cycle / FRAME_CYCLE_COUNT) % 50) == 0;
+        if (the_50th_frame) {
+            output_frame();
+            host_input.poll();
+            check_deferred();
+        }
+        sid.sync(false);
+    };
+
+    while (s.mode == Mode::unlimited) {
+        run_cycle();
+        const bool frame_is_done = (s.vic.cycle % FRAME_CYCLE_COUNT) == 0;
+        if (frame_is_done) frame_done();
     }
 }
 
@@ -506,7 +529,7 @@ void System::C64::step_forward(u8 key_code) {
             break;
     }
 
-    sid.output();
+    sid.sync();
 }
 
 

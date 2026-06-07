@@ -13,9 +13,18 @@ void reSID_Wrapper::reconfig(double frame_rate, bool sync_clock_to_frame_rate) {
 }
 
 
-void reSID_Wrapper::output() {
-    tick();
+void reSID_Wrapper::tick() {
+    int cycles = clock_speed * (system_cycle - last_tick_cycle);
+    last_tick_cycle = system_cycle;
 
+    if (cycles > 0) {
+        // there is always enough space in the buffer (hence the '0xffff')
+        buf_ptr += core.clock(cycles, buf_ptr, 0xffff);
+    }
+}
+
+
+void reSID_Wrapper::output() {
     const int buffered = audio_out.put(buf, buf_ptr - buf);
 
     const int buffered_lo = audio_out_buf_sz * 2;
@@ -29,18 +38,5 @@ void reSID_Wrapper::output() {
         clock_speed = (1 - reduction) * clock_speed_base;
     } else {
         clock_speed = clock_speed_base;
-    }
-
-    buf_ptr = buf;
-}
-
-
-void reSID_Wrapper::tick() {
-    int cycles = clock_speed * (system_cycle - last_tick_cycle);
-    last_tick_cycle = system_cycle;
-
-    if (cycles > 0) {
-        // there is always enough space in the buffer (hence the '0xffff')
-        buf_ptr += core.clock(cycles, buf_ptr, 0xffff);
     }
 }
