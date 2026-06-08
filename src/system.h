@@ -308,11 +308,15 @@ struct Performance {
     };
 
     Choice<double> frame_rate{
-        {FRAME_RATE_PAL, FRAME_RATE_MAX, FRAME_RATE_MIN},
+        {
+            FRAME_RATE_PAL, FRAME_RATE_NTSC, 60, 90, 120, 150, 180, FRAME_RATE_MIN, 50
+        },
         {
             to_string(FRAME_RATE_PAL, 3) + " (PAL)",
-            to_string(FRAME_RATE_MAX, 3),
-            to_string(FRAME_RATE_MIN, 3),
+            to_string(FRAME_RATE_NTSC, 3) + " (NTSC)",
+            "60", "90", "120", "150", "180",
+            to_string(FRAME_RATE_MIN, 0),
+            "50"
         },
     };
 

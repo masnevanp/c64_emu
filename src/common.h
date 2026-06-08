@@ -35,9 +35,9 @@ static constexpr int LINE_CYCLE_COUNT  =  63;
 static constexpr int FRAME_CYCLE_COUNT = FRAME_LINE_COUNT * LINE_CYCLE_COUNT;
 
 
-static constexpr double FRAME_RATE_MIN = 50.0;
-static constexpr double FRAME_RATE_MAX = 60.0;
+static constexpr double FRAME_RATE_MIN = 25.0;
 static constexpr double FRAME_RATE_PAL = CPU_FREQ_PAL / FRAME_CYCLE_COUNT;
+static constexpr double FRAME_RATE_NTSC = 59.826;
 
 
 static constexpr int RAM_SIZE = 0x10000;
