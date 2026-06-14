@@ -294,8 +294,7 @@ struct System {
 
         u8 exrom_game;
 
-        u8 ultimax = false;
-        u8 vic_bank = 0b11;
+        u8 vic_bank = 0b011;
     };
 
     struct Expansion {
@@ -454,11 +453,21 @@ inline void update_pla(State::System& s) { // TODO: non-inlined? (definition to 
 }
 
 
+inline void update_vic_bank(State::System& s, bool ultimax) {
+    s.pla.vic_bank = (s.pla.vic_bank & 0b011) | (ultimax << 2);
+}
+
+
+inline void update_vic_bank(State::System& s, u8 va14_va15) {
+    s.pla.vic_bank = (s.pla.vic_bank & 0b100) | (va14_va15);
+}
+
+
 inline void set_exrom_game(bool e, bool g, State::System& s) {
     s.pla.exrom_game = (e << 4) | (g << 3);
     update_pla(s);
 
-    s.pla.ultimax = (e && !g);
+    update_vic_bank(s, (e && !g));
 }
 
 } // namespace System

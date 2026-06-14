@@ -51,26 +51,22 @@ namespace PLA {
     extern const Array array[14];       // 14 unique configs
 
 
-    // TODO: combine .ultimax & .bank to a single index (0..7)
-    //       (--> make vic_layouts an array of 8 entries...)
     enum VIC_mapping : u8 {
         ram_0, ram_1, ram_2, ram_3,
-        chr_r, romh,
+        chr_r, rom_h,
     };
 
-    static constexpr u8 vic_layouts[2][4][4] = {
-        {   // non-ultimax
-            { ram_3, ram_3, ram_3, ram_3 },
-            { ram_2, chr_r, ram_2, ram_2 },
-            { ram_1, ram_1, ram_1, ram_1 },
-            { ram_0, chr_r, ram_0, ram_0 },
-        },
-        {   // ultimax
-            { ram_3, ram_3, ram_3, romh },
-            { ram_2, ram_2, ram_2, romh },
-            { ram_1, ram_1, ram_1, romh },
-            { ram_0, ram_1, ram_0, romh },
-        }
+    static constexpr VIC_mapping vic_maps[8][4] = {
+        // non-ultimax
+        { ram_3, ram_3, ram_3, ram_3 },
+        { ram_2, chr_r, ram_2, ram_2 },
+        { ram_1, ram_1, ram_1, ram_1 },
+        { ram_0, chr_r, ram_0, ram_0 },
+        // ultimax
+        { ram_3, ram_3, ram_3, rom_h },
+        { ram_2, ram_2, ram_2, rom_h },
+        { ram_1, ram_1, ram_1, rom_h },
+        { ram_0, ram_1, ram_0, rom_h },
     };
 }
 
@@ -132,13 +128,13 @@ public:
         #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wreturn-type"
 
-        switch (PLA::vic_layouts[s.pla.ultimax][s.pla.vic_bank][addr >> 12]) {
+        switch (PLA::vic_maps[s.pla.vic_bank][addr >> 12]) {
             case m::ram_0: return s.ram[0x0000 | addr];
             case m::ram_1: return s.ram[0x4000 | addr];
             case m::ram_2: return s.ram[0x8000 | addr];
             case m::ram_3: return s.ram[0xc000 | addr];
             case m::chr_r: return rom.charr[0x0fff & addr];
-            case m::romh: {
+            case m::rom_h: {
                 u8 data = 0x00;
                 Expansion::bus_op(s, Expansion::Bus_op::romh_r, 0xc000 | addr, data);
                 return data;
@@ -502,7 +498,7 @@ private:
     IO::Port::PD_out cia2_pa_out {
         [this](u8 state) {
             const u8 va14_va15 = state & 0b11;
-            s.pla.vic_bank = va14_va15;
+            System::update_vic_bank(s, va14_va15);
 
             c1541.iec.cia2_pa_output(state);
             /*if (c1541.idle) {
