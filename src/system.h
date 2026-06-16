@@ -66,7 +66,7 @@ namespace PLA {
         { ram_3, ram_3, ram_3, rom_h },
         { ram_2, ram_2, ram_2, rom_h },
         { ram_1, ram_1, ram_1, rom_h },
-        { ram_0, ram_1, ram_0, rom_h },
+        { ram_0, ram_0, ram_0, rom_h },
     };
 }
 
