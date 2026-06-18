@@ -807,14 +807,8 @@ private:
     };
 
     static constexpr Mapping addr_map[64][2] = { // w|r mapping for each 1K block
-        // mappings rotated to optimize the 'standard' address space usage
-        { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, //0xC000..
-        { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, //0xD000..
-        { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, //0xE000..
-        { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, //0xF000..
         { ram_w,  ram_r  }, { ram_w,  ram_r  }, { none,   none   }, { none,   none   }, //0x0000..
         { none,   none   }, { none,   none   }, { via1_w, via1_r }, { via2_w, via2_r }, //0x1000..
-        // the rest are mirrors...
         { ram_w,  ram_r  }, { ram_w,  ram_r  }, { none,   none   }, { none,   none   }, //0x2000..
         { none,   none   }, { none,   none   }, { via1_w, via1_r }, { via2_w, via2_r }, //0x3000..
         { ram_w,  ram_r  }, { ram_w,  ram_r  }, { none,   none   }, { none,   none   }, //0x4000..
@@ -825,6 +819,10 @@ private:
         { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, //0x9000..
         { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, //0xA000..
         { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, //0xB000..
+        { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, //0xC000..
+        { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, //0xD000..
+        { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, //0xE000..
+        { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, { rom_r,  rom_r  }, //0xF000..
     };
 
     void bus_access() {
@@ -832,7 +830,7 @@ private:
         auto& d{cpu.s.bus.d};
         const auto& rw{cpu.s.bus.rw};
 
-        switch (addr_map[u16(a + 0x4000) >> 10][rw]) {
+        switch (addr_map[u16(a) >> 10][rw]) {
             case rom_r:  d = rom[a & 0x3fff];   return;
             case ram_w:  s.ram[a & 0x07ff] = d; return;
             case ram_r:  d = s.ram[a & 0x07ff]; return;
