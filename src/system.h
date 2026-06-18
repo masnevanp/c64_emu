@@ -43,12 +43,7 @@ namespace PLA {
         none_r,  none_w,
     };
 
-    // There is an array for each mode, and for each mode there are separate r/w configs
-    struct Array {
-        const Mapping pl[2][16]; // [w/r][bank]
-    };
-
-    extern const Array array[14];       // 14 unique configs
+    extern const Mapping array[14][2][16]; // [config][w/r][bank] (14 unique configs, 16 x 4kb banks)
 
 
     enum VIC_mapping : u8 {
@@ -56,7 +51,7 @@ namespace PLA {
         chr_r, rom_h,
     };
 
-    static constexpr VIC_mapping vic_maps[8][4] = {
+    static constexpr VIC_mapping vic_array[8][4] = {
         // non-ultimax
         { ram_3, ram_3, ram_3, ram_3 },
         { ram_2, chr_r, ram_2, ram_2 },
@@ -89,7 +84,7 @@ public:
     }
 
     PLA::Mapping mapped_at(const u16 addr, const State::System::Bus::RW rw) {
-        return PLA::array[s.pla.active].pl[rw][addr >> 12];
+        return PLA::array[s.pla.active][rw][addr >> 12];
     }
 
     void access(const u16& addr, u8& data, const State::System::Bus::RW rw) {
@@ -105,8 +100,7 @@ public:
 
         u8 data;
 
-        const auto mapping = PLA::array[s.pla.active].pl[State::System::Bus::RW::r][addr >> 12];
-        switch (mapping) {
+        switch (PLA::array[s.pla.active][State::System::Bus::RW::r][addr >> 12]) {
             case m::roml_r:
                 Expansion::bus_op(s, Expansion::Bus_op::roml_peek, addr, data);
                 return data;
@@ -128,7 +122,7 @@ public:
         #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wreturn-type"
 
-        switch (PLA::vic_maps[s.pla.vic_bank][addr >> 12]) {
+        switch (PLA::vic_array[s.pla.vic_bank][addr >> 12]) {
             case m::ram_0: return s.ram[0x0000 | addr];
             case m::ram_1: return s.ram[0x4000 | addr];
             case m::ram_2: return s.ram[0x8000 | addr];
@@ -150,7 +144,7 @@ private:
     void do_access(const u16& addr, u8& data, const State::System::Bus::RW rw) {
         using m = PLA::Mapping;
 
-        switch (auto mapping = PLA::array[s.pla.active].pl[rw][addr >> 12]; mapping) {
+        switch (auto mapping = PLA::array[s.pla.active][rw][addr >> 12]; mapping) {
             case m::ram0_r:
                 data = (addr > 0x0001)
                             ? s.ram[addr]
