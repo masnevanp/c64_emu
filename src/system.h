@@ -143,6 +143,9 @@ public:
 private:
     void do_access(const u16& addr, u8& data, const State::System::Bus::RW rw) {
         using m = PLA::Mapping;
+        using bo = Expansion::Bus_op;
+
+        const auto exp_op = [&](bo op) { Expansion::bus_op(s, op, addr, data); };
 
         switch (auto mapping = PLA::array[s.pla.active][rw][addr >> 12]; mapping) {
             case m::ram0_r:
@@ -159,12 +162,10 @@ private:
             case m::bas_r:   data = rom.basic[addr & 0x1fff];  return; // 8 KB
             case m::kern_r:  data = rom.kernal[addr & 0x1fff]; return;
             case m::charr_r: data = rom.charr[addr & 0x0fff];  return; // 4 KB
-            case m::roml_r: case m::roml_w: case m::romh_r: case m::romh_w: { // 8 KB
-                namespace E = Expansion;
-                const auto op = E::Bus_op::roml_r + (mapping - m::roml_r); // translate mapping to op
-                E::bus_op(s, E::Bus_op(op), addr, data);
-                return;
-            }
+            case m::roml_r:  exp_op(bo::roml_r);               return; // 8 KB
+            case m::roml_w:  exp_op(bo::roml_w);               return;
+            case m::romh_r:  exp_op(bo::romh_r);               return;
+            case m::romh_w:  exp_op(bo::romh_w);               return;
             // TODO: leave addr untouched here? (well... full bus imp. will solve the issue?)
             case m::io_r:    r_io(addr & 0x0fff, data);        return; // 4 KB
             case m::io_w:    w_io(addr & 0x0fff, data);        return;
