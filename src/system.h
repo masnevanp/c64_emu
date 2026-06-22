@@ -77,7 +77,7 @@ public:
         s(s_), rom(rom_), cia1(cia1_), cia2(cia2_), sid(sid_), vic(vic_) {}
 
     void reset() {
-        s.pla.io_port_pd = s.pla.io_port_state = 0x00;
+        s.pla.io_port_state = 0x00;
         w_dd(0x00); // all inputs
 
         Expansion::reset(s);
@@ -177,14 +177,14 @@ private:
     u8 r_dd() const { return s.pla.io_port_dd; }
     u8 r_pd() const {
         enum IO_bits : u8 {
-            loram_hiram_charen = 0x07,
-            cassette_switch_sense = 0x10,
-            cassette_motor_control = 0x20,
+            loram_hiram_charen     = 0b000111,
+            cassette_switch_sense  = 0b010000,
+            cassette_motor_control = 0b100000,
         };
 
-        static constexpr u8 pull_up = IO_bits::loram_hiram_charen | IO_bits::cassette_switch_sense;
-        const u8 pulled_up = ~s.pla.io_port_dd & pull_up;
-        const u8 cmc = ~IO_bits::cassette_motor_control | s.pla.io_port_dd; // dd input -> 0
+        const u8 input_bits = ~s.pla.io_port_dd;
+        const u8 pulled_up = (IO_bits::loram_hiram_charen | IO_bits::cassette_switch_sense) & input_bits;
+        const u8 cmc = ~IO_bits::cassette_motor_control | s.pla.io_port_dd;
         return (s.pla.io_port_state | pulled_up) & cmc;
     }
 
