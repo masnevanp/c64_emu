@@ -226,7 +226,7 @@ private:
         }
     }
 
-    void update_io_port_state() { // output bits set from 'pd', input bits unchanged
+    void update_io_port_state() {
         enum IO_bits : u8 {
             loram_hiram_charen     = 0b000111,
             cassette_switch_sense  = 0b010000,
