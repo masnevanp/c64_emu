@@ -434,10 +434,9 @@ struct System {
 namespace System {
 
 inline u8 pla_mode(const State::System& s) {
-    static constexpr u8 loram_hiram_charen_bits = 0b0111;
+    static constexpr u8 loram_hiram_charen_bits = 0b00000111;
 
-    const u8 pulled_up = ~s.pla.io_port_dd; // input bits pulled up
-    const u8 lhc = (s.pla.io_port_state | pulled_up) & loram_hiram_charen_bits;
+    const u8 lhc = s.pla.io_port_state & loram_hiram_charen_bits;
     const u8 mode = s.pla.exrom_game | lhc;
 
     return mode;

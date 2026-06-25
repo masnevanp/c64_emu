@@ -77,7 +77,7 @@ public:
         s(s_), rom(rom_), cia1(cia1_), cia2(cia2_), sid(sid_), vic(vic_) {}
 
     void reset() {
-        s.pla.io_port_state = 0x00;
+        s.pla.io_port_pd = s.pla.io_port_state = 0x00;
         w_dd(0x00); // all inputs
 
         Expansion::reset(s);
@@ -175,18 +175,7 @@ private:
     }
 
     u8 r_dd() const { return s.pla.io_port_dd; }
-    u8 r_pd() const {
-        enum IO_bits : u8 {
-            loram_hiram_charen     = 0b000111,
-            cassette_switch_sense  = 0b010000,
-            cassette_motor_control = 0b100000,
-        };
-
-        const u8 input_bits = ~s.pla.io_port_dd;
-        const u8 pulled_up = (IO_bits::loram_hiram_charen | IO_bits::cassette_switch_sense) & input_bits;
-        const u8 cmc = ~IO_bits::cassette_motor_control | s.pla.io_port_dd;
-        return (s.pla.io_port_state | pulled_up) & cmc;
-    }
+    u8 r_pd() const { return s.pla.io_port_state; }
 
     void w_dd(const u8& dd) { s.pla.io_port_dd = dd; update_io_port_state(); }
     void w_pd(const u8& pd) { s.pla.io_port_pd = pd; update_io_port_state(); }
@@ -238,8 +227,21 @@ private:
     }
 
     void update_io_port_state() { // output bits set from 'pd', input bits unchanged
-        s.pla.io_port_state = (s.pla.io_port_pd & s.pla.io_port_dd)
-                                | (s.pla.io_port_state & ~s.pla.io_port_dd);
+        enum IO_bits : u8 {
+            loram_hiram_charen     = 0b000111,
+            cassette_switch_sense  = 0b010000,
+            cassette_motor_control = 0b100000,
+        };
+
+        const u8 output_bits = s.pla.io_port_dd;
+        const u8 input_bits = ~s.pla.io_port_dd;
+        const u8 pulled_high = (IO_bits::loram_hiram_charen | IO_bits::cassette_switch_sense) & input_bits;
+        const u8 keep_high = ~IO_bits::cassette_motor_control | s.pla.io_port_dd;
+
+        s.pla.io_port_state = (s.pla.io_port_pd & output_bits) | (s.pla.io_port_state & input_bits)
+                                    | pulled_high;
+        s.pla.io_port_state &= keep_high;
+
         System::update_pla(s);
     }
 
