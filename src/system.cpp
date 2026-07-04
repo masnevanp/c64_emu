@@ -298,7 +298,7 @@ void System::C64::check_deferred() {
 
 char mapped_at(const System::Bus& bus, const u16 addr, const State::System::Bus::RW rw) {
     static constexpr char mc[] = {
-        'r', 'r', 'r', 'r', 'b', 'k', 'c', 'l', 'l', 'h', 'h', 'i', 'i', '-', '-'
+        'r', 'r', 'r', 'r', 'b', 'k', 'c', 'l', 'l', 'h', 'h', 'i', 'i', '.', '.'
     };
     const auto m = bus.mapped_at(addr, rw);
     return mc[m];
@@ -308,7 +308,6 @@ char mapped_at(const System::Bus& bus, const u16 addr, const State::System::Bus:
 void System::C64::log_cpu_status() {
     const auto& c = s.cpu;
 
-    const int frame = s.vic.cycle / FRAME_CYCLE_COUNT;
     const int line = (s.vic.cycle / LINE_CYCLE_COUNT) % FRAME_LINE_COUNT;
     const int line_cycle = s.vic.cycle % LINE_CYCLE_COUNT;
 
@@ -316,16 +315,19 @@ void System::C64::log_cpu_status() {
     if (cpu.at_fetch()) {
         const auto pc = c.bus.a;
         const auto bytes = Bytes{{bus.peek(pc), bus.peek(pc + 1), bus.peek(pc + 2)}};
-        disasm = "> " + as_lower(MOS6502::Asm::disasm_first(bytes, pc).text) + " ";
+        const auto line = MOS6502::Asm::disasm_first(bytes, pc);
+        disasm = "> " + as_lower(line.text);
     } else {
         disasm = ".";
     }
 
-    Log::info("v:%05d|%03d|%02d  %c:%04x %02x %c  pc:%04x a:%02x x:%02x y:%02x s:%03x p:%02x [%s|%c%c%c]  %s",
-        frame, line, line_cycle,
-        mapped_at(bus, c.bus.a, c.bus.rw), c.bus.a, c.bus.d, (c.bus.rw ? 'r' : 'w'),
-        c.pc, c.a, c.x, c.y, c.sp, c.p, Dbg::flags_str(c.p).c_str(),
-        (c.nmi_act ? 'n' : '-'), (c.irq_act ? 'i' : '-'), ((s.ba || s.dma) ? 'r' : '-'),
+    const auto bus_d = c.bus.rw ? bus.peek(c.bus.a) : c.bus.d;
+
+    Log::info("t: %03d.%02d   a: %02x  x: %02x  y: %02x  s: %03x  p: %02x [%s|%c%c%c]  %c%02x %04x (%c)  %s",
+        line, line_cycle,
+        c.a, c.x, c.y, c.sp, c.p, Dbg::flags_str(c.p).c_str(),
+        (c.nmi_act ? 'n' : '.'), (c.irq_act ? 'i' : '.'), ((s.ba || s.dma) ? 'r' : '.'),
+        (c.bus.rw ? ' ' : '>'), bus_d, c.bus.a, mapped_at(bus, c.bus.a, c.bus.rw),
         disasm.c_str()
     );
 }

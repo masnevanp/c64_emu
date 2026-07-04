@@ -12,7 +12,7 @@ using namespace MOS6502;
 std::string Dbg::flags_str(u8 p) {
     using MOS6502::Flag;
 
-    std::string s = "--------";
+    std::string s = "........";
 
     if (p & Flag::N) s[0] = 'n';
     if (p & Flag::V) s[1] = 'v';
