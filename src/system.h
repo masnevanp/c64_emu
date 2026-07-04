@@ -83,7 +83,7 @@ public:
         Expansion::reset(s);
     }
 
-    PLA::Mapping mapped_at(const u16 addr, const State::System::Bus::RW rw) {
+    PLA::Mapping mapped_at(const u16 addr, const State::System::Bus::RW rw) const {
         return PLA::array[s.pla.active][rw][addr >> 12];
     }
 
@@ -538,7 +538,6 @@ private:
                     case ks::step_line:
                     case ks::step_frame:
                         if (s.mode == Mode::stepped) step_forward(code);
-                        log_status(); // yes, log regardless of mode...
                         break;
                     case ks::swap_joy:     host_input.swap_joysticks();        break;
                     case ks::tgl_fscr:     vid_out.toggle_fullscr_win();       break;
@@ -630,7 +629,8 @@ private:
     std::function<void()> deferred;
     void check_deferred();
 
-    void log_status();
+    void log_cpu_status();
+    void log_sys_status(); // TODO: add a sys-key for this?
 
     void pre_run();
 

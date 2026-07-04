@@ -296,10 +296,43 @@ void System::C64::check_deferred() {
 }
 
 
-void System::C64::log_status() {
-    using RW = State::System::Bus::RW;
+char mapped_at(const System::Bus& bus, const u16 addr, const State::System::Bus::RW rw) {
+    static constexpr char mc[] = {
+        'r', 'r', 'r', 'r', 'b', 'k', 'c', 'l', 'l', 'h', 'h', 'i', 'i', '-', '-'
+    };
+    const auto m = bus.mapped_at(addr, rw);
+    return mc[m];
+};
 
-    char buffer[128];
+
+void System::C64::log_cpu_status() {
+    const auto& c = s.cpu;
+
+    const int frame = s.vic.cycle / FRAME_CYCLE_COUNT;
+    const int line = (s.vic.cycle / LINE_CYCLE_COUNT) % FRAME_LINE_COUNT;
+    const int line_cycle = s.vic.cycle % LINE_CYCLE_COUNT;
+
+    std::string disasm;
+    if (cpu.at_fetch()) {
+        const auto pc = c.bus.a;
+        const auto bytes = Bytes{{bus.peek(pc), bus.peek(pc + 1), bus.peek(pc + 2)}};
+        disasm = "> " + as_lower(MOS6502::Asm::disasm_first(bytes, pc).text) + " ";
+    } else {
+        disasm = ".";
+    }
+
+    Log::info("v:%05d|%03d|%02d  %c:%04x %02x %c  pc:%04x a:%02x x:%02x y:%02x s:%03x p:%02x [%s|%c%c%c]  %s",
+        frame, line, line_cycle,
+        mapped_at(bus, c.bus.a, c.bus.rw), c.bus.a, c.bus.d, (c.bus.rw ? 'r' : 'w'),
+        c.pc, c.a, c.x, c.y, c.sp, c.p, Dbg::flags_str(c.p).c_str(),
+        (c.nmi_act ? 'n' : '-'), (c.irq_act ? 'i' : '-'), ((s.ba || s.dma) ? 'r' : '-'),
+        disasm.c_str()
+    );
+}
+
+
+void System::C64::log_sys_status() {
+    using RW = State::System::Bus::RW;
 
     auto pla_mode = [&]() {
         std::string mode_str = ".....";
@@ -315,14 +348,6 @@ void System::C64::log_status() {
         return mode_str;
     };
 
-    auto mapped_at = [&](const u16 addr, RW rw) {
-        static constexpr char mc[] = {
-            'r', 'r', 'r', 'r', 'b', 'k', 'c', 'l', 'l', 'h', 'h', 'i', 'i', '-', '-'
-        };
-        const auto m = bus.mapped_at(addr, rw);
-        return mc[m];
-    };
-
     auto rw_mappings = [&]() {
         static constexpr u16 zone_addr[] = {
             0x0000, 0x1000, 0x8000, 0xa000, 0xc000, 0xd000, 0xe000, 
@@ -330,8 +355,8 @@ void System::C64::log_status() {
 
         std::string rw = ".......|.......";
         for (int z = 0; z < 7; ++z) {
-            rw[z] = mapped_at(zone_addr[z], RW::r);
-            rw[z + 8] = mapped_at(zone_addr[z], RW::w);
+            rw[z] = mapped_at(bus, zone_addr[z], RW::r);
+            rw[z + 8] = mapped_at(bus, zone_addr[z], RW::w);
         }
 
         return rw;
@@ -352,81 +377,16 @@ void System::C64::log_status() {
         return s;
     };
 
-    auto line_1 = [&]() {
-        const int frame = s.vic.cycle / FRAME_CYCLE_COUNT;
-        const int line = (s.vic.cycle / LINE_CYCLE_COUNT) % FRAME_LINE_COUNT;
-        const int line_cycle = s.vic.cycle % LINE_CYCLE_COUNT;
+    char buffer[128];
 
-        const std::string nmi_status = s.int_hub.nmi_act ? "n" : ".";
-        const std::string irq_status = s.int_hub.irq_act ? "i" : ".";
-        const std::string rdy_status = (s.ba | s.dma) ? "r" : ".";
+    const char* format = "c:%012x  m:%02d [%s => %s]     i:[%s|%c%c]";
+    sprintf(buffer, format,
+                s.vic.cycle,
+                System::pla_mode(s),  pla_mode().c_str(), rw_mappings().c_str(),
+                nmi_irq_srcs(s.int_hub).c_str(),
+                (s.ba ? 'b' : '.'), (s.dma ? 'd' : '.'));
 
-        const char ba_status = s.ba ? 'b' : '.';
-        const char dma_status = s.dma ? 'd' : '.';
-
-        const char* format = "t: %05d|%03d|%02d              [%s%s%s] <= [%s|%c%c]";
-        sprintf(buffer, format,
-                    frame, line, line_cycle,
-                    nmi_status.c_str(), irq_status.c_str(), rdy_status.c_str(),
-                    nmi_irq_srcs(s.int_hub).c_str(), ba_status, dma_status);
-
-        Log::info("%s", buffer);
-    };
-
-    auto line_2 = [&]() {
-        const char bus_addr_mapping = mapped_at(s.bus.addr, s.bus.rw);
-        const char rw = (s.bus.rw == RW::r) ? '>' : '<';
-
-        const char* format = "b: %04x [%c] %c %02x             [%s] <= [%s]";
-        sprintf(buffer, format,
-                    s.bus.addr, bus_addr_mapping, rw, s.bus.data,
-                    rw_mappings().c_str(), pla_mode().c_str());
-
-        Log::info("%s", buffer);
-    };
-
-    auto line_3 = [&]() {
-        const char* format = "a: %02x  x: %02x  y: %02x  sp: %02x  [%s] <=  p: %02x";
-        sprintf(buffer, format,
-                    s.cpu.a, s.cpu.x, s.cpu.y, u8(s.cpu.sp),
-                    Dbg::flags_str(s.cpu.p).c_str(), s.cpu.p);
-
-        Log::info("%s", buffer);
-    };
-
-    auto line_4 = [&]() {
-        std::string instr_txt = "";
-        if (cpu.at_fetch()) {
-            const auto& pc = s.cpu.bus.a;
-            const auto bytes = Bytes{{bus.peek(pc), bus.peek(pc + 1), bus.peek(pc + 2)}};
-            instr_txt = "> " + as_lower(MOS6502::Asm::disasm_first(bytes, pc).text);
-
-            const char pc_mapping = mapped_at(pc, RW::r);
-
-            const char* format = "pc:%04x [%c] %s";
-            sprintf(buffer, format, pc, pc_mapping, instr_txt.c_str());
-
-            Log::info("%s", buffer);
-        } else if (cpu.s.opc() <= 0xff) {
-            instr_txt = as_lower(MOS6502::Asm::instruction[cpu.s.opc()].mnemonic);
-            Log::info("            > %s", instr_txt.c_str());
-        }
-
-        /*const char pc_mapping = mapped_at(s.cpu.pc, RW::r);
-
-        const char* format = "pc:%04x [%c] %s";
-        sprintf(buffer, format, s.cpu.pc, pc_mapping, instr_txt.c_str());
-
-        Log::info("%s", buffer);
-        */
-    };
-
-    Log::info("");
-
-    line_1();
-    line_2();
-    line_3();
-    line_4();
+    Log::info("%s", buffer);
 }
 
 
@@ -441,7 +401,8 @@ void System::C64::pre_run() {
             break;
         case Mode::stepped:
             sid.flush();
-            log_status();
+            log_sys_status();
+            log_cpu_status();
             break;
         case Mode::unlimited:
             sid.flush();
@@ -557,6 +518,8 @@ void System::C64::step_forward(u8 key_code) {
     }
 
     sid.sync();
+
+    log_cpu_status();
 }
 
 
