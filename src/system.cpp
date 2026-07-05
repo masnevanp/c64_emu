@@ -308,6 +308,7 @@ char mapped_at(const System::Bus& bus, const u16 addr, const State::System::Bus:
 void System::C64::log_cpu_status() {
     const auto& c = s.cpu;
 
+    const int frame = s.vic.cycle / FRAME_CYCLE_COUNT;
     const int line = (s.vic.cycle / LINE_CYCLE_COUNT) % FRAME_LINE_COUNT;
     const int line_cycle = s.vic.cycle % LINE_CYCLE_COUNT;
 
@@ -323,8 +324,8 @@ void System::C64::log_cpu_status() {
 
     const auto bus_d = c.bus.rw ? bus.peek(c.bus.a) : c.bus.d;
 
-    Log::info("t: %03d.%02d   a: %02x  x: %02x  y: %02x  s: %03x  p: %02x [%s|%c%c%c]  %c%02x %04x (%c)  %s",
-        line, line_cycle,
+    Log::info("<%010d.%03d.%02d>  axy: %02x %02x %02x  s: %03x  p: %02x [%s]  i: [%c%c%c]  %c%02x %04x (%c)  %s",
+        frame, line, line_cycle,
         c.a, c.x, c.y, c.sp, c.p, Dbg::flags_str(c.p).c_str(),
         (c.nmi_act ? 'n' : '.'), (c.irq_act ? 'i' : '.'), ((s.ba || s.dma) ? 'r' : '.'),
         (c.bus.rw ? ' ' : '>'), bus_d, c.bus.a, mapped_at(bus, c.bus.a, c.bus.rw),
@@ -333,7 +334,7 @@ void System::C64::log_cpu_status() {
 }
 
 
-void System::C64::log_sys_status() {
+void System::C64::log_sig_status() {
     using RW = State::System::Bus::RW;
 
     auto pla_mode = [&]() {
@@ -379,14 +380,30 @@ void System::C64::log_sys_status() {
         return s;
     };
 
+    auto rdy_srcs = [&]() {
+        std::string rs = "..........";
+
+        if (s.ba) {
+            for (int mn = 0; mn < 8; ++mn) {
+                if (s.ba & (0x0100 < mn)) rs[mn] = std::to_string(mn)[0];
+            }
+
+            if (s.ba & 0x00ff) rs[8] = 'g';
+        }
+
+        if (s.dma) rs[9] = 'd';
+
+        return rs;
+    };
+
     char buffer[128];
 
-    const char* format = "c:%012x  m:%02d [%s => %s]     i:[%s|%c%c]";
+    const char* format = "nmi/irq: [%s]   rdy: [%s]      m: %02d [%s => %s]";
     sprintf(buffer, format,
-                s.vic.cycle,
-                System::pla_mode(s),  pla_mode().c_str(), rw_mappings().c_str(),
                 nmi_irq_srcs(s.int_hub).c_str(),
-                (s.ba ? 'b' : '.'), (s.dma ? 'd' : '.'));
+                rdy_srcs().c_str(),
+                System::pla_mode(s),  pla_mode().c_str(), rw_mappings().c_str()
+    );
 
     Log::info("%s", buffer);
 }
@@ -403,7 +420,7 @@ void System::C64::pre_run() {
             break;
         case Mode::stepped:
             sid.flush();
-            log_sys_status();
+            log_sig_status();
             log_cpu_status();
             break;
         case Mode::unlimited:

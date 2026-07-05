@@ -630,7 +630,7 @@ private:
     void check_deferred();
 
     void log_cpu_status();
-    void log_sys_status(); // TODO: add a sys-key for this?
+    void log_sig_status(); // TODO: add a sys-key for this?
 
     void pre_run();
 
