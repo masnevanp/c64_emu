@@ -169,6 +169,7 @@ namespace Key_code {
         nop = GS,
         rst_cold, rst_warm, save_state, mode_stepped, mode_unlimited,
         step_cycle, step_instr, step_line, step_frame,
+        log_cpu_status, log_sys_status,
         swap_joy, tgl_fscr,
         exp_btn_1,
         sys,

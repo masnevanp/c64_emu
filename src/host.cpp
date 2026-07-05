@@ -102,7 +102,7 @@ const u8 Input::SC_RALT_LU_TBL[] = { // SDL_Scancode with RALT modifier */
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
     // 30..3f
     sy::nop,   kb::mul,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
-    sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
+    sy::nop,   sy::nop,   sy::log_cpu_status,   sy::log_sys_status,   sy::nop,   sy::nop,   sy::nop,   sy::nop,
     // 40..4f
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::mode_stepped,   sy::nop,   sy::nop,
     sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::nop,   sy::menu_ent,

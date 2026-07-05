@@ -539,27 +539,29 @@ private:
                     case ks::step_frame:
                         if (s.mode == Mode::stepped) step_forward(code);
                         break;
-                    case ks::swap_joy:     host_input.swap_joysticks();        break;
-                    case ks::tgl_fscr:     vid_out.toggle_fullscr_win();       break;
-                    case ks::exp_btn_1:    Expansion::button_1(s);             break;
-                    case ks::sys:          show_status = true;                 break;
+                    case ks::log_cpu_status: log_cpu_status();                   break;
+                    case ks::log_sys_status: log_sys_status();                   break;
+                    case ks::swap_joy:       host_input.swap_joysticks();        break;
+                    case ks::tgl_fscr:       vid_out.toggle_fullscr_win();       break;
+                    case ks::exp_btn_1:      Expansion::button_1(s);             break;
+                    case ks::sys:            show_status = true;                 break;
                     case ks::menu_ent:
                     case ks::menu_exit:
                     case ks::menu_up:
-                    case ks::menu_down:    menu.handle_key(code);              break;
-                    case ks::menu_root:    menu.activate_root();               break;
-                    case ks::menu_audio:   menu.activate("Audio");             break;
-                    case ks::menu_video:   menu.activate("Video");             break;
-                    case ks::menu_vid_col: menu.activate("Video", "Colodore"); break;
-                    case ks::menu_disk:    menu.activate("Disk");              break;
-                    case ks::menu_perf:    menu.activate("Performance");       break;
-                    case ks::menu_exp:     menu.activate("Expansion");         break;
-                    case ks::menu_xtra:    menu.activate("Xtras");             break;
-                    case ks::menu_att_reu: menu.activate("Expansion", "Attach REU ?"); break;
-                    case ks::menu_quit:    menu.activate("Shutdown ?");        break;
-                    case ks::rot_dsk:      c1541.disk_carousel.rotate();       break;
-                    case ks::tgl_wp:       c1541.disk_carousel.toggle_wp();    break;
-                    case ks::shutdown:     request_shutdown();                 break;
+                    case ks::menu_down:      menu.handle_key(code);              break;
+                    case ks::menu_root:      menu.activate_root();               break;
+                    case ks::menu_audio:     menu.activate("Audio");             break;
+                    case ks::menu_video:     menu.activate("Video");             break;
+                    case ks::menu_vid_col:   menu.activate("Video", "Colodore"); break;
+                    case ks::menu_disk:      menu.activate("Disk");              break;
+                    case ks::menu_perf:      menu.activate("Performance");       break;
+                    case ks::menu_exp:       menu.activate("Expansion");         break;
+                    case ks::menu_xtra:      menu.activate("Xtras");             break;
+                    case ks::menu_att_reu:   menu.activate("Expansion", "Attach REU ?"); break;
+                    case ks::menu_quit:      menu.activate("Shutdown ?");        break;
+                    case ks::rot_dsk:        c1541.disk_carousel.rotate();       break;
+                    case ks::tgl_wp:         c1541.disk_carousel.toggle_wp();    break;
+                    case ks::shutdown:       request_shutdown();                 break;
                 }
             } else {
                 if (code == ks::sys) menu.active = show_status = false;
@@ -630,7 +632,7 @@ private:
     void check_deferred();
 
     void log_cpu_status();
-    void log_sig_status(); // TODO: add a sys-key for this?
+    void log_sys_status();
 
     void pre_run();
 
