@@ -367,15 +367,16 @@ void System::C64::log_cpu_status() {
         disasm = ".";
     }
 
+    // we need to peek, since the read has not happened yet (i.e. c.bus.d is the 'old' value....)
     const auto bus_d = c.bus.rw ? bus.peek(c.bus.a) : c.bus.d;
 
-    Log::info("%06d.%03d.%02d #  axysp: %02x %02x %02x %03x %02x|%s| %c%02x %04x (%c) %-15s [%s|%s => %c%c%c]  [%s]",
+    Log::info("%06d.%03d.%02d %c %02x %04x [%c] %-13s axysp: %02x %02x %02x %03x %02x[%s]  %c%c%c: [%s|%s]  pla: [%s]",
         frame, line, line_cycle,
-        c.a, c.x, c.y, c.sp, c.p, Dbg::flags_str(c.p).c_str(),
-        (c.bus.rw ? ' ' : '>'), bus_d, c.bus.a, mapped_at(bus, c.bus.a, c.bus.rw),
+        (c.bus.rw ? 'r' : 'w'), bus_d, c.bus.a, mapped_at(bus, c.bus.a, c.bus.rw),
         disasm.c_str(),
-        nmi_irq_srcs(s.int_hub).c_str(), rdy_srcs().c_str(),
+        c.a, c.x, c.y, c.sp, c.p, Dbg::flags_str(c.p).c_str(),
         (c.nmi_act ? 'n' : '.'), (c.irq_act ? 'i' : '.'), ((s.ba || s.dma) ? 'r' : '.'),
+        nmi_irq_srcs(s.int_hub).c_str(), rdy_srcs().c_str(),
         pla_mode_str(System::pla_mode(s)).c_str()
     );
 }
