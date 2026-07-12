@@ -296,9 +296,16 @@ void System::C64::check_deferred() {
 }
 
 
-void System::C64::log_cpu_status() {
-    using RW = State::System::Bus::RW;
+char mapped_at(const System::Bus& bus, const u16 addr, const State::System::Bus::RW rw) {
+    static constexpr char mc[] = {
+        'r', 'r', 'r', 'r', 'b', 'k', 'c', 'l', 'l', 'h', 'h', 'i', 'i', '.', '.'
+    };
+    const auto m = bus.mapped_at(addr, rw);
+    return mc[m];
+};
 
+
+void System::C64::log_cpu_status() {
     auto nmi_irq_srcs = [&](const State::System::Int_hub& int_hub) {
         using Src = IO::Int_sig::Src;
 
@@ -331,40 +338,6 @@ void System::C64::log_cpu_status() {
         return rs;
     };
 
-    auto mapped_at = [&](const u16 addr, const RW rw) {
-        static constexpr char mc[] = {
-            'r', 'r', 'r', 'r', 'b', 'k', 'c', 'l', 'l', 'h', 'h', 'i', 'i', '.', '.'
-        };
-        const auto m = bus.mapped_at(addr, rw);
-        return mc[m];
-    };
-
-    auto rw_mappings = [&]() {
-        static constexpr u16 zone_addr[] = {
-            0x0000, 0x1000, 0x8000, 0xa000, 0xc000, 0xd000, 0xe000, 
-        };
-
-        std::string rw = ".......|.......";
-        for (int z = 0; z < 7; ++z) {
-            rw[z] = mapped_at(zone_addr[z], RW::r);
-            rw[z + 8] = mapped_at(zone_addr[z], RW::w);
-        }
-
-        return rw;
-    };
-
-    auto pla_mode_str = [&](u8 mode) {
-        std::string mode_str = ".....";
-
-        if (mode & 0b10000) mode_str[0] = 'e';
-        if (mode & 0b01000) mode_str[1] = 'g';
-        if (mode & 0b00100) mode_str[2] = 'c';
-        if (mode & 0b00010) mode_str[3] = 'h';
-        if (mode & 0b00001) mode_str[4] = 'l';
-
-        return mode_str;
-    };
-
     const auto& c = s.cpu;
 
     const int frame = s.vic.cycle / FRAME_CYCLE_COUNT;
@@ -384,23 +357,53 @@ void System::C64::log_cpu_status() {
     // we need to peek, since the read has not happened yet (i.e. c.bus.d is the 'old' value....)
     const auto bus_d = c.bus.rw ? bus.peek(c.bus.a) : c.bus.d;
 
-    Log::info("%06d.%03d.%02d %c %02x %04x [%c] %-13s axysp: %02x %02x %02x %03x %02x[%s]  %c%c%c: [%s|%s]  pla: %02d [%s => %s]",
+    Log::info("%06d.%03d.%02d  %c %02x %04x [%c] %-13s axyps: %02x %02x %02x %03x [%s]  %c%c%c: [%s|%s]",
         frame, line, line_cycle,
-        (c.bus.rw ? 'r' : 'w'), bus_d, c.bus.a, mapped_at(c.bus.a, c.bus.rw),
+        (c.bus.rw ? 'r' : 'w'), bus_d, c.bus.a, mapped_at(bus, c.bus.a, c.bus.rw),
         disasm.c_str(),
-        c.a, c.x, c.y, c.sp, c.p, Dbg::flags_str(c.p).c_str(),
+        c.a, c.x, c.y, c.sp, Dbg::flags_str(c.p).c_str(),
         (c.nmi_act ? 'n' : '.'), (c.irq_act ? 'i' : '.'), ((s.ba || s.dma) ? 'r' : '.'),
-        nmi_irq_srcs(s.int_hub).c_str(), rdy_srcs().c_str(),
-        System::pla_mode(s), pla_mode_str(System::pla_mode(s)).c_str(), rw_mappings().c_str()
+        nmi_irq_srcs(s.int_hub).c_str(), rdy_srcs().c_str()
     );
 }
 
 
 void System::C64::log_sys_status() {
+    using RW = State::System::Bus::RW;
+
     char buffer[128];
 
-    const char* format = "c: %d";
-    sprintf(buffer, format, s.vic.cycle);
+    auto pla_mode_str = [&](u8 mode) {
+        std::string mode_str = ".....";
+
+        if (mode & 0b10000) mode_str[0] = 'e';
+        if (mode & 0b01000) mode_str[1] = 'g';
+        if (mode & 0b00100) mode_str[2] = 'c';
+        if (mode & 0b00010) mode_str[3] = 'h';
+        if (mode & 0b00001) mode_str[4] = 'l';
+
+        return mode_str;
+    };
+
+    auto rw_mappings = [&]() {
+        static constexpr u16 zone_addr[] = {
+            0x0000, 0x1000, 0x8000, 0xa000, 0xc000, 0xd000, 0xe000,
+        };
+
+        std::string rw = ".......|.......";
+        for (int z = 0; z < 7; ++z) {
+            rw[z] = mapped_at(bus, zone_addr[z], RW::r);
+            rw[z + 8] = mapped_at(bus, zone_addr[z], RW::w);
+        }
+
+        return rw;
+    };
+
+    const char* format = "c: %d   pla: %02d [%s => %s]";
+    sprintf(buffer, format,
+        s.vic.cycle,
+        System::pla_mode(s), pla_mode_str(System::pla_mode(s)).c_str(), rw_mappings().c_str()
+    );
 
     Log::info("%s", buffer);
 }
