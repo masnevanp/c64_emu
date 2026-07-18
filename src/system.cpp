@@ -357,7 +357,7 @@ void System::C64::log_cpu_status() {
     // we need to peek, since the read has not happened yet (i.e. c.bus.d is the 'old' value....)
     const auto bus_d = c.bus.rw ? bus.peek(c.bus.a) : c.bus.d;
 
-    Log::info("%06d.%03d.%02d  %c %02x %04x [%c] %-13s axyps: %02x %02x %02x %03x [%s]  %c%c%c: [%s|%s]",
+    Log::info("%06d.%03d.%02d  %c %02x %04x [%c] %-14s axysp: %02x %02x %02x %03x [%s]  %c%c%c: [%s|%s]",
         frame, line, line_cycle,
         (c.bus.rw ? 'r' : 'w'), bus_d, c.bus.a, mapped_at(bus, c.bus.a, c.bus.rw),
         disasm.c_str(),
