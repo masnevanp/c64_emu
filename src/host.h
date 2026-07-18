@@ -1,7 +1,7 @@
 #ifndef HOST_H_INCLUDED
 #define HOST_H_INCLUDED
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "common.h"
 #include "utils.h"
 #include "menu.h"
@@ -33,8 +33,8 @@ public:
     Input(Handlers& handlers_);
 
     ~Input() {
-        if (sdl_joystick[0]) SDL_JoystickClose(sdl_joystick[0]);
-        if (sdl_joystick[1]) SDL_JoystickClose(sdl_joystick[1]);
+        if (sdl_joystick[0]) SDL_CloseJoystick(sdl_joystick[0]);
+        if (sdl_joystick[1]) SDL_CloseJoystick(sdl_joystick[1]);
     }
 
 private:
@@ -76,27 +76,8 @@ private:
         return *(joy_handler[joy_idx]);
     }
 
-    void handle_win_ev() {
-        switch (sdl_ev.window.event) {
-            case SDL_WINDOWEVENT_RESIZED:
-                handlers.window_resized(sdl_ev.window.data1, sdl_ev.window.data2);
-                break;
-            case SDL_WINDOWEVENT_FOCUS_GAINED:
-                set_shift_lock();
-                break;
-            case SDL_WINDOWEVENT_CLOSE:
-                handlers.sys(Key_code::System::shutdown, true);
-                break;
-        }
-    }
-
-    void handle_dropfile() {
-        handlers.filedrop(sdl_ev.drop.file);
-        SDL_free(sdl_ev.drop.file);
-    }
-
     void set_shift_lock() {
-        const bool down = SDL_GetModState() & KMOD_CAPS;
+        const bool down = SDL_GetModState() & SDL_KMOD_CAPS;
         // disable/enable left shift
         KC_LU_TBL[sh_l_idx] = down
             ? (Key_code::Keyboard)Key_code::System::nop
@@ -160,8 +141,6 @@ public:
 
     bool v_synced() const { return vsync; }
 
-    static SDL_Texture* create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SDL_BlendMode bm,
-                                            int w, int h);
 private:
     struct SDL_frame {
         const int max_w;
@@ -170,8 +149,8 @@ private:
         const SDL_BlendMode bm;
 
         SDL_Texture* texture = nullptr;
-        SDL_Rect srcrect = {0, 0, 0, 0};
-        SDL_Rect dstrect = {0, 0, 0, 0};
+        SDL_FRect srcrect = {0, 0, 0, 0};
+        SDL_FRect dstrect = {0, 0, 0, 0};
         u32* pixels = nullptr;
 
         SDL_frame(int max_w_, int max_h_, SDL_TextureAccess ta_, SDL_BlendMode bm_);
@@ -179,7 +158,7 @@ private:
 
         void connect(SDL_Renderer* renderer);
         void copy(SDL_Renderer* r) {
-            SDL_RenderCopy(r, texture, &srcrect, &dstrect);
+            SDL_RenderTexture(r, texture, &srcrect, &dstrect);
         }
     };
 
@@ -225,7 +204,7 @@ private:
 
     Settings set;
 
-    SDL_DisplayMode sdl_mode = { 0, 0, 0, 0, 0 };
+    const SDL_DisplayMode* sdl_mode = nullptr;
     int vsync = 0;
 
     SDL_Window* window = nullptr;
@@ -251,6 +230,9 @@ private:
         {"Saturation",   set.saturation,     [&](){ frame.upd_palette(set); }},
     };
     std::vector<::Menu::Group> colodore_sub{{"Colodore", colodore_menu_items}};
+
+    static SDL_Texture* create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SDL_BlendMode bm,
+                                            int w, int h);
 };
 
 
@@ -258,23 +240,23 @@ class Audio_out {
 public:
     static constexpr int bytes_per_sample = 2;
 
-    ~Audio_out() { if (dev) SDL_CloseAudioDevice(dev); }
+    ~Audio_out() { if (stream) SDL_DestroyAudioStream(stream); }
 
     u16 config(u16 buf_sz);
 
     int put(const i16* chunk, u32 sz) {
-        if (dev) {
-            SDL_QueueAudio(dev, chunk, sz * bytes_per_sample);
-            return SDL_GetQueuedAudioSize(dev) / bytes_per_sample;
+        if (stream) {
+            SDL_PutAudioStreamData(stream, chunk, sz * bytes_per_sample);
+            return SDL_GetAudioStreamQueued(stream) / bytes_per_sample;
         }
 
         return 0;
     }
 
-    void flush() { SDL_ClearQueuedAudio(dev); }
+    void flush() { SDL_FlushAudioStream(stream); }
 
 private:
-    SDL_AudioDeviceID dev = 0;
+    SDL_AudioStream* stream = nullptr;
 
 };
 
@@ -285,26 +267,22 @@ public:
     ~_SDL() { SDL_Quit(); }
 private:
     _SDL() {
-        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO |  SDL_INIT_JOYSTICK) != 0) {
+        if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK)) {
             Log::error("Unable to initialize SDL: %s", SDL_GetError());
             exit(1);
         }
 
         Log::info("Running on %s", SDL_GetPlatform());
 
-        SDL_version compiled;
-        SDL_version linked;
-
-        SDL_VERSION(&compiled);
-        SDL_GetVersion(&linked);
-
+        const int compiled = SDL_VERSION;
+        const int linked = SDL_GetVersion();
         Log::info("SDL version (compiled/linked): %d.%d.%d / %d.%d.%d",
-            compiled.major,
-            compiled.minor,
-            compiled.patch,
-            linked.major,
-            linked.minor,
-            linked.patch
+            SDL_VERSIONNUM_MAJOR(compiled),
+            SDL_VERSIONNUM_MINOR(compiled),
+            SDL_VERSIONNUM_MICRO(compiled),
+            SDL_VERSIONNUM_MAJOR(linked),
+            SDL_VERSIONNUM_MINOR(linked),
+            SDL_VERSIONNUM_MICRO(linked)
         );
     }
     _SDL(const _SDL& ) = delete;

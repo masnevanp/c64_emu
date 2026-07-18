@@ -14,8 +14,8 @@ else
 CXXFLAGS += -DDEBUG -O0 -g
 endif
 
-SDL_LIBS := `sdl2-config --libs`
-SDL_CFLAGS := `sdl2-config --cflags`
+SDL_LIBS := `pkg-config sdl3 --libs`
+SDL_CFLAGS := `pkg-config sdl3 --cflags`
 
 
 SRC := $(wildcard src/**.cpp src/*/*.cpp)

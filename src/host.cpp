@@ -122,12 +122,14 @@ Input::Input(Handlers& handlers_)
 
     // TODO: allow selection (for now just the first two found are attached)
     // TODO: joystick calibration/configuration...
+    int num_joys = 0;
     int open_joys = 0;
-    for (int j = 0; j < SDL_NumJoysticks() && open_joys < 2; ++j) {
-        SDL_Joystick* sj = SDL_JoystickOpen(j);
-        if(!sj) Log::error("Unable to SDL_JoystickOpen: %s", SDL_GetError());
+    SDL_JoystickID* joy_ids = SDL_GetJoysticks(&num_joys);
+    for (int j = 0; j < num_joys && open_joys < 2; ++j) {
+        SDL_Joystick* sj = SDL_OpenJoystick(joy_ids[j]);
+        if(!sj) Log::error("Unable to SDL_OpenJoystick: %s", SDL_GetError());
         else {
-            sdl_joystick_id[open_joys] = SDL_JoystickInstanceID(sj);
+            sdl_joystick_id[open_joys] = SDL_GetJoystickID(sj);
             sdl_joystick[open_joys++] = sj;
         }
     }
@@ -135,16 +137,24 @@ Input::Input(Handlers& handlers_)
 }
 
 
-void Input::poll() { // TODO: filtering?
+void Input::poll() {
     while (SDL_PollEvent(&sdl_ev)) {
         switch (sdl_ev.type) {
-            case SDL_WINDOWEVENT:   handle_win_ev();       break;
-            case SDL_KEYDOWN:       handle_key(true);      break;
-            case SDL_KEYUP:         handle_key(false);     break;
-            case SDL_JOYAXISMOTION: handle_joy_axis();     break;
-            case SDL_JOYBUTTONDOWN: handle_joy_btn(true);  break;
-            case SDL_JOYBUTTONUP:   handle_joy_btn(false); break;
-            case SDL_DROPFILE:      handle_dropfile();     break;
+            case SDL_EVENT_WINDOW_RESIZED:
+                handlers.window_resized(sdl_ev.window.data1, sdl_ev.window.data2);
+                break;
+            case SDL_EVENT_WINDOW_FOCUS_GAINED:  set_shift_lock();      break;
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                handlers.sys(Key_code::System::shutdown, true);
+                break;
+            case SDL_EVENT_KEY_DOWN:             handle_key(true);      break;
+            case SDL_EVENT_KEY_UP:               handle_key(false);     break;
+            case SDL_EVENT_JOYSTICK_AXIS_MOTION: handle_joy_axis();     break;
+            case SDL_EVENT_JOYSTICK_BUTTON_DOWN: handle_joy_btn(true);  break;
+            case SDL_EVENT_JOYSTICK_BUTTON_UP:   handle_joy_btn(false); break;
+            case SDL_EVENT_DROP_FILE:
+                handlers.filedrop(sdl_ev.drop.data);
+                break;
         }
     }
 }
@@ -164,23 +174,22 @@ u8 Input::translate_sdl_key() {
     static const i32 FIRST_NON_CHAR_KC  = SDLK_CAPSLOCK;
     static const i32 OFFSET_NON_CHAR_KC = FIRST_NON_CHAR_KC - (LAST_CHAR_KC + 1);
 
-    const SDL_Keysym key_sym = sdl_ev.key.keysym;
+    const auto& k = sdl_ev.key;
 
-    if (key_sym.mod & SDL_Keymod::KMOD_RALT) {
-        const auto sc = key_sym.scancode;
-        if (sc < std::size(SC_RALT_LU_TBL)) {
-            if (auto kc = SC_RALT_LU_TBL[sc]; kc != sy::nop) return kc;
+    if (k.mod & SDL_KMOD_RALT) {
+        if (k.scancode < std::size(SC_RALT_LU_TBL)) {
+            if (auto kc = SC_RALT_LU_TBL[k.scancode]; kc != sy::nop) return kc;
         }
     }
 
-    if (key_sym.sym <= MAX_KC) {
+    if (k.key <= MAX_KC) {
         // most mapped on keycode, some on scancode
-        if (key_sym.sym <= LAST_CHAR_KC)
-            return KC_LU_TBL[key_sym.sym];
-        else if (key_sym.sym >= FIRST_NON_CHAR_KC)
-            return KC_LU_TBL[key_sym.sym - OFFSET_NON_CHAR_KC];
-        else if (key_sym.scancode >= 0x2e && key_sym.scancode <= 0x35)
-            return SC_LU_TBL[key_sym.scancode - 0x2e];
+        if (k.key <= LAST_CHAR_KC)
+            return KC_LU_TBL[k.key];
+        else if (k.key >= FIRST_NON_CHAR_KC)
+            return KC_LU_TBL[k.key - OFFSET_NON_CHAR_KC];
+        else if (k.scancode >= 0x2e && k.scancode <= 0x35)
+            return SC_LU_TBL[k.scancode - 0x2e];
     }
 
     return Key_code::System::nop;
@@ -460,9 +469,12 @@ SDL_Texture* Video_out::create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SD
         exit(1);
     }
 
-    if (SDL_SetTextureBlendMode(t, bm) != 0) {
+    if (!SDL_SetTextureBlendMode(t, bm)) {
         Log::error("Failed to SDL_SetTextureBlendMode: %s", SDL_GetError());
     }
+
+    // linear is the default mode
+    // SDL_SetTextureScaleMode(t, SDL_ScaleMode::SDL_SCALEMODE_LINEAR);
 
     return t;
 }
@@ -470,44 +482,37 @@ SDL_Texture* Video_out::create_texture(SDL_Renderer* r, SDL_TextureAccess ta, SD
 
 void Video_out::upd_mode() {
     if (!window) {
-        window = SDL_CreateWindow("WIP #$40", 400, 100, 100, 100, SDL_WINDOW_RESIZABLE);
-        if (!window) {
-            Log::error("Failed to SDL_CreateWindow: %s", SDL_GetError());
+        if (!SDL_CreateWindowAndRenderer(
+            "WIP #$40", 320, 200,
+            SDL_WINDOW_RESIZABLE, &window, &renderer
+        )) {
+            Log::error("Failed to SDL_CreateWindowAndRenderer: %s", SDL_GetError());
             exit(1);
         }
 
-        renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-        if (!renderer) {
-            Log::error("Failed to SDL_CreateRenderer: %s", SDL_GetError());
-            exit(1);
-        }
+        Log::info("Renderer: %s" ,SDL_GetRendererName(renderer));
 
-        SDL_RendererInfo ri;
-        if (SDL_GetRendererInfo(renderer, &ri) == 0) Log::info("Renderer: %s" , ri.name);
-
-        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
+        SDL_SetWindowPosition(window, 350, 100); // TODO: center window
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 
         frame.frame.connect(renderer);
         mask.frame.connect(renderer);
-
     }
 
     switch (set.mode) {
         case Mode::win:
-            if (SDL_SetWindowFullscreen(window, 0) != 0) {
-                Log::error("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
-                exit(1);
-            }
+            SDL_SetWindowFullscreen(window, false); // TODO: somehow check success?
+            SDL_SyncWindow(window);
             break;
         case Mode::fullscr_win:
-            if (SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP) != 0) {
-                Log::error("Failed to SDL_SetWindowFullscreen: %s", SDL_GetError());
-                exit(1);
-            }
+            SDL_SetWindowFullscreen(window, true); // TODO: somehow check success?
+            SDL_SyncWindow(window);
             break;
-        case Mode::fullscr: { // TODO: cycle through supported modes?
-            auto fr = int(frame_rate_client);
+        case Mode::fullscr:
+            Log::info("TODO: Mode::fullscr");
+            break;
+        /*case Mode::fullscr: { // TODO: cycle through supported modes?
+            auto fr = int(frame_rate_in);
             SDL_DisplayMode sdm = { pixel_format, 1920, 1080, fr, 0 };
             if (SDL_SetWindowDisplayMode(window, &sdm) != 0) {
                 Log::error("Failed to SDL_SetWindowDisplayMode: %s", SDL_GetError());
@@ -518,29 +523,31 @@ void Video_out::upd_mode() {
                 exit(1);
             }
             break;
-        }
+        }*/
     }
 
-    const int disp_idx = SDL_GetWindowDisplayIndex(window);
-    if (SDL_GetCurrentDisplayMode(disp_idx, &sdl_mode) != 0) {
+    const auto disp_id = SDL_GetDisplayForWindow(window);
+    if (sdl_mode = SDL_GetCurrentDisplayMode(disp_id); !sdl_mode) {
         Log::error("Failed to SDL_GetCurrentDisplayMode: %s", SDL_GetError());
         exit(1);
     }
 
-    const int new_vsync = double(sdl_mode.refresh_rate) == frame_rate_client ? 1 : 0;
+    const int new_vsync = // e.g. roughly we check if (60.000 == 60.000)... good enough?
+        int(1000 * sdl_mode->refresh_rate) == int(1000 * float(frame_rate_client))
+        ? 1 : 0;
     if (new_vsync != vsync) {
-        if (SDL_RenderSetVSync(renderer, new_vsync) == 0) vsync = new_vsync;
+        if (SDL_SetRenderVSync(renderer, new_vsync)) vsync = new_vsync;
     }
 
-    Log::info("Video out: %dx%d, %d Hz (in: %.3f Hz ==> vsync: %d)",
-                sdl_mode.w, sdl_mode.h,
-                sdl_mode.refresh_rate, frame_rate_client, vsync);
+    Log::info("Video out: %dx%d, %.3f Hz (in: %.3f Hz ==> vsync: %d)",
+                sdl_mode->w, sdl_mode->h,
+                sdl_mode->refresh_rate, frame_rate_client, vsync);
 
     mask.upd(set);
 
     upd_dimensions();
 
-    SDL_ShowCursor(set.mode == Mode::win);
+    if(set.mode == Mode::win) SDL_ShowCursor(); else SDL_HideCursor();
 }
 
 
@@ -549,14 +556,14 @@ void Video_out::upd_dimensions() {
     const auto window_scale = set.window_scale / 100.0;
 
     if (set.mode == Mode::win) {
-        const int w = aspect_ratio * (window_scale * VIC_II::FRAME_WIDTH);
-        const int h = window_scale * VIC_II::FRAME_HEIGHT;
+        const float w = aspect_ratio * (window_scale * VIC_II::FRAME_WIDTH);
+        const float h = window_scale * VIC_II::FRAME_HEIGHT;
         SDL_SetWindowSize(window, w, h);
-        frame.frame.dstrect = SDL_Rect{0, 0, w, h};
-        mask.frame.srcrect = mask.frame.dstrect = SDL_Rect{0, 0, w, h};;
+        frame.frame.dstrect = SDL_FRect{0, 0, w, h};
+        mask.frame.srcrect = mask.frame.dstrect = SDL_FRect{0, 0, w, h};;
     } else {
         int win_w; int win_h;
-        SDL_GetRendererOutputSize(renderer, &win_w, &win_h);
+        SDL_GetCurrentRenderOutputSize(renderer, &win_w, &win_h);
         int w = aspect_ratio * (((double)win_h / VIC_II::FRAME_HEIGHT) * VIC_II::FRAME_WIDTH);
         if (w < win_w) {
             frame.frame.dstrect.x = (win_w - w) / 2;
@@ -571,7 +578,7 @@ void Video_out::upd_dimensions() {
             frame.frame.dstrect.h = h;
         }
 
-        mask.frame.srcrect = mask.frame.dstrect = SDL_Rect{0, 0, win_w, win_h};;
+        mask.frame.srcrect = mask.frame.dstrect = SDL_FRect{0, 0, float(win_w), float(win_h)};;
     }
 
     SDL_RenderClear(renderer);
@@ -614,36 +621,30 @@ void Video_out::resize_window(int w, int h) {
 
 
 u16 Audio_out::config(u16 buf_sz) {
-    SDL_AudioSpec want;
-    SDL_AudioSpec have;
+    Log::info("Configuring audio (requested buf_sz=%d)...", buf_sz);
 
-     Log::info("Configuring audio (requested buf_sz=%d)...", buf_sz);
+    if (stream) SDL_DestroyAudioStream(stream);
 
-    if (dev) {
-        flush();
-        SDL_CloseAudioDevice(dev);
-    }
+    // Sadly, this hint can be ignored, possible leading to noticable latency... :(
+    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, std::to_string(buf_sz).c_str());
 
-    SDL_memset(&want, 0, sizeof(want));
-    want.freq = AUDIO_OUTPUT_FREQ;
-    want.format = AUDIO_S16LSB;
-    want.channels = 1;
-    want.samples = buf_sz;
-
-    dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
-    if (dev == 0) {
+    SDL_AudioSpec audio_spec = { SDL_AUDIO_S16LE, 1, AUDIO_OUTPUT_FREQ };
+    stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audio_spec, nullptr, nullptr);
+    if (!stream) {
         Log::error("Audio fail: %s.", SDL_GetError());
         return 0;
     }
 
+    int sample_frames;
+    const auto dev_id = SDL_GetAudioStreamDevice(stream);
+    SDL_GetAudioDeviceFormat(dev_id, &audio_spec, &sample_frames);
+
     const auto driver = SDL_GetCurrentAudioDriver();
-    const auto dev_freq = have.freq;
-    const auto dev_buf_sz = have.samples;
-    Log::info("Audio: '%s' configured (rate: %d, buf_sz: %d).", driver, dev_freq, dev_buf_sz);
+    const auto dev_freq = audio_spec.freq;
+    Log::info("Audio: '%s' configured (rate: %d, buf_sz: %d).", driver, dev_freq, sample_frames);
+    SDL_ResumeAudioDevice(dev_id);
 
-    SDL_PauseAudioDevice(dev, 0);
-
-    return dev_buf_sz;
+    return sample_frames;
 }
 
 
