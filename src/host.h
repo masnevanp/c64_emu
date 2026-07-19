@@ -121,7 +121,7 @@ public:
 
     Menu::Group settings_menu() { return { "Video", menu_items, colodore_sub}; }
 
-    Video_out(const double& frame_rate_client_) : frame_rate_client(frame_rate_client_) {}
+    Video_out(const double& frame_rate_guest_) : frame_rate_guest(frame_rate_guest_) {}
     ~Video_out();
 
     void put(const u8* vic_frame);
@@ -200,7 +200,7 @@ private:
     void upd_dimensions();
     void resize_window(int w, int h);
 
-    const double& frame_rate_client;
+    const double& frame_rate_guest;
 
     Settings set;
 
