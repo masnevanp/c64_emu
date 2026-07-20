@@ -270,6 +270,11 @@ void System::Menu::handle_key(u8 code) {
 }
 
 
+void System::Monitor::draw(PETSCII_Draw& pd) {
+    pd.txt("Abcdf 123135 lkdjasja 123213", text_top_left_x, text_top_left_y, Color::white, Color::blue);
+}
+
+
 void System::C64::run(Mode init_mode) {
     s.mode = init_mode;
 
@@ -542,40 +547,16 @@ void System::C64::step_forward(u8 key_code) {
 }
 
 
-struct PETSCII_Draw { // user is trusted, no checks...
-    const u8* charrom;
-    u8* tgt;
-    const u16 tgt_w = VIC_II::FRAME_WIDTH;
-
-    //void clear(u8 col) { for (int p = 0; p < tgt_w * tgt_h; ++p) tgt[p] = col; }
-
-    void chr(u16 chr, u16 cx, u16 cy, Color fg, Color bg) {
-        const u8* src = &charrom[chr * 8];
-        for (int px_row = 0; px_row < 8; ++px_row, ++src) {
-            u8* t = &tgt[(px_row + cy) * tgt_w + cx];
-            for (u8 px = 0b10000000; px; px >>= 1) *t++ = (*src & px) ? fg : bg;
-        }
-    }
-
-    void txt(const std::string& txt, u16 tx, u16 ty, Color fg, Color bg) {
-        for (u8 c = 0; c < txt.length(); ++c, tx += 8) {
-            const auto char_rom_idx = ascii_to_char_rom(txt[c]);
-            chr(char_rom_idx, tx, ty, fg, bg);
-        }
-    }
-};
-
-
 void System::C64::output_frame() { 
-    auto draw_menu = [&]() {
+    auto draw_menu = [&](PETSCII_Draw& pd) {
+        if (!menu.active) return;
+
         static const int width_chr = 39;
         static const int pos_x = VIC_II::BORDER_SZ_V + 4;
         static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 4;
         static const int pad_px = 4;
         static const Color col_fg = Color::light_green;
         static const Color col_bg = Color::gray_1;
-
-        PETSCII_Draw pd{rom.charr, s.vic.frame};
 
         pd.txt(std::string(width_chr, ' '), pos_x, pos_y, col_fg, col_bg);
         pd.txt(menu.text(), pos_x + pad_px, pos_y, col_fg, col_bg);
@@ -593,7 +574,7 @@ void System::C64::output_frame() {
         */
     };
 
-    auto draw_status = [&]() {
+    auto draw_status = [&](PETSCII_Draw& pd) {
 
         auto draw_c1541_led = [&]() {
             static const int pos_y = (VIC_II::FRAME_HEIGHT - VIC_II::BORDER_SZ_H) + 14;;
@@ -609,7 +590,7 @@ void System::C64::output_frame() {
             const auto led_ch = c1541.dc.status.write_prot_on() ? ch_led_wp : ch_led;
             const auto led_col = c1541.dc.status.led_on() ? col_led_on : col_led_off;
 
-            PETSCII_Draw{rom.charr, s.vic.frame}.chr(led_ch, pos_x, pos_y, led_col, col_bg);
+            pd.chr(led_ch, pos_x, pos_y, led_col, col_bg);
 
             /*static constexpr u16 ch_zero   = 0x0030;
             const auto track_n = (status.head.track_n / 2) + 1;
@@ -625,8 +606,6 @@ void System::C64::output_frame() {
 
             static const Color col_fg = Color::light_green;
             static const Color col_bg = Color::gray_1;
-
-            PETSCII_Draw pd{rom.charr, s.vic.frame};
 
             if (!c1541.disk_carousel.no_disk()) {
                 static const int pos_y = 14;
@@ -651,11 +630,15 @@ void System::C64::output_frame() {
         }
     };
 
-    if (menu.active) draw_menu();
+    u8* const frame_out = monitor.active ? monitor_frame : s.vic.frame;
+    PETSCII_Draw pd{rom.charr, frame_out, VIC_II::FRAME_WIDTH};
 
-    draw_status();
+    if (monitor.active) monitor.draw(pd);
 
-    vid_out.put(s.vic.frame);
+    draw_menu(pd);
+    draw_status(pd);
+
+    vid_out.put(frame_out);
 }
 
 

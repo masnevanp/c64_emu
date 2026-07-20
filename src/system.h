@@ -425,6 +425,29 @@ private:
     ::Menu::Group root;
 };
 
+
+class Monitor {
+public:
+    static constexpr int width = (VIC_II::FRAME_WIDTH / 8) - 1;
+    static constexpr int height = (VIC_II::FRAME_HEIGHT / 8) - 1;
+
+    static constexpr int text_top_left_x = 4;
+    static constexpr int text_top_left_y = 4;
+
+    Monitor(State::System& s_) : s(s_) {}
+
+    bool active = false;
+
+    void draw(PETSCII_Draw& pd);
+
+private:
+    using Screen = std::array<std::array<u16, width>, height>;
+    Screen screen{};
+
+    State::System& s;
+};
+
+
 /*
     // intercepts kernal calls: untlk, talk, unlsn, listen, tksa, second, acptr, ciout
     // (fast but very low compatibility)
@@ -559,6 +582,7 @@ private:
                     case ks::menu_xtra:      menu.activate("Xtras");             break;
                     case ks::menu_att_reu:   menu.activate("Expansion", "Attach REU ?"); break;
                     case ks::menu_quit:      menu.activate("Shutdown ?");        break;
+                    case ks::mon_tgl:        monitor.active = !monitor.active;   break;
                     case ks::rot_dsk:        c1541.disk_carousel.rotate();       break;
                     case ks::tgl_wp:         c1541.disk_carousel.toggle_wp();    break;
                     case ks::shutdown:       request_shutdown();                 break;
@@ -713,6 +737,9 @@ private:
             {"Shutdown ?",   [&](){ request_shutdown(); } },
         },
     };
+
+    Monitor monitor{s};
+    u8 monitor_frame[VIC_II::FRAME_SIZE] = {};
 
     static void install_kernal_tape_traps(u8* kernal, u8 trap_opc);
 };

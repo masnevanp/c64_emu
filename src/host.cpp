@@ -49,7 +49,7 @@ u8 Input::KC_LU_TBL[] = {
     ke::s_lck, kb::f1,    ke::f2,    kb::f3,    ke::f4,    kb::f5,    ke::f6,     kb::f7,
     ke::f8, sy::rst_warm, sy::rst_cold, sy::tgl_fscr, sy::mode_unlimited, sy::nop, sy::nop, ke::rstre,
     // 90..9f
-    sy::rot_dsk,kb::home, sy::nop,   sy::nop,   sy::nop,   sy::nop,   kb::crs_r,  ke::crs_l,
+    sy::rot_dsk,kb::home, sy::nop,   sy::nop,   sy::mon_tgl, sy::nop, kb::crs_r,  ke::crs_l,
     kb::crs_d, ke::crs_u, sy::nop,   J1|js::ju, kb::mul,   kb::minus, kb::plus,   kb::ret,
     // a0..af
     J2|js::jl, J2|js::jd, J2|js::jr, J1|js::jb, J2|js::ju, sy::nop,   J1|js::jl,  J1|js::jd,

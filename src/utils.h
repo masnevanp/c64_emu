@@ -133,6 +133,32 @@ std::string to_string(double d, int precision);
 
 
 u16 ascii_to_char_rom(u8 ascii_code);
+
+
+struct PETSCII_Draw { // user is trusted, no checks...
+    const u8* charrom;
+    u8* tgt;
+    const u16 tgt_w;
+
+    //void clear(u8 col) { for (int p = 0; p < tgt_w * tgt_h; ++p) tgt[p] = col; }
+
+    void chr(u16 chr, u16 cx, u16 cy, Color fg, Color bg) {
+        const u8* src = &charrom[chr * 8];
+        for (int px_row = 0; px_row < 8; ++px_row, ++src) {
+            u8* t = &tgt[(px_row + cy) * tgt_w + cx];
+            for (u8 px = 0b10000000; px; px >>= 1) *t++ = (*src & px) ? fg : bg;
+        }
+    }
+
+    void txt(const std::string& txt, u16 tx, u16 ty, Color fg, Color bg) {
+        for (u8 c = 0; c < txt.length(); ++c, tx += 8) {
+            const auto char_rom_idx = ascii_to_char_rom(txt[c]);
+            chr(char_rom_idx, tx, ty, fg, bg);
+        }
+    }
+};
+
+
 /*
 template<typename T>
 constexpr int count_leading_zero_bits(T x) {
