@@ -296,29 +296,44 @@ void System::Menu::handle_key(u8 code) {
 */
 
 void System::Monitor::key(u8 code, u8 down) {
+    using kc = Key_code::Keyboard;
+
     UNUSED2(code, down); // TODO
     screen[0][0] = 't'; screen[0][1] = 'e'; screen[0][2] = 's'; screen[0][3] = 't';
     screen[29][0] = 't'; screen[29][1] = 'e'; screen[29][2] = 's'; screen[29][3] = 't';
+    if (down) {
+        if (code == kc::crs_d) crsr_y += 1;
+        if (code == kc::crs_r) crsr_x += 1;
+    }
 }
 
 
 u8* System::Monitor::draw(const u8* charrom) {
-    // TODO: cursor ticking here
-
-    PETSCII_Draw pd{charrom, frame, VIC_II::FRAME_WIDTH};
-
-    auto draw_line = [&](int line) {
-        for (int col = 0; col < width; ++col) {
-            // TODO: maybe store also the char_rom mapping with the ascii code
-            //       (or maybe use std::string for a line of chars ==> pd.txt() can be used)
-            const auto chr = ascii_to_char_rom(screen[line][col]);
-            pd.chr(chr, text_top_left_x + (col * 8), text_top_left_y + (line * 8), color_fg, color_bg);
-        }
+    auto draw_chr = [&](u16 chr, int y, int x) {
+        PETSCII_Draw{charrom, frame, VIC_II::FRAME_WIDTH}.chr(
+            chr,
+            text_top_left_x + (x * 8), text_top_left_y + (y * 8),
+            color_fg, color_bg
+        );
     };
 
-    for (int line = 0; line < height; ++line) {
-        draw_line(line);
+    auto draw_cursor = [&]() {
+        const auto chr_at_crsr = ascii_to_char_rom(screen[crsr_y][crsr_x]);
+        const auto rvrs_chr_at_crsr = chr_at_crsr | 0x080;
+        draw_chr(rvrs_chr_at_crsr, crsr_y, crsr_x);
+    };
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            // TODO: maybe store also the char_rom mapping with the ascii code
+            //       (or maybe use std::string for a line of chars ==> pd.txt() can be used)
+            const auto chr = ascii_to_char_rom(screen[y][x]);
+            draw_chr(chr, y, x);
+        }
     }
+
+
+    draw_cursor();
 
     return frame;
 }
