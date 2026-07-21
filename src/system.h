@@ -348,14 +348,12 @@ public:
     void cia1_pa_out(u8 state) { s.pa_state = state; output(); }
     void cia1_pb_out(u8 state) { s.pb_state = state; output(); }
 
-    Sig_key keyboard {
-        [this](u8 code, u8 down) {
-            const auto key = u64{0b1} << (63 - code);
-            s.key_states = down ? s.key_states | key : s.key_states & ~key;
-            update_matrix();
-            output();
-        }
-    };
+    void sig_key(u8 code, u8 down) {
+        const auto key = u64{0b1} << (63 - code);
+        s.key_states = down ? s.key_states | key : s.key_states & ~key;
+        update_matrix();
+        output();
+    }
 
     Sig_key ctrl_port_1 {
         [this](u8 code, u8 down) {
@@ -428,21 +426,31 @@ private:
 
 class Monitor {
 public:
+    Monitor(State::System& s_) : s(s_) { for (auto& px : frame) px = color_bg; }
+
+    bool active = false;
+
+    void key(u8 code, u8 down);
+
+    u8* draw(const u8* charrom);
+
+private:
     static constexpr int width = (VIC_II::FRAME_WIDTH / 8) - 1;
     static constexpr int height = (VIC_II::FRAME_HEIGHT / 8) - 1;
 
     static constexpr int text_top_left_x = 4;
     static constexpr int text_top_left_y = 4;
 
-    Monitor(State::System& s_) : s(s_) {}
+    static constexpr Color color_bg = Color::blue;
+    static constexpr Color color_fg = Color::white;
 
-    bool active = false;
-
-    void draw(PETSCII_Draw& pd);
-
-private:
-    using Screen = std::array<std::array<u16, width>, height>;
+    using Screen = std::array<std::array<u8, width>, height>;
     Screen screen{};
+
+    u8 frame[VIC_II::FRAME_SIZE] = {};
+
+    u8 crsr_x = 0;
+    u8 crsr_y = 0;
 
     State::System& s;
 };
@@ -533,8 +541,12 @@ private:
     Host::Input::Handlers host_input_handlers{
         // TODO: just-in-time polling for keyboard/ctrl-ports? (i.e. when CIA1 regs are read)
 
-        // guest keyboard & controllers (including lightpen)
-        input_matrix.keyboard,
+        // keyboard & controllers (including lightpen)
+        [this](u8 code, u8 down) {
+            if (monitor.active) monitor.key(code, down);
+            else input_matrix.sig_key(code, down);
+        },
+
         input_matrix.ctrl_port_1,
         input_matrix.ctrl_port_2,
 
@@ -739,7 +751,6 @@ private:
     };
 
     Monitor monitor{s};
-    u8 monitor_frame[VIC_II::FRAME_SIZE] = {};
 
     static void install_kernal_tape_traps(u8* kernal, u8 trap_opc);
 };

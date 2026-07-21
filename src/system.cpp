@@ -269,9 +269,58 @@ void System::Menu::handle_key(u8 code) {
     }
 }
 
+/*
+    enum Keyboard : u8 { // fall into 'keyboard' group
+        r_stp=GK, q,     cmdre, space, num_2, ctrl,  ar_l, num_1,
+        div,      ar_up, eq,    sh_r,  home,  s_col, mul,  pound,
+        comma,    at,    colon, dot,   minus, l,     p,    plus,
+        n,        o,     k,     m,     num_0, j,     i,    num_9,
+        v,        u,     h,     b,     num_8, g,     y,    num_7,
+        x,        t,     f,     c,     num_6, d,     r,    num_5,
+        sh_l,     e,     s,     z,     num_4, a,     w,    num_3,
+        crs_d,    f5,    f3,    f1,    f7,    crs_r, ret,  del,
+    };
 
-void System::Monitor::draw(PETSCII_Draw& pd) {
-    pd.txt("Abcdf 123135 lkdjasja 123213", text_top_left_x, text_top_left_y, Color::white, Color::blue);
+*/
+
+
+/*
+- two look-up tables: keycode_to_ascii & keycode_shifted_to_ascii (need to keep track of shift)
+- special handling
+    - return
+    - del
+    - shift l/r
+    - curs r/d
+    - r_stp, cmdre, ctrl?
+    - function keys?
+*/
+
+void System::Monitor::key(u8 code, u8 down) {
+    UNUSED2(code, down); // TODO
+    screen[0][0] = 't'; screen[0][1] = 'e'; screen[0][2] = 's'; screen[0][3] = 't';
+    screen[29][0] = 't'; screen[29][1] = 'e'; screen[29][2] = 's'; screen[29][3] = 't';
+}
+
+
+u8* System::Monitor::draw(const u8* charrom) {
+    // TODO: cursor ticking here
+
+    PETSCII_Draw pd{charrom, frame, VIC_II::FRAME_WIDTH};
+
+    auto draw_line = [&](int line) {
+        for (int col = 0; col < width; ++col) {
+            // TODO: maybe store also the char_rom mapping with the ascii code
+            //       (or maybe use std::string for a line of chars ==> pd.txt() can be used)
+            const auto chr = ascii_to_char_rom(screen[line][col]);
+            pd.chr(chr, text_top_left_x + (col * 8), text_top_left_y + (line * 8), color_fg, color_bg);
+        }
+    };
+
+    for (int line = 0; line < height; ++line) {
+        draw_line(line);
+    }
+
+    return frame;
 }
 
 
@@ -630,10 +679,8 @@ void System::C64::output_frame() {
         }
     };
 
-    u8* const frame_out = monitor.active ? monitor_frame : s.vic.frame;
+    u8* const frame_out = monitor.active ? monitor.draw(rom.charr) : s.vic.frame;
     PETSCII_Draw pd{rom.charr, frame_out, VIC_II::FRAME_WIDTH};
-
-    if (monitor.active) monitor.draw(pd);
 
     draw_menu(pd);
     draw_status(pd);
