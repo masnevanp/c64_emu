@@ -288,23 +288,83 @@ void System::Menu::handle_key(u8 code) {
 - two look-up tables: keycode_to_ascii & keycode_shifted_to_ascii (need to keep track of shift)
 - special handling
     - return
-    - del
+    - del (shifted --> insert ?)
+    - home (shitfed --> clr screen)
     - shift l/r
     - curs r/d
     - r_stp, cmdre, ctrl?
     - function keys?
 */
 
+static constexpr u8 keycode_to_ascii[] = {
+      0  , 'q' ,  0  , ' ' , '2' ,  0  ,  0  , '1' ,
+      0  ,  0  ,  0  ,  0  ,  0  ,  0  ,  0  ,  0  ,
+     ',' ,  0  , ':' , '.' , '-' , 'l' , 'p' ,  0  ,
+     'n' , 'o' , 'k' , 'm' , '0' , 'j' , 'i' , '9' ,
+     'v' , 'u' , 'h' , 'b' , '8' , 'g' , 'y' , '7' ,
+     'x' , 't' , 'f' , 'c' , '6' , 'd' , 'r' , '5' ,
+      0  , 'e' , 's' , 'z' , '4' , 'a' , 'w' , '3' ,
+      0  ,  0  ,  0  ,  0  ,  0  ,  0  ,  0  ,  0  ,
+};
+
+static constexpr u8 keycode_shifted_to_ascii[] = {
+      0  , 'q' ,  0  , ' ' , '2' ,  0  ,  0  , '1' ,
+      0  ,  0  ,  0  ,  0  ,  0  ,  0  ,  0  ,  0  ,
+     ',' ,  0  , ':' , '.' , '-' , 'l' , 'p' , '?' ,
+     'n' , 'o' , 'k' , 'm' , '0' , 'j' , 'i' , ')' ,
+     'v' , 'u' , 'h' , 'b' , '(' , 'g' , 'y' , '7' ,
+     'x' , 't' , 'f' , 'c' , '6' , 'd' , 'r' , '5' ,
+      0  , 'e' , 's' , 'z' , '$' , 'a' , 'w' , '#' ,
+      0  ,  0  ,  0  ,  0  ,  0  ,  0  ,  0  ,  0  ,
+};
+
 void System::Monitor::key(u8 code, u8 down) {
     using kc = Key_code::Keyboard;
 
-    UNUSED2(code, down); // TODO
-    screen[0][0] = 't'; screen[0][1] = 'e'; screen[0][2] = 's'; screen[0][3] = 't';
-    screen[29][0] = 't'; screen[29][1] = 'e'; screen[29][2] = 's'; screen[29][3] = 't';
-    if (down) {
-        if (code == kc::crs_d) crsr_y += 1;
-        if (code == kc::crs_r) crsr_x += 1;
-    }
+    auto clr_screen = [&]() {
+        for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) screen[y][x] = ' ';
+    };
+
+    auto scroll = [&]() {
+        for (int y = 1; y < height; ++y) for (int x = 0; x < width; ++x) {
+            screen[y - 1][x] = screen[y][x];
+        }
+        for (int x = 0; x < width; ++x) screen[height - 1][x] = ' ';
+    };
+
+    auto crsr_up   = [&]() { if (crsr_y > 0) --crsr_y; };
+    auto crsr_down = [&]() { if (++crsr_y == height) { --crsr_y; scroll(); } };
+    auto crsr_fwd  = [&]() { if (++crsr_x == width) { crsr_x = 0; crsr_down(); } };
+    auto crsr_back = [&]() { if (crsr_x == 0) { if (crsr_y > 0) { crsr_x = (width - 1); crsr_up(); } } else --crsr_x; };
+
+    auto type_chr = [&](u8 c) { screen[crsr_y][crsr_x] = c; crsr_fwd(); };
+
+    auto do_ret = [&]() {
+        const std::string line_text{std::begin(screen[crsr_y]), std::end(screen[crsr_y])};
+        Log::info("TODO: %s", line_text.c_str());
+        crsr_x = 0; crsr_down();
+    };
+
+    auto key_down = [&]() {
+        const auto ascii = shift ? keycode_shifted_to_ascii[code] : keycode_to_ascii[code];
+
+        if (ascii) return type_chr(ascii);
+
+        switch (code) {
+            case kc::sh_r: case kc::sh_l: shift = true; return;
+            case kc::home: if (shift) clr_screen(); crsr_y = crsr_x = 0; return;
+            case kc::crs_d: return shift ? crsr_up() : crsr_down();
+            case kc::crs_r: return shift ? crsr_back() : crsr_fwd();
+            case kc::ret: do_ret(); return;
+            case kc::del: crsr_back(); type_chr(' '); crsr_back(); return;
+        }
+    };
+
+    auto key_up = [&]() {
+        if (code == kc::sh_r || code == kc::sh_l) shift = false;
+    };
+
+    return down ? key_down() : key_up();
 }
 
 

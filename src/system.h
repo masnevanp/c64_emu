@@ -452,6 +452,8 @@ private:
     u8 crsr_x = 0;
     u8 crsr_y = 0;
 
+    bool shift = false;
+
     State::System& s;
 };
 
