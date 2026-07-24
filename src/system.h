@@ -16,6 +16,7 @@
 #include "menu.h"
 #include "files.h"
 #include "expansion.h"
+#include "monitor.h"
 
 
 
@@ -421,40 +422,6 @@ private:
     std::vector<::Menu::Confirmed_action> confirmed_actions;
 
     ::Menu::Group root;
-};
-
-
-class Monitor {
-public:
-    Monitor(State::System& s_) : s(s_) { for (auto& px : frame) px = color_bg; }
-
-    bool active = false;
-
-    void key(u8 code, u8 down);
-
-    u8* draw(const u8* charrom);
-
-private:
-    static constexpr int width = (VIC_II::FRAME_WIDTH / 8) - 1;
-    static constexpr int height = (VIC_II::FRAME_HEIGHT / 8) - 1;
-
-    static constexpr int text_top_left_x = 4;
-    static constexpr int text_top_left_y = 4;
-
-    static constexpr Color color_bg = Color::blue;
-    static constexpr Color color_fg = Color::white;
-
-    using Screen = std::array<std::array<u8, width>, height>;
-    Screen screen{};
-
-    u8 frame[VIC_II::FRAME_SIZE] = {};
-
-    u8 crsr_x = 0;
-    u8 crsr_y = 0;
-
-    bool shift = false;
-
-    State::System& s;
 };
 
 
