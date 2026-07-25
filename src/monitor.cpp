@@ -1,6 +1,41 @@
 #include "monitor.h"
 
 
+void Monitor::key(u8 code, bool down) {
+    auto is_mod = [&](u8 code) {
+        return code == Key_code::sh_l || code == Key_code::sh_r
+                    || code == Key_code::ctrl || code == Key_code::cmdre;
+    };
+
+    if (is_mod(code)) {
+        switch (code) {
+            case Key_code::sh_l:
+            case Key_code::sh_r:  mod.shift = down; return;
+            case Key_code::ctrl:  mod.ctrl  = down; return;
+            case Key_code::cmdre: mod.cmdre = down; return;
+        }
+    }
+
+    if (down) {
+        switch (code) {
+            case Key_code::f1: active_view = mod.shift ? 1 : 0; break;
+            case Key_code::f3: active_view = mod.shift ? 3 : 2; break;
+            default: views[active_view]->key(code, down, mod);  break;
+        }
+    }
+}
+
+
+u8* Monitor::draw(const u8* charrom) {
+    for (auto& px : frame) px = color_bg;
+
+    PETSCII_Draw pd{charrom, frame, frame_width};
+    views[active_view]->draw(pd);
+
+    return frame;
+};
+
+
 /*
     enum Keyboard : u8 { // fall into 'keyboard' group
         r_stp=GK, q,     cmdre, space, num_2, ctrl,  ar_l, num_1,
@@ -12,22 +47,6 @@
         sh_l,     e,     s,     z,     num_4, a,     w,    num_3,
         crs_d,    f5,    f3,    f1,    f7,    crs_r, ret,  del,
     };
-
-*/
-
-/*
-- two look-up tables: keycode_to_ascii & keycode_shifted_to_ascii (need to keep track of shift)
-- special handling
-    - return
-    - del (shifted --> insert ?)
-    - home (shitfed --> clr screen)
-    - shift l/r
-    - curs r/d
-    - r_stp, cmdre, ctrl?
-    - function keys?
-
-- [tab] to move between views (tab == ar_l actually)
-- or [cmdre]+[num] to select a specific view
 */
 
 static constexpr u8 keycode_to_ascii[] = {
@@ -53,7 +72,7 @@ static constexpr u8 keycode_shifted_to_ascii[] = {
 };
 
 
-void Monitor::Console::key(u8 code, bool down) {
+void Monitor::Console::key(u8 code, bool down, const Mod_state& mod) {
     auto clr_screen = [&]() {
         for (int y = 0; y < text_height; ++y) for (int x = 0; x < text_width; ++x) text[y][x] = ' ';
     };
@@ -78,26 +97,20 @@ void Monitor::Console::key(u8 code, bool down) {
         crsr_x = 0; crsr_down();
     };
 
-    auto key_down = [&]() {
-        const auto ascii = shift ? keycode_shifted_to_ascii[code] : keycode_to_ascii[code];
+    if (down) {
+        const auto ascii = mod.shift ? keycode_shifted_to_ascii[code] : keycode_to_ascii[code];
 
         if (ascii) return type_chr(ascii);
 
         switch (code) {
-            case Key_code::sh_r: case Key_code::sh_l: shift = true; return;
-            case Key_code::home: if (shift) clr_screen(); crsr_y = crsr_x = 0; return;
-            case Key_code::crs_d: return shift ? crsr_up() : crsr_down();
-            case Key_code::crs_r: return shift ? crsr_back() : crsr_fwd();
+            case Key_code::home: if (mod.shift) clr_screen(); crsr_y = crsr_x = 0; return;
+            case Key_code::crs_d: return mod.shift ? crsr_up() : crsr_down();
+            case Key_code::crs_r: return mod.shift ? crsr_back() : crsr_fwd();
             case Key_code::ret: do_ret(); return;
             case Key_code::del: crsr_back(); type_chr(' '); crsr_back(); return;
         }
-    };
+    }
 
-    auto key_up = [&]() {
-        if (code == Key_code::sh_r || code == Key_code::sh_l) shift = false;
-    };
-
-    return down ? key_down() : key_up();
 }
 
 
