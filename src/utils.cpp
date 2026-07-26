@@ -181,6 +181,30 @@ std::string to_string(double d, int precision) {
 }
 
 
+
+std::vector<std::string> split(const std::string& s, char delim) {
+    std::vector<std::string> result;
+    std::size_t token_start = std::string::npos; // "not in a token"
+
+    for (std::size_t i = 0; i < s.length(); ++i) {
+        if (token_start == std::string::npos) {
+            if (s[i] != delim) token_start = i; // token found
+        } else {
+            if (s[i] == delim) {
+                result.push_back(s.substr(token_start, i - token_start));
+                token_start = std::string::npos; // --> look for next token
+            }
+        }
+    }
+
+    if (token_start != std::string::npos) { // string ended before delimiter?
+        result.push_back(s.substr(token_start));
+    }
+
+    return result;
+}
+
+
 /*
   code  chr   chr.rom index (* = 'best fit')
   "32": " ",  120

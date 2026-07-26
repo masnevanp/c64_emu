@@ -73,10 +73,6 @@ static constexpr u8 keycode_shifted_to_ascii[] = {
 
 
 void Monitor::Console::key(u8 code, bool down, const Mod_state& mod) {
-    auto clr_screen = [&]() {
-        for (int y = 0; y < text_height; ++y) for (int x = 0; x < text_width; ++x) text[y][x] = ' ';
-    };
-
     auto scroll = [&]() {
         for (int y = 1; y < text_height; ++y) for (int x = 0; x < text_width; ++x) {
             text[y - 1][x] = text[y][x];
@@ -93,7 +89,9 @@ void Monitor::Console::key(u8 code, bool down, const Mod_state& mod) {
 
     auto do_ret = [&]() {
         const std::string line_text{std::begin(text[crsr_y]), std::end(text[crsr_y])};
-        Log::info("TODO: %s", line_text.c_str());
+
+        for (auto token : split(line_text)) Log::info("%s", token.c_str());;
+
         crsr_x = 0; crsr_down();
     };
 
@@ -103,7 +101,7 @@ void Monitor::Console::key(u8 code, bool down, const Mod_state& mod) {
         if (ascii) return type_chr(ascii);
 
         switch (code) {
-            case Key_code::home: if (mod.shift) clr_screen(); crsr_y = crsr_x = 0; return;
+            case Key_code::home: if (mod.shift) clr_text(); crsr_y = crsr_x = 0; return;
             case Key_code::crs_d: return mod.shift ? crsr_up() : crsr_down();
             case Key_code::crs_r: return mod.shift ? crsr_back() : crsr_fwd();
             case Key_code::ret: do_ret(); return;
@@ -140,6 +138,13 @@ void Monitor::Console::draw(PETSCII_Draw& pd) {
     }
 
     draw_cursor();
+}
+
+
+void Monitor::Console::clr_text() {
+    for (int y = 0; y < text_height; ++y)
+        for (int x = 0; x < text_width; ++x)
+            text[y][x] = ' ';
 }
 
 

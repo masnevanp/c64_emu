@@ -45,6 +45,8 @@ private:
 
     class Console : public View {
     public:
+        Console() { clr_text(); }
+
         virtual void key(u8 code, bool down, const Mod_state& mod);
         virtual void draw(PETSCII_Draw& pd);
     private:
@@ -55,6 +57,8 @@ private:
 
         int crsr_x = 0;
         int crsr_y = 0;
+
+        void clr_text();
     };
 
     class CPU : public View { public: virtual void draw(PETSCII_Draw& pd); };

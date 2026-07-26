@@ -131,6 +131,9 @@ void transfer(const std::string& s, char* dest, std::size_t dest_max_len); // ma
 
 std::string to_string(double d, int precision);
 
+// consecutive delimiters treated as one delimiter
+std::vector<std::string> split(const std::string& s, char delim = ' ');
+
 
 u16 ascii_to_char_rom(u8 ascii_code);
 
