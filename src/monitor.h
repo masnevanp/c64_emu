@@ -35,35 +35,60 @@ private:
         bool cmdre = false;
     };
 
-    class View {
-    public:
-        virtual void key(u8 code, bool down, const Mod_state& mod) { UNUSED2(code, down); UNUSED(mod); };
+    struct View {
+        virtual void key(u8 code, const Mod_state& mod) { UNUSED2(code, mod); };
         virtual void draw(PETSCII_Draw& pd) = 0;
-
-        virtual ~View() {}
     };
 
-    class Console : public View {
-    public:
-        Console() { clr_text(); }
+    struct Console : public View {
+        Console() { clr_screen(); }
 
-        virtual void key(u8 code, bool down, const Mod_state& mod);
+        virtual void key(u8 code, const Mod_state& mod);
         virtual void draw(PETSCII_Draw& pd);
+
     private:
-        static constexpr int text_width = (frame_width - 1) / 8;
-        static constexpr int text_height = (frame_height - 1) / 8;
+        static constexpr int column_count = (frame_width / 8) - 1;
+        static constexpr int line_count = (frame_height / 8) - 1;
 
-        std::array<std::array<u8, text_width>, text_height> text{};
+        enum Mode {
+            idle, cmd_d, cmd_m,
+        };
 
-        int crsr_x = 0;
-        int crsr_y = 0;
+        using Line = std::array<u8, column_count>;
+        using Screen = std::array<Line, line_count>;
 
-        void clr_text();
+        Screen screen{};
+
+        int cursor_x = 0;
+        int cursor_y = 0;
+
+        u16 addr_cur;
+        u16 addr_end;
+
+        Mode mode = Mode::idle;
+
+        void scroll_up();
+        void scroll_down();
+
+        void cursor_up  () { if (cursor_y > 0) --cursor_y; else scroll_down(); }
+        void cursor_down() { if (++cursor_y == line_count) { --cursor_y; scroll_up(); } }
+        void cursor_fwd () { if (++cursor_x == column_count) { cursor_x = 0; cursor_down(); } }
+        void cursor_back() { if (cursor_x > 0) --cursor_x; else { cursor_x = (column_count - 1); cursor_up(); } }
+
+        void line_feed  () { cursor_x = 0; cursor_down(); }
+
+        void clr_screen();
+
+        void type_chr(u8 c)                   { screen[cursor_y][cursor_x] = c; cursor_fwd(); };
+        void type_txt(const std::string& txt) { for (const char c : txt) type_chr(c); };
+        void print(const std::string& txt)    { type_txt(txt); line_feed(); }
+
+        void tick();
     };
 
-    class CPU : public View { public: virtual void draw(PETSCII_Draw& pd); };
-    class VIC : public View { public: virtual void draw(PETSCII_Draw& pd); };
-    class CIA : public View { public: virtual void draw(PETSCII_Draw& pd); };
+    struct CPU : public View { virtual void draw(PETSCII_Draw& pd); };
+    struct VIC : public View { virtual void draw(PETSCII_Draw& pd); };
+    struct CIA : public View { virtual void draw(PETSCII_Draw& pd); };
 
     Console con;
     CPU cpu;
