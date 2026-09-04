@@ -81,9 +81,9 @@ void Monitor::Console::key(u8 code, const Mod_state& mod) {
 
         line_feed();
 
-        mode = Mode::cmd_d;
-        addr_cur = 0xc000;
-        addr_end = 0xc100;
+        mode = Mode::cmd_m;
+        addr_cur = 0xa000;
+        addr_end = 0xc000;
     };
 
     if (mode != Mode::idle) {
@@ -93,14 +93,14 @@ void Monitor::Console::key(u8 code, const Mod_state& mod) {
 
     const auto ascii = mod.shift ? keycode_shifted_to_ascii[code] : keycode_to_ascii[code];
 
-    if (ascii) return type_chr(ascii);
+    if (ascii) return type_ascii_chr(ascii);
 
     switch (code) {
         case Key_code::home: if (mod.shift) clr_screen(); cursor_y = cursor_x = 0; return;
         case Key_code::crs_d: return mod.shift ? cursor_up() : cursor_down();
         case Key_code::crs_r: return mod.shift ? cursor_back() : cursor_fwd();
         case Key_code::ret: do_ret(); return;
-        case Key_code::del: cursor_back(); type_chr(' '); cursor_back(); return;
+        case Key_code::del: cursor_back(); type_ascii_chr(' '); cursor_back(); return;
     }
 }
 
@@ -118,7 +118,7 @@ void Monitor::Console::draw(PETSCII_Draw& pd) {
     };
 
     auto draw_cursor = [&]() {
-        const auto chr_at_crsr = ascii_to_char_rom(screen[cursor_y][cursor_x]);
+        const auto chr_at_crsr = screen[cursor_y][cursor_x];
         const auto rvrs_chr_at_crsr = chr_at_crsr | 0x080;
         draw_chr(rvrs_chr_at_crsr, cursor_y, cursor_x);
     };
@@ -126,8 +126,7 @@ void Monitor::Console::draw(PETSCII_Draw& pd) {
     auto draw_screen = [&]() {
         for (int y = 0; y < line_count; ++y) {
             for (int x = 0; x < column_count; ++x) {
-                const auto chr = ascii_to_char_rom(screen[y][x]);
-                draw_chr(chr, y, x);
+                draw_chr(screen[y][x], y, x);
             }
         }
     };
@@ -141,19 +140,19 @@ void Monitor::Console::draw(PETSCII_Draw& pd) {
 
 
 void Monitor::Console::scroll_up() {
-    std::fill(screen[0].begin(), screen[0].end(), ' ');
+    std::fill(screen[0].begin(), screen[0].end(), ascii_to_char_rom(' '));
     std::rotate(screen.begin(), screen.begin() + 1, screen.end());
 }
 
 
 void Monitor::Console::scroll_down() {
-    std::fill(screen[line_count - 1].begin(), screen[line_count - 1].end(), ' ');
+    std::fill(screen[line_count - 1].begin(), screen[line_count - 1].end(), ascii_to_char_rom(' '));
     std::rotate(screen.rbegin(), screen.rbegin() + 1, screen.rend());
 }
 
 
 void Monitor::Console::clr_screen() {
-    for (auto& line : screen) for (auto& c : line) c = ' ';
+    for (auto& line : screen) for (auto& c : line) c = ascii_to_char_rom(' ');
 }
 
 
@@ -165,16 +164,41 @@ void Monitor::Console::tick() {
         }
 
         char buffer[column_count];
-        const char* format = ".> %04x";
+        const char* format = "> %04x";
         sprintf(buffer, format, addr_cur);
         print(buffer);
 
         addr_cur += 1;
     };
 
+    auto tick_cmd_m = [&]() {
+        if (addr_cur > addr_end) { // TODO: proper handling (e.g. handle wrap around..)
+            mode = Mode::idle;
+            return;
+        }
+
+        char buffer[column_count];
+        const char* format = ":%04x  %02x %02x %02x %02x %02x %02x %02x %02x  ";
+        const auto& r{s.ram};
+
+        sprintf(buffer, format,
+            addr_cur,
+            r[addr_cur + 0], r[addr_cur + 1], r[addr_cur + 2], r[addr_cur + 3], 
+            r[addr_cur + 4], r[addr_cur + 5], r[addr_cur + 6], r[addr_cur + 7]
+        );
+        type_ascii_txt(buffer);
+
+        for (int i = 0; i < 8; ++i)
+            type_petscii_chr(r[addr_cur + i]);
+
+        line_feed();
+
+        addr_cur += 8;
+    };
+
     switch (mode) {
         case Mode::cmd_d: tick_cmd_d(); return;
-        case Mode::cmd_m: return;
+        case Mode::cmd_m: tick_cmd_m(); return;
         default: return;
     }
 }

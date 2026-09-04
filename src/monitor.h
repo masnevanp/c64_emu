@@ -12,7 +12,7 @@
 
 class Monitor {
 public:
-    Monitor(State::System& s_) : s(s_) {}
+    Monitor(State::System& s) : con(s) {}
 
     void key(u8 code, bool down);
 
@@ -41,7 +41,7 @@ private:
     };
 
     struct Console : public View {
-        Console() { clr_screen(); }
+        Console(State::System& s_) : s(s_) { clr_screen(); }
 
         virtual void key(u8 code, const Mod_state& mod);
         virtual void draw(PETSCII_Draw& pd);
@@ -54,7 +54,7 @@ private:
             idle, cmd_d, cmd_m,
         };
 
-        using Line = std::array<u8, column_count>;
+        using Line = std::array<u16, column_count>; // an array of char.rom indices
         using Screen = std::array<Line, line_count>;
 
         Screen screen{};
@@ -79,11 +79,15 @@ private:
 
         void clr_screen();
 
-        void type_chr(u8 c)                   { screen[cursor_y][cursor_x] = c; cursor_fwd(); };
-        void type_txt(const std::string& txt) { for (const char c : txt) type_chr(c); };
-        void print(const std::string& txt)    { type_txt(txt); line_feed(); }
+        void type_char_rom_chr(u16 crc)             { screen[cursor_y][cursor_x] = crc; cursor_fwd(); }
+        void type_ascii_chr(u8 ac)                  { type_char_rom_chr(ascii_to_char_rom(ac)); }
+        void type_petscii_chr(u8 pc)                { type_char_rom_chr(petscii_to_screen_code(pc)); }
+        void type_ascii_txt(const std::string& txt) { for (const char c : txt) type_ascii_chr(c); }
+        void print(const std::string& txt)          { type_ascii_txt(txt); line_feed(); }
 
         void tick();
+
+        State::System& s;
     };
 
     struct CPU : public View { virtual void draw(PETSCII_Draw& pd); };
@@ -101,8 +105,6 @@ private:
     int active_view = 0;
 
     Mod_state mod;
-
-    State::System& s;
 };
 
 

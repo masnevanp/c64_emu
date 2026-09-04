@@ -263,3 +263,14 @@ u16 ascii_to_char_rom(u8 ascii_code) {
         }
     }
 }
+
+u8 petscii_to_screen_code(u8 petscii_code) {
+    if (petscii_code < 0x20) return petscii_code + 0x80;
+    if (petscii_code < 0x40) return petscii_code;
+    if (petscii_code < 0x60) return petscii_code - 0x40;
+    if (petscii_code < 0x80) return petscii_code - 0x20;
+    if (petscii_code < 0xa0) return petscii_code + 0x40;
+    if (petscii_code < 0xc0) return petscii_code - 0x40;
+    if (petscii_code < 0xff) return petscii_code - 0x80;
+    return 0x5e;
+}

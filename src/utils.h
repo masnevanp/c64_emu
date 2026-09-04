@@ -136,6 +136,7 @@ std::vector<std::string> split(const std::string& s, char delim = ' ');
 
 
 u16 ascii_to_char_rom(u8 ascii_code);
+u8 petscii_to_screen_code(u8 petscii_code);
 
 
 struct PETSCII_Draw { // user is trusted, no checks...
@@ -145,8 +146,8 @@ struct PETSCII_Draw { // user is trusted, no checks...
 
     //void clear(u8 col) { for (int p = 0; p < tgt_w * tgt_h; ++p) tgt[p] = col; }
 
-    void chr(u16 chr, u16 cx, u16 cy, Color fg, Color bg) {
-        const u8* src = &charrom[chr * 8];
+    void chr(u16 char_rom_index, u16 cx, u16 cy, Color fg, Color bg) {
+        const u8* src = &charrom[char_rom_index * 8];
         for (int px_row = 0; px_row < 8; ++px_row, ++src) {
             u8* t = &tgt[(px_row + cy) * tgt_w + cx];
             for (u8 px = 0b10000000; px; px >>= 1) *t++ = (*src & px) ? fg : bg;
@@ -155,8 +156,8 @@ struct PETSCII_Draw { // user is trusted, no checks...
 
     void txt(const std::string& txt, u16 tx, u16 ty, Color fg, Color bg) {
         for (u8 c = 0; c < txt.length(); ++c, tx += 8) {
-            const auto char_rom_idx = ascii_to_char_rom(txt[c]);
-            chr(char_rom_idx, tx, ty, fg, bg);
+            const auto char_rom_index = ascii_to_char_rom(txt[c]);
+            chr(char_rom_index, tx, ty, fg, bg);
         }
     }
 };
