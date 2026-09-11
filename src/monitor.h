@@ -28,6 +28,7 @@ private:
 
     static constexpr Color color_bg = Color::blue;
     static constexpr Color color_fg = Color::white;
+    static constexpr Color color_cursor = Color::cyan;
 
     struct Mod_state {
         bool shift = false;
@@ -54,7 +55,7 @@ private:
             idle, cmd_d, cmd_m,
         };
 
-        using Line = std::array<u16, column_count>; // an array of char.rom indices
+        using Line = std::array<u16, column_count>; // char rom indices
         using Screen = std::array<Line, line_count>;
 
         Screen screen{};
@@ -79,11 +80,11 @@ private:
 
         void clr_screen();
 
-        void type_char_rom_chr(u16 crc)             { screen[cursor_y][cursor_x] = crc; cursor_fwd(); }
-        void type_ascii_chr(u8 ac)                  { type_char_rom_chr(ascii_to_char_rom(ac)); }
-        void type_petscii_chr(u8 pc)                { type_char_rom_chr(petscii_to_screen_code(pc)); }
-        void type_ascii_txt(const std::string& txt) { for (const char c : txt) type_ascii_chr(c); }
-        void print(const std::string& txt)          { type_ascii_txt(txt); line_feed(); }
+        void type_chr(u16 char_rom_index)      { screen[cursor_y][cursor_x] = char_rom_index; cursor_fwd(); }
+        void type_ascii_chr(u8 ascii_code)     { type_chr(ascii_to_char_code(ascii_code)); }
+        void type_petscii_chr(u8 petscii_code) { type_chr(petscii_to_screen_code(petscii_code)); } // maps to lower half of char rom
+        void type_txt(const std::string& txt)  { for (const char c : txt) type_ascii_chr(c); }
+        void print(const std::string& txt)     { type_txt(txt); line_feed(); }
 
         void tick();
 

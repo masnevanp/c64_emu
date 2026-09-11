@@ -135,8 +135,18 @@ std::string to_string(double d, int precision);
 std::vector<std::string> split(const std::string& s, char delim = ' ');
 
 
-u16 ascii_to_char_rom(u8 ascii_code);
+u16 ascii_to_char_code(u8 ascii_code);
+u8 char_code_to_ascii(u16 char_rom_index);
 u8 petscii_to_screen_code(u8 petscii_code);
+
+/*
+static constexpr u8 ascii_to_petscii(u8 ascii_code) {
+    if (ascii_code >= 'A' && ascii_code <= 'Z') return ascii_code + 128;
+    if (ascii_code >= 'a' && ascii_code <= 'z') return ascii_code - 32;
+    if (ascii_code == '_') return 164;
+    return ascii_code;
+}
+*/
 
 
 struct PETSCII_Draw { // user is trusted, no checks...
@@ -156,7 +166,7 @@ struct PETSCII_Draw { // user is trusted, no checks...
 
     void txt(const std::string& txt, u16 tx, u16 ty, Color fg, Color bg) {
         for (u8 c = 0; c < txt.length(); ++c, tx += 8) {
-            const auto char_rom_index = ascii_to_char_rom(txt[c]);
+            const auto char_rom_index = ascii_to_char_code(txt[c]);
             chr(char_rom_index, tx, ty, fg, bg);
         }
     }

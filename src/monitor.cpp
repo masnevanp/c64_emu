@@ -1,4 +1,5 @@
 #include "monitor.h"
+#include <array>
 #include <algorithm>
 
 
@@ -72,18 +73,39 @@ static constexpr u8 keycode_shifted_to_ascii[] = {
       0  ,  0  ,  0  ,  0  ,  0  ,  0  ,  0  ,  0  ,
 };
 
+/*
+constexpr auto to_petscii(const std::array<u8, 64>& ascii) {
+    std::array<u8, 64> petscii{};
+    for (size_t i = 0; i < 64; ++i) petscii[i] = ascii_to_petscii(ascii[i]);
+    return petscii;
+};
+
+constexpr std::array<u8, 64> keycode_to_petscii = to_petscii(keycode_to_ascii);
+constexpr std::array<u8, 64> keycode_shifted_to_petscii = to_petscii(keycode_shifted_to_ascii);
+*/
+
 
 void Monitor::Console::key(u8 code, const Mod_state& mod) {
     auto do_ret = [&]() {
-        const std::string line_text{std::begin(screen[cursor_y]), std::end(screen[cursor_y])};
+        auto get_line = [&]() {
+            std::array<u8, column_count> line_ascii;
 
-        for (auto token : split(line_text)) Log::info("%s", token.c_str());;
+            std::transform(
+                std::begin(screen[cursor_y]), std::end(screen[cursor_y]),
+                std::begin(line_ascii),
+                [](u16 char_rom_idx) -> u8 { return char_code_to_ascii(char_rom_idx); }
+            );
+
+            return std::string{std::begin(line_ascii), std::end(line_ascii)};
+        };
+
+        for (auto token : split(get_line())) Log::info("%s", token.c_str());;
 
         line_feed();
 
         mode = Mode::cmd_m;
-        addr_cur = 0xa000;
-        addr_end = 0xc000;
+        addr_cur = 0x0800;
+        addr_end = 0x0840;
     };
 
     if (mode != Mode::idle) {
@@ -109,18 +131,18 @@ void Monitor::Console::draw(PETSCII_Draw& pd) {
     static constexpr int text_top_left_x = (VIC_II::FRAME_WIDTH - (column_count * 8)) / 2;
     static constexpr int text_top_left_y = (VIC_II::FRAME_HEIGHT - (line_count * 8)) / 2;
 
-    auto draw_chr = [&](u16 chr, int y, int x) {
+    auto draw_chr = [&](u16 char_rom_index, int y, int x, Color col_fg = color_fg) {
         pd.chr(
-            chr,
+            char_rom_index,
             text_top_left_x + (x * 8), text_top_left_y + (y * 8),
-            color_fg, color_bg
+            col_fg, color_bg
         );
     };
 
     auto draw_cursor = [&]() {
-        const auto chr_at_crsr = screen[cursor_y][cursor_x];
-        const auto rvrs_chr_at_crsr = chr_at_crsr | 0x080;
-        draw_chr(rvrs_chr_at_crsr, cursor_y, cursor_x);
+        const u16 chr_at_crsr = screen[cursor_y][cursor_x];
+        const u16 rvrs_chr_at_crsr = chr_at_crsr ^ 0x80;
+        draw_chr(rvrs_chr_at_crsr, cursor_y, cursor_x, color_cursor);
     };
 
     auto draw_screen = [&]() {
@@ -140,19 +162,19 @@ void Monitor::Console::draw(PETSCII_Draw& pd) {
 
 
 void Monitor::Console::scroll_up() {
-    std::fill(screen[0].begin(), screen[0].end(), ascii_to_char_rom(' '));
+    std::fill(screen[0].begin(), screen[0].end(), ascii_to_char_code(' '));
     std::rotate(screen.begin(), screen.begin() + 1, screen.end());
 }
 
 
 void Monitor::Console::scroll_down() {
-    std::fill(screen[line_count - 1].begin(), screen[line_count - 1].end(), ascii_to_char_rom(' '));
+    std::fill(screen[line_count - 1].begin(), screen[line_count - 1].end(), ascii_to_char_code(' '));
     std::rotate(screen.rbegin(), screen.rbegin() + 1, screen.rend());
 }
 
 
 void Monitor::Console::clr_screen() {
-    for (auto& line : screen) for (auto& c : line) c = ascii_to_char_rom(' ');
+    for (auto& line : screen) for (auto& c : line) c = ascii_to_char_code(' ');
 }
 
 
@@ -186,7 +208,7 @@ void Monitor::Console::tick() {
             r[addr_cur + 0], r[addr_cur + 1], r[addr_cur + 2], r[addr_cur + 3], 
             r[addr_cur + 4], r[addr_cur + 5], r[addr_cur + 6], r[addr_cur + 7]
         );
-        type_ascii_txt(buffer);
+        type_txt(buffer);
 
         for (int i = 0; i < 8; ++i)
             type_petscii_chr(r[addr_cur + i]);

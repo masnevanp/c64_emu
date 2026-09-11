@@ -241,7 +241,7 @@ std::vector<std::string> split(const std::string& s, char delim) {
   "125": "}", 06b *
   "126": "~"  17A *
 */
-u16 ascii_to_char_rom(u8 ascii_code) {
+u16 ascii_to_char_code(u8 ascii_code) {
     if (ascii_code >= 32 && ascii_code <= 90) {
         if (ascii_code == 64) return 0x100;
         else return 0x120 + (ascii_code - 32);
@@ -264,6 +264,31 @@ u16 ascii_to_char_rom(u8 ascii_code) {
     }
 }
 
+u8 char_code_to_ascii(u16 c) {
+    if ((c >= 0x001) && (c <= 0x01a)) return (c - 0x001) + 'A';
+    if ((c >= 0x081) && (c <= 0x09a)) return (c - 0x081) + 'A';
+    if ((c >= 0x141) && (c <= 0x15a)) return (c - 0x141) + 'A';
+    if ((c >= 0x1c1) && (c <= 0x1da)) return (c - 0x1c1) + 'A';
+
+    if ((c >= 0x101) && (c <= 0x11a)) return (c - 0x101) + 'a';
+    if ((c >= 0x181) && (c <= 0x19a)) return (c - 0x181) + 'a';
+
+    if (((c & 0x7f) >= ' ') && ((c & 0x3f) <= '?')) return (c & 0x7f);
+
+    if ((c & 0x7f) == 0x00) return '@';
+    if ((c & 0x7f) == 0x1b) return '[';
+    if ((c & 0x7f) == 0x1d) return ']';
+    if ((c & 0x7f) == 0x1e) return '^';
+    if ((c & 0x7f) == 0x64) return '_';
+
+    if ((c == 0x04a) || (c == 0x0ca)) return '`';
+    if ((c == 0x04d) || (c == 0x0cd)) return '\\';
+
+    return ' ';
+}
+
+
+// https://sta.c64.org/cbm64pettoscr.html
 u8 petscii_to_screen_code(u8 petscii_code) {
     if (petscii_code < 0x20) return petscii_code + 0x80;
     if (petscii_code < 0x40) return petscii_code;
@@ -272,5 +297,5 @@ u8 petscii_to_screen_code(u8 petscii_code) {
     if (petscii_code < 0xa0) return petscii_code + 0x40;
     if (petscii_code < 0xc0) return petscii_code - 0x40;
     if (petscii_code < 0xff) return petscii_code - 0x80;
-    return 0x5e;
+    return 0x5e; // 0xff
 }
