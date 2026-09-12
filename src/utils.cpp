@@ -273,7 +273,7 @@ u8 char_code_to_ascii(u16 c) {
     if ((c >= 0x101) && (c <= 0x11a)) return (c - 0x101) + 'a';
     if ((c >= 0x181) && (c <= 0x19a)) return (c - 0x181) + 'a';
 
-    if (((c & 0x7f) >= ' ') && ((c & 0x3f) <= '?')) return (c & 0x7f);
+    if (((c & 0x7f) >= ' ') && ((c & 0x7f) <= '?')) return (c & 0x7f);
 
     if ((c & 0x7f) == 0x00) return '@';
     if ((c & 0x7f) == 0x1b) return '[';
