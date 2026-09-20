@@ -51,9 +51,7 @@ private:
         static constexpr int column_count = (frame_width / 8) - 1;
         static constexpr int line_count = (frame_height / 8) - 1;
 
-        enum Mode {
-            idle, cmd_d, cmd_m,
-        };
+        static constexpr char no_cmd = 0;
 
         using Line = std::array<u16, column_count>; // char rom indices
         using Screen = std::array<Line, line_count>;
@@ -63,10 +61,10 @@ private:
         int cursor_x = 0;
         int cursor_y = 0;
 
-        u16 addr_cur;
-        u16 addr_end;
+        u16 addr_cur = 0x0000;
+        u16 addr_end = 0x0000;
 
-        Mode mode = Mode::idle;
+        char active_cmd = no_cmd;
 
         void scroll_up();
         void scroll_down();

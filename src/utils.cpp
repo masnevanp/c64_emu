@@ -205,7 +205,7 @@ std::vector<std::string> split(const std::string& s, char delim) {
 }
 
 
-bool is_hex_str(std::string_view s, std::size_t n) {
+bool is_hex(std::string_view s, std::size_t n) {
     if (s.size() != n) return false;
 
     for (char c : s) {

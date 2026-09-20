@@ -3,6 +3,12 @@
 #include <algorithm>
 
 
+inline bool is_hex(std::string_view s) { return is_hex(s, std::size(s)); }
+
+inline bool is_hex_byte(std::string_view s) { return is_hex(s, 2); }
+inline bool is_hex_word(std::string_view s) { return is_hex(s, 4); }
+
+
 void Monitor::key(u8 code, bool down) {
     auto is_mod = [&](u8 code) {
         return code == Key_code::sh_l || code == Key_code::sh_r
@@ -73,20 +79,9 @@ static constexpr u8 keycode_shifted_to_ascii[] = {
       0  ,  0  ,  0  ,  0  ,  0  ,  0  ,  0  ,  0  ,
 };
 
-/*
-constexpr auto to_petscii(const std::array<u8, 64>& ascii) {
-    std::array<u8, 64> petscii{};
-    for (size_t i = 0; i < 64; ++i) petscii[i] = ascii_to_petscii(ascii[i]);
-    return petscii;
-};
-
-constexpr std::array<u8, 64> keycode_to_petscii = to_petscii(keycode_to_ascii);
-constexpr std::array<u8, 64> keycode_shifted_to_petscii = to_petscii(keycode_shifted_to_ascii);
-*/
-
 
 void Monitor::Console::key(u8 code, const Mod_state& mod) {
-    auto do_ret = [&]() {
+    auto handle_ret = [&]() {
         auto get_line = [&]() {
             std::array<u8, column_count> line_ascii;
 
@@ -99,17 +94,40 @@ void Monitor::Console::key(u8 code, const Mod_state& mod) {
             return std::string{std::begin(line_ascii), std::end(line_ascii)};
         };
 
-        for (auto token : split(get_line())) Log::info("%s", token.c_str());;
+        auto handle_cmd = [&](const std::vector<std::string>& args) {
+            if (args.size() == 0 || args[0].length() != 1) return; // all commands are single char
+
+            auto get_hex_arg = [&](std::size_t arg_pos, u16 default_val) {
+                if (arg_pos < args.size() && is_hex(args[arg_pos])) {
+                    return u16(std::stoi(args[arg_pos], nullptr, 16)); // yes, we truncate to u16...
+                }
+
+                return default_val;
+            };
+
+            switch (active_cmd = args[0][0]; active_cmd) {
+                case 'd':
+                    addr_cur = get_hex_arg(1, addr_cur);
+                    addr_end = get_hex_arg(2, addr_cur + 20);
+                    break;
+                case 'i': break;
+                case 'm':
+                    addr_cur = get_hex_arg(1, addr_cur);
+                    addr_end = get_hex_arg(2, addr_cur + 16 * 8 - 1);
+                    break;
+                default:
+                    active_cmd = no_cmd;
+            }
+        };
+
+        const auto args = split(get_line());
+        handle_cmd(args);
 
         line_feed();
-
-        mode = Mode::cmd_m;
-        addr_cur = 0x0800;
-        addr_end = 0x0840;
     };
 
-    if (mode != Mode::idle) {
-        if (code == Key_code::r_stp) mode = Mode::idle;
+    if (active_cmd) {
+        if (code == Key_code::r_stp || code == Key_code::ret) active_cmd = no_cmd;
         return;
     }
 
@@ -121,7 +139,7 @@ void Monitor::Console::key(u8 code, const Mod_state& mod) {
         case Key_code::home: if (mod.shift) clr_screen(); cursor_y = cursor_x = 0; return;
         case Key_code::crs_d: return mod.shift ? cursor_up() : cursor_down();
         case Key_code::crs_r: return mod.shift ? cursor_back() : cursor_fwd();
-        case Key_code::ret: do_ret(); return;
+        case Key_code::ret: handle_ret(); return;
         case Key_code::del: cursor_back(); type_ascii_chr(' '); cursor_back(); return;
     }
 }
@@ -157,7 +175,7 @@ void Monitor::Console::draw(PETSCII_Draw& pd) {
 
     draw_screen();
 
-    if (mode == Mode::idle) draw_cursor();
+    if (!active_cmd) draw_cursor();
 }
 
 
@@ -180,27 +198,19 @@ void Monitor::Console::clr_screen() {
 
 void Monitor::Console::tick() {
     auto tick_cmd_d = [&]() {
-        if (addr_cur > addr_end) {
-            mode = Mode::idle;
-            return;
-        }
-
         char buffer[column_count];
         const char* format = "> %04x";
         sprintf(buffer, format, addr_cur);
         print(buffer);
 
+        if (addr_cur == addr_end) active_cmd = no_cmd;
+
         addr_cur += 1;
     };
 
     auto tick_cmd_m = [&]() {
-        if (addr_cur > addr_end) { // TODO: proper handling (e.g. handle wrap around..)
-            mode = Mode::idle;
-            return;
-        }
-
         char buffer[column_count];
-        const char* format = ":%04x  %02x %02x %02x %02x %02x %02x %02x %02x  ";
+        const char* format = ": %04x  %02x %02x %02x %02x %02x %02x %02x %02x  ";
         const auto& r{s.ram};
 
         sprintf(buffer, format,
@@ -210,17 +220,19 @@ void Monitor::Console::tick() {
         );
         type_txt(buffer);
 
-        for (int i = 0; i < 8; ++i)
-            type_petscii_chr(r[addr_cur + i]);
+        for (int i = 0; i < 8; ++i) {
+            type_petscii_chr(r[addr_cur]);
+            if (addr_cur++ == addr_end) {
+                active_cmd = no_cmd;
+            }
+        }
 
         line_feed();
-
-        addr_cur += 8;
     };
 
-    switch (mode) {
-        case Mode::cmd_d: tick_cmd_d(); return;
-        case Mode::cmd_m: tick_cmd_m(); return;
+    switch (active_cmd) {
+        case 'd': tick_cmd_d(); return;
+        case 'm': tick_cmd_m(); return;
         default: return;
     }
 }

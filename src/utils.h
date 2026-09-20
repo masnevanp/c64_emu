@@ -135,10 +135,7 @@ std::string to_string(double d, int precision);
 std::vector<std::string> split(const std::string& s, char delim = ' ');
 
 
-bool is_hex_str(std::string_view s, std::size_t n);
-
-inline bool is_hex_byte(std::string_view s) { return is_hex_str(s, 2); }
-inline bool is_hex_word(std::string_view s) { return is_hex_str(s, 4); }
+bool is_hex(std::string_view s, std::size_t n);
 
 
 u16 ascii_to_char_code(u8 ascii_code);
