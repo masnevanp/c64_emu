@@ -1,4 +1,5 @@
 #include "monitor.h"
+#include "mos6502/asm.h"
 #include <array>
 #include <algorithm>
 
@@ -108,7 +109,7 @@ void Monitor::Console::key(u8 code, const Mod_state& mod) {
             switch (active_cmd = args[0][0]; active_cmd) {
                 case 'd':
                     addr_cur = get_hex_arg(1, addr_cur);
-                    addr_end = get_hex_arg(2, addr_cur + 20);
+                    addr_end = get_hex_arg(2, addr_cur + 25);
                     break;
                 case 'i': break;
                 case 'm':
@@ -198,14 +199,26 @@ void Monitor::Console::clr_screen() {
 
 void Monitor::Console::tick() {
     auto tick_cmd_d = [&]() {
+        const auto& r{s.ram};
+
         char buffer[column_count];
-        const char* format = "> %04x";
-        sprintf(buffer, format, addr_cur);
+        const char* format = "> %04s  %-08s  %s";
+
+        const auto opc = r[addr_cur + 0];
+
+        const auto bytes = Bytes{{opc, r[addr_cur + 1], r[addr_cur + 2]}};
+        const auto line = MOS6502::Asm::disasm_first(bytes, addr_cur);
+
+        sprintf(buffer, format,
+            as_lower(line.pc).c_str(),
+            as_lower(line.bytes).c_str(),
+            as_lower(line.text).c_str()
+        );
         print(buffer);
 
-        if (addr_cur == addr_end) active_cmd = no_cmd;
+        addr_cur += MOS6502::Asm::instruction[opc].size;
 
-        addr_cur += 1;
+        if (addr_cur >= addr_end) active_cmd = no_cmd; // TODO: handle wrap around...
     };
 
     auto tick_cmd_m = [&]() {
