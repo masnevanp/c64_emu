@@ -32,7 +32,7 @@ namespace MOS6502::Asm {
             const std::string text;
         };
 
-        Disassembler(const Bin& bin_, const u16 start_addr_ = 0x0000)
+        Disassembler(const Bin& bin_, u16 start_addr_ = 0x0000)
             : bin(bin_), start_addr(start_addr_) {}
 
         Line at(const std::size_t bin_pos) const {
@@ -104,7 +104,7 @@ namespace MOS6502::Asm {
 
 
     template<typename Bin>
-    auto disasm(const Bin& bin, const u16 start_addr = 0x0000) {
+    auto disasm(const Bin& bin, u16 start_addr = 0x0000) {
         Disassembler dis{bin, start_addr};
 
         std::vector<typename Disassembler<Bin>::Line> lines;
@@ -119,8 +119,14 @@ namespace MOS6502::Asm {
 
 
     template<typename Bin>
-    auto disasm_first(const Bin& bin, const u16 start_addr = 0x0000) {
+    auto disasm_first(const Bin& bin, u16 start_addr = 0x0000) {
         return Disassembler{bin, start_addr}.at(0);
+    }
+
+
+    auto inline disasm_one(u8 b1, u8 b2, u8 b3, u16 addr = 0x0000) {
+        const u8 bytes[] = {b1, b2, b3};
+        return disasm_first(bytes, addr);
     }
 
 } // namespace MOS6502::Asm

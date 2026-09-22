@@ -206,8 +206,7 @@ void Monitor::Console::tick() {
 
         const auto opc = r[addr_cur + 0];
 
-        const auto bytes = Bytes{{opc, r[addr_cur + 1], r[addr_cur + 2]}};
-        const auto line = MOS6502::Asm::disasm_first(bytes, addr_cur);
+        const auto line = MOS6502::Asm::disasm_one(opc, r[addr_cur + 1], r[addr_cur + 2], addr_cur);
 
         sprintf(buffer, format,
             as_lower(line.pc).c_str(),
