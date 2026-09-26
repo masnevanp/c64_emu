@@ -4,10 +4,21 @@
 #include <algorithm>
 
 
+/*
 inline bool is_hex(std::string_view s) { return is_hex(s, std::size(s)); }
 
 inline bool is_hex_byte(std::string_view s) { return is_hex(s, 2); }
 inline bool is_hex_word(std::string_view s) { return is_hex(s, 4); }
+*/
+
+
+u32 get_hex_val(const std::string& hex_str, u32 default_val) {
+    try {
+        return std::stoi(hex_str, nullptr, 16);
+    } catch (std::exception& e) {
+        return default_val;
+    }
+}
 
 
 void Monitor::key(u8 code, bool down) {
@@ -99,11 +110,9 @@ void Monitor::Console::key(u8 code, const Mod_state& mod) {
             if (args.size() == 0 || args[0].length() != 1) return; // all commands are single char
 
             auto get_hex_arg = [&](std::size_t arg_pos, u16 default_val) {
-                if (arg_pos < args.size() && is_hex(args[arg_pos])) {
-                    return u16(std::stoi(args[arg_pos], nullptr, 16)); // yes, we truncate to u16...
-                }
-
-                return default_val;
+                return arg_pos < args.size()
+                    ? u16(get_hex_val(args[arg_pos], default_val)) // yes, we truncate to u16...
+                    : default_val;
             };
 
             switch (active_cmd = args[0][0]; active_cmd) {
@@ -111,7 +120,7 @@ void Monitor::Console::key(u8 code, const Mod_state& mod) {
                     addr_cur = get_hex_arg(1, addr_cur);
                     addr_end = get_hex_arg(2, addr_cur + 25);
                     break;
-                case 'i': break;
+                //case 'i': break;
                 case 'm':
                     addr_cur = get_hex_arg(1, addr_cur);
                     addr_end = get_hex_arg(2, addr_cur + 16 * 8 - 1);
@@ -198,48 +207,65 @@ void Monitor::Console::clr_screen() {
 
 
 void Monitor::Console::tick() {
-    auto tick_cmd_d = [&]() {
+    auto print_d = [&](u16 addr) {
         const auto& r{s.ram};
 
         char buffer[column_count];
         const char* format = "> %04s  %-08s  %s";
 
-        const auto opc = r[addr_cur + 0];
+        const u8 opc = r[addr];
+        const u8 byte_2 = r[u16(addr + 1)]; // byte_2 and/or byte_3 might not be needed
+        const u8 byte_3 = r[u16(addr + 2)]; // (e.g. if instr.size is 1)
 
-        const auto line = MOS6502::Asm::disasm_one(opc, r[addr_cur + 1], r[addr_cur + 2], addr_cur);
+        const auto line = MOS6502::Asm::disasm_one(opc, byte_2, byte_3, addr);
 
         sprintf(buffer, format,
             as_lower(line.pc).c_str(),
             as_lower(line.bytes).c_str(),
             as_lower(line.text).c_str()
         );
-        print(buffer);
+        type_txt(buffer);
 
-        addr_cur += MOS6502::Asm::instruction[opc].size;
-
-        if (addr_cur >= addr_end) active_cmd = no_cmd; // TODO: handle wrap around...
+        return MOS6502::Asm::instruction[opc].size;
     };
 
-    auto tick_cmd_m = [&]() {
+    auto print_m = [&](u16 addr) {
         char buffer[column_count];
         const char* format = ": %04x  %02x %02x %02x %02x %02x %02x %02x %02x  ";
         const auto& r{s.ram};
 
         sprintf(buffer, format,
-            addr_cur,
-            r[addr_cur + 0], r[addr_cur + 1], r[addr_cur + 2], r[addr_cur + 3], 
-            r[addr_cur + 4], r[addr_cur + 5], r[addr_cur + 6], r[addr_cur + 7]
+            addr,
+            r[u16(addr + 0)], r[u16(addr + 1)], r[u16(addr + 2)], r[u16(addr + 3)], 
+            r[u16(addr + 4)], r[u16(addr + 5)], r[u16(addr + 6)], r[u16(addr + 7)]
         );
         type_txt(buffer);
 
         for (int i = 0; i < 8; ++i) {
-            type_petscii_chr(r[addr_cur]);
+            type_petscii_chr(r[u16(addr + i)]);
+        }
+    };
+
+    auto tick_cmd_d = [&]() {
+        const auto instr_size = print_d(addr_cur);
+        line_feed();
+
+        for (u8 i = 1; i <= instr_size; ++i) {
+            if (u16(addr_cur + i) == addr_end) active_cmd = no_cmd;
+        }
+
+        addr_cur += instr_size;
+    };
+
+    auto tick_cmd_m = [&]() {
+        print_m(addr_cur);
+        line_feed();
+
+        for (int i = 0; i < 8; ++i) {
             if (addr_cur++ == addr_end) {
                 active_cmd = no_cmd;
             }
         }
-
-        line_feed();
     };
 
     switch (active_cmd) {
