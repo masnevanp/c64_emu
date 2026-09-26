@@ -176,6 +176,15 @@ struct PETSCII_Draw { // user is trusted, no checks...
 };
 
 
+template<typename T> // inclusive range, handles wrapping (end < start)
+constexpr bool is_in_wrapped_range(T value, T range_start, T range_end) {
+        static_assert(std::is_unsigned_v<T>, "T must be unsigned");
+    return range_start <= range_end
+        ? (value >= range_start) && (value <= range_end)
+        : (value >= range_start) || (value <= range_end);
+}
+
+
 /*
 template<typename T>
 constexpr int count_leading_zero_bits(T x) {

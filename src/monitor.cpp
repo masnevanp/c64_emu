@@ -246,26 +246,22 @@ void Monitor::Console::tick() {
         }
     };
 
+    auto inc_addr_and_check_end = [&](u16 inc_size) {
+        const u16 old_addr_cur = addr_cur;
+        addr_cur += inc_size;
+        if (is_in_wrapped_range(addr_end, old_addr_cur, addr_cur)) active_cmd = no_cmd;
+    };
+
     auto tick_cmd_d = [&]() {
         const auto instr_size = print_d(addr_cur);
         line_feed();
-
-        for (u8 i = 1; i <= instr_size; ++i) {
-            if (u16(addr_cur + i) == addr_end) active_cmd = no_cmd;
-        }
-
-        addr_cur += instr_size;
+        inc_addr_and_check_end(instr_size);
     };
 
     auto tick_cmd_m = [&]() {
         print_m(addr_cur);
         line_feed();
-
-        for (int i = 0; i < 8; ++i) {
-            if (addr_cur++ == addr_end) {
-                active_cmd = no_cmd;
-            }
-        }
+        inc_addr_and_check_end(8);
     };
 
     switch (active_cmd) {
