@@ -53,6 +53,12 @@ private:
 
         static constexpr char no_cmd = 0;
 
+        enum Ranged_output_state {
+            os_idle = 0,
+            os_paused = 1,
+            os_active = 2,
+        };
+
         using Line = std::array<u16, column_count>; // char rom indices
         using Screen = std::array<Line, line_count>;
 
@@ -65,6 +71,8 @@ private:
         u16 addr_end = 0x0000;
 
         char active_cmd = no_cmd;
+
+        Ranged_output_state output_state = os_idle;
 
         void scroll_up();
         void scroll_down();
