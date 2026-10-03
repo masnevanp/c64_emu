@@ -12,7 +12,10 @@
 
 class Monitor {
 public:
-    Monitor(State::System& s, const State::System::ROM& rom) : con(s, rom) {}
+    Monitor(
+        State::System& s, const State::System::ROM& rom,
+        const std::function<u8 (u16)>& peek_sys_map
+    ) : con(s, rom, peek_sys_map) {}
 
     void key(u8 code, bool down);
 
@@ -42,7 +45,10 @@ private:
     };
 
     struct Console : public View {
-        Console(State::System& s, const State::System::ROM& rom) : as(s, rom) { clr_screen(); }
+        Console(
+            State::System& s, const State::System::ROM& rom,
+            const std::function<u8 (u16)>& peek_sys_map
+        ) : as(s, rom, peek_sys_map) { clr_screen(); }
 
         virtual void key(u8 code, const Mod_state& mod);
         virtual void draw(PETSCII_Draw& pd);
@@ -69,11 +75,14 @@ private:
 
         class Address_space {
         public:
-            Address_space(State::System& s_, const State::System::ROM& rom_) : s(s_), rom(rom_) {}
+            Address_space(
+                State::System& s_, const State::System::ROM& rom_,
+                const std::function<u8 (u16)>& peek_sys_map_
+            ) : s(s_), rom(rom_), peek_sys_map(peek_sys_map_) {}
 
             struct Target {
                 enum ID : u8 {
-                    sys_map = 0, ram, basic, kernal, // color_ram, reu?
+                    sys_map_p = 0, sys_map_rw, ram, basic, kernal, // color_ram, reu?
                     //c1541_map, c1541_ram, c1541_dos, // TODO: c1541.peek(...)
                     _last = kernal
                 };
@@ -85,10 +94,11 @@ private:
             };
 
             static constexpr Target targets[] = {
-                { Target::ID::sys_map, 0x0000, 0xffff, "sys map" },
-                { Target::ID::ram,     0x0000, 0xffff, "ram"     },
-                { Target::ID::basic,   0xa000, 0xbfff, "basic"   },
-                { Target::ID::kernal,  0xe000, 0xffff, "kernal"  },
+                { Target::ID::sys_map_p,  0x0000, 0xffff, "sys map [peek only]" },
+                { Target::ID::sys_map_rw, 0x0000, 0xffff, "sys map [read/write]" },
+                { Target::ID::ram,        0x0000, 0xffff, "ram"     },
+                { Target::ID::basic,      0xa000, 0xbfff, "basic"   },
+                { Target::ID::kernal,     0xe000, 0xffff, "kernal"  },
             };
 
             void select(u8 new_target_id) {
@@ -101,26 +111,16 @@ private:
                 return (address >= target().addr_start) && (address <= target().addr_end);
             }
 
-            u8 read(u16 address) {
-                if (!is_valid(address)) return 0xff; // TODO: anything else..?
-
-                // translate address
-                address = address - target().addr_start;
-
-                switch (target_id) {
-                    case Target::ID::sys_map: return 0xaa; // TODO
-                    case Target::ID::ram:     return s.ram[address];
-                    case Target::ID::basic:   return rom.basic[address];
-                    case Target::ID::kernal:  return rom.kernal[address];
-                }
-            }
+            u8 read(u16 address);
 
             // TODO: write
         private:
-            u8 target_id{Target::ID::ram}; // TODO: default?
+            u8 target_id{Target::ID::sys_map_p};
 
             State::System& s;
             const State::System::ROM& rom;
+
+            const std::function<u8 (u16)> peek_sys_map;
         };
 
         class Address_range {
@@ -165,6 +165,8 @@ private:
         void cursor_back() { if (cursor_x > 0) --cursor_x; else { cursor_x = (column_count - 1); cursor_up(); } }
 
         void line_feed  () { cursor_x = 0; cursor_down(); }
+
+        std::vector<std::string> tokenize_current_line() const;
 
         void handle_ret();
         void handle_cmd(const std::vector<std::string>& args);

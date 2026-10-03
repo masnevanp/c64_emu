@@ -719,7 +719,14 @@ private:
         },
     };
 
-    Monitor monitor{s, rom};
+    /*std::function<u8 (u16)> peek_bus {
+        [this](u16 address) { return bus.peek(address); }
+    };*/
+
+    Monitor monitor{
+        s, rom,
+        [this](u16 address) { return bus.peek(address); }
+    };
 
     static void install_kernal_tape_traps(u8* kernal, u8 trap_opc);
 };

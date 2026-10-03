@@ -11,6 +11,12 @@ inline bool is_hex_byte(std::string_view s) { return is_hex(s, 2); }
 inline bool is_hex_word(std::string_view s) { return is_hex(s, 4); }
 */
 
+static const char* help[] = {
+    " d [aaaa] [bbbb]",
+    "   disassemble",
+    " x yyyy..."
+};
+
 
 u32 get_hex_val(const std::string& hex_str, u32 default_val) {
     try {
@@ -170,6 +176,23 @@ void Monitor::Console::draw(PETSCII_Draw& pd) {
 }
 
 
+u8 Monitor::Console::Address_space::read(u16 address) {
+    if (!is_valid(address)) return 0xff; // TODO: anything else..?
+
+    // translate address
+    address = address - target().addr_start;
+
+    switch (target_id) {
+        case Target::ID::sys_map_p:  return peek_sys_map(address);
+        case Target::ID::sys_map_rw: return 0xbb; // TODO
+        case Target::ID::ram:        return s.ram[address];
+        case Target::ID::basic:      return rom.basic[address];
+        case Target::ID::kernal:     return rom.kernal[address];
+        default: return 0xff;
+    }
+}
+
+
 void Monitor::Console::clr_screen() {
     for (auto& line : screen) for (auto& c : line) c = ascii_to_char_code(' ');
 }
@@ -187,21 +210,23 @@ void Monitor::Console::scroll_down() {
 }
 
 
+std::vector<std::string> Monitor::Console::tokenize_current_line() const {
+    std::array<u8, column_count> line_ascii;
+
+    std::transform(
+        std::begin(screen[cursor_y]), std::end(screen[cursor_y]),
+        std::begin(line_ascii),
+        [](u16 char_rom_idx) -> u8 { return char_code_to_ascii(char_rom_idx); }
+    );
+
+    const std::string cur_line{std::begin(line_ascii), std::end(line_ascii)};
+
+    return split(cur_line);
+};
+
+
 void Monitor::Console::handle_ret() {
-    auto get_line = [&]() {
-        std::array<u8, column_count> line_ascii;
-
-        std::transform(
-            std::begin(screen[cursor_y]), std::end(screen[cursor_y]),
-            std::begin(line_ascii),
-            [](u16 char_rom_idx) -> u8 { return char_code_to_ascii(char_rom_idx); }
-        );
-
-        return std::string{std::begin(line_ascii), std::end(line_ascii)};
-    };
-
-    const auto cur_line = get_line();
-    const auto args = split(cur_line);
+    const auto args = tokenize_current_line();
     handle_cmd(args);
 
     line_feed();
@@ -209,6 +234,13 @@ void Monitor::Console::handle_ret() {
 
 
 void Monitor::Console::handle_cmd(const std::vector<std::string>& args) {
+    auto print_help = [&]() {
+        for (const auto h : help) {
+            line_feed();
+            type_txt(h);
+        }
+    };
+
     auto get_hex_arg = [&](std::size_t arg_pos, u16 default_val) {
         return arg_pos < args.size()
             ? u16(get_hex_val(args[arg_pos], default_val))
@@ -244,6 +276,7 @@ void Monitor::Console::handle_cmd(const std::vector<std::string>& args) {
     // else we will just try 'active_cmd' again...
 
     switch (active_cmd) {
+        case '?': print_help(); break;
         case 'd': case 'i': case 'm': init_range_output(active_cmd); break;
         case 's': handle_s(); break;
         default:
@@ -267,12 +300,16 @@ void Monitor::Console::print_d() {
         type_txt(buffer);
     };
 
-    const u16 instr_addr = ar.next();
+    const u16 opc_addr = ar.next();
 
-    switch (const u8 opc = as.read(instr_addr); MOS6502::Asm::instr(opc).size) {
-        case 1: do_print(MOS6502::Asm::disasm_one(instr_addr, opc)); break;
-        case 2: do_print(MOS6502::Asm::disasm_one(instr_addr, opc, as.read(ar.next()))); break;
-        case 3: do_print(MOS6502::Asm::disasm_one(instr_addr, opc, as.read(ar.next()), as.read(ar.next()))); break;
+    switch (const u8 opc = as.read(opc_addr); MOS6502::Asm::instr(opc).size) {
+        case 1: do_print(MOS6502::Asm::disasm_one(opc_addr, opc)); break;
+        case 2: do_print(MOS6502::Asm::disasm_one(opc_addr, opc, as.read(ar.next()))); break;
+        case 3: {
+            const u16 b1_addr = ar.next();
+            const u16 b2_addr = ar.next();
+            do_print(MOS6502::Asm::disasm_one(opc_addr, opc, as.read(b1_addr), as.read(b2_addr))); break;
+        }
     }
 }
 
