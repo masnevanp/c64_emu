@@ -92,61 +92,23 @@ static constexpr u8 keycode_shifted_to_ascii[] = {
 };
 
 
+namespace bytes_per_line {
+    static constexpr std::size_t i{32};
+    static constexpr std::size_t m{8};
+}
+
+
 std::size_t default_output_range_size(char cmd) {
     switch (cmd) {
         case 'd': return 25;
-        case 'i': return 25 * 32 - 1;
-        case 'm': return 25 * 8 - 1;
+        case 'i': return 25 * bytes_per_line::i - 1;
+        case 'm': return 25 * bytes_per_line::m - 1;
         default : return 0;
     }
 }
 
 
 void Monitor::Console::key(u8 code, const Mod_state& mod) {
-    auto handle_ret = [&]() {
-        auto get_line = [&]() {
-            std::array<u8, column_count> line_ascii;
-
-            std::transform(
-                std::begin(screen[cursor_y]), std::end(screen[cursor_y]),
-                std::begin(line_ascii),
-                [](u16 char_rom_idx) -> u8 { return char_code_to_ascii(char_rom_idx); }
-            );
-
-            return std::string{std::begin(line_ascii), std::end(line_ascii)};
-        };
-
-        auto handle_cmd = [&](const std::vector<std::string>& args) {
-            auto get_hex_arg = [&](std::size_t arg_pos, u16 default_val) {
-                return arg_pos < args.size()
-                    ? u16(get_hex_val(args[arg_pos], default_val)) // TODO: don't truncate to u16? (e.g. target = REU)
-                    : default_val;
-            };
-
-            auto init_output_cmd = [&](char cmd) {
-                addr_cur = get_hex_arg(1, addr_cur);
-                addr_end = get_hex_arg(2, addr_cur + default_output_range_size(cmd));
-                output_state = os_active;
-            };
-
-            if (args.size() > 0 && args[0].length() == 1) active_cmd = args[0][0];
-            // else try 'active_cmd' again
-
-            switch (active_cmd) {
-                case 'd': case 'i': case 'm': init_output_cmd(active_cmd); break;
-                default:
-                    active_cmd = no_cmd;
-                    output_state = os_idle;
-                    break;
-            }
-        };
-
-        const auto args = split(get_line());
-        handle_cmd(args);
-
-        line_feed();
-    };
-
     if (output_state == os_active) {
         if (code == Key_code::r_stp) {
             output_state = os_paused;
@@ -208,6 +170,11 @@ void Monitor::Console::draw(PETSCII_Draw& pd) {
 }
 
 
+void Monitor::Console::clr_screen() {
+    for (auto& line : screen) for (auto& c : line) c = ascii_to_char_code(' ');
+}
+
+
 void Monitor::Console::scroll_up() {
     std::fill(screen[0].begin(), screen[0].end(), ascii_to_char_code(' '));
     std::rotate(screen.begin(), screen.begin() + 1, screen.end());
@@ -220,23 +187,77 @@ void Monitor::Console::scroll_down() {
 }
 
 
-void Monitor::Console::clr_screen() {
-    for (auto& line : screen) for (auto& c : line) c = ascii_to_char_code(' ');
+void Monitor::Console::handle_ret() {
+    auto get_line = [&]() {
+        std::array<u8, column_count> line_ascii;
+
+        std::transform(
+            std::begin(screen[cursor_y]), std::end(screen[cursor_y]),
+            std::begin(line_ascii),
+            [](u16 char_rom_idx) -> u8 { return char_code_to_ascii(char_rom_idx); }
+        );
+
+        return std::string{std::begin(line_ascii), std::end(line_ascii)};
+    };
+
+    const auto cur_line = get_line();
+    const auto args = split(cur_line);
+    handle_cmd(args);
+
+    line_feed();
 }
 
 
-void Monitor::Console::tick() {
-    auto print_d = [&](u16 addr) {
-        const auto& r{s.ram};
+void Monitor::Console::handle_cmd(const std::vector<std::string>& args) {
+    auto get_hex_arg = [&](std::size_t arg_pos, u16 default_val) {
+        return arg_pos < args.size()
+            ? u16(get_hex_val(args[arg_pos], default_val))
+            : default_val;
+    };
+
+    auto init_range_output = [&](char cmd) {
+        const auto start = get_hex_arg(1, ar.next());
+        const auto end = get_hex_arg(2, start + default_output_range_size(cmd));
+        ar.init(start, end);
+        output_state = os_active;
+    };
+
+    auto handle_s = [&]() {
+        const auto new_target_id = get_hex_arg(1, as.target().id);
+        as.select(new_target_id);
 
         char buffer[column_count];
+        const char* format = " %c%02x: %04x-%04x  %s";
+
+        for (auto t : as.targets) {
+            line_feed();
+            const auto selected = t.id == as.target().id ? '*' : ' ';
+            sprintf(buffer, format, selected, t.id, t.addr_start, t.addr_end, t.name);
+            type_txt(buffer);
+        }
+    };
+
+    if (args.size() > 0) {
+        if (args[0].length() == 1) active_cmd = args[0][0];
+        else if (args[0].length() > 1) return;
+    }
+    // else we will just try 'active_cmd' again...
+
+    switch (active_cmd) {
+        case 'd': case 'i': case 'm': init_range_output(active_cmd); break;
+        case 's': handle_s(); break;
+        default:
+            active_cmd = no_cmd;
+            output_state = os_idle;
+            break;
+    }
+}
+
+
+void Monitor::Console::print_d() {
+    auto do_print = [&](const MOS6502::Asm::Line& line) {
+        char buffer[column_count];
         const char* format = "> %04s  %-08s  %s";
-
-        const u8 opc = r[addr];
-        const u8 byte_2 = r[u16(addr + 1)]; // byte_2 and/or byte_3 might not be needed
-        const u8 byte_3 = r[u16(addr + 2)]; // (e.g. if instr.size is 1)
-
-        const auto line = MOS6502::Asm::disasm_one(opc, byte_2, byte_3, addr);
 
         sprintf(buffer, format,
             as_lower(line.pc).c_str(),
@@ -244,74 +265,76 @@ void Monitor::Console::tick() {
             as_lower(line.text).c_str()
         );
         type_txt(buffer);
-
-        return MOS6502::Asm::instruction[opc].size;
     };
 
-    auto print_i = [&](u16 addr) {
-        char buffer[column_count];
-        const char* format = "; %04x  ";
-        const auto& r{s.ram};
+    const u16 instr_addr = ar.next();
 
-        sprintf(buffer, format, addr);
-        type_txt(buffer);
+    switch (const u8 opc = as.read(instr_addr); MOS6502::Asm::instr(opc).size) {
+        case 1: do_print(MOS6502::Asm::disasm_one(instr_addr, opc)); break;
+        case 2: do_print(MOS6502::Asm::disasm_one(instr_addr, opc, as.read(ar.next()))); break;
+        case 3: do_print(MOS6502::Asm::disasm_one(instr_addr, opc, as.read(ar.next()), as.read(ar.next()))); break;
+    }
+}
 
-        for (int i = 0; i < 32; ++i) {
-            type_petscii_chr(r[u16(addr + i)]);
-        }
-    };
 
-    auto print_m = [&](u16 addr) {
-        char buffer[column_count];
-        const char* format = ": %04x  %02x %02x %02x %02x %02x %02x %02x %02x  ";
-        const auto& r{s.ram};
+void Monitor::Console::print_i() {
+    char buffer[column_count];
+    const char* format = "; %04x  ";
 
-        sprintf(buffer, format,
-            addr,
-            r[u16(addr + 0)], r[u16(addr + 1)], r[u16(addr + 2)], r[u16(addr + 3)], 
-            r[u16(addr + 4)], r[u16(addr + 5)], r[u16(addr + 6)], r[u16(addr + 7)]
-        );
-        type_txt(buffer);
+    sprintf(buffer, format, ar.peek());
+    type_txt(buffer);
 
-        for (int i = 0; i < 8; ++i) {
-            type_petscii_chr(r[u16(addr + i)]);
-        }
-    };
+    for (int i = 0; i < 32; ++i) {
+        type_petscii_chr(as.read(ar.next()));
+    }
+}
 
-    auto inc_addr_and_check_end = [&](u16 inc_size) {
-        const u16 old_addr_cur = addr_cur;
-        addr_cur += inc_size;
-        if (is_in_wrapped_range(addr_end, old_addr_cur, addr_cur)) {
-            output_state = os_idle;
-        }
-    };
 
-    auto tick_cmd_d = [&]() {
-        const auto instr_size = print_d(addr_cur);
-        line_feed();
-        inc_addr_and_check_end(instr_size);
-    };
+void Monitor::Console::print_m() {
+    char buffer[column_count];
+    const char* format = ": %04x  %02x %02x %02x %02x %02x %02x %02x %02x  ";
 
-    auto tick_cmd_i = [&]() {
-        print_i(addr_cur);
-        line_feed();
-        inc_addr_and_check_end(32);
-    };
+    const u16 start_addr = ar.peek();
 
-    auto tick_cmd_m = [&]() {
-        print_m(addr_cur);
-        line_feed();
-        inc_addr_and_check_end(8);
-    };
+    sprintf(buffer, format,
+        start_addr,
+        as.read(ar.next()), as.read(ar.next()), as.read(ar.next()), as.read(ar.next()),
+        as.read(ar.next()), as.read(ar.next()), as.read(ar.next()), as.read(ar.next())
+    );
+    type_txt(buffer);
 
+    const u16 end_addr = ar.peek(); // one beyond, actually
+
+    for (u16 a = start_addr; a < end_addr; ++a) {
+        type_petscii_chr(as.read(a));
+    }
+};
+
+
+void Monitor::Console::tick() {
     if (output_state != os_active) return;
 
-    switch (active_cmd) {
-        case 'd': tick_cmd_d(); return;
-        case 'i': tick_cmd_i(); return;
-        case 'm': tick_cmd_m(); return;
-        default: return;
+    if (ar.at_end()) {
+        output_state = os_idle;
+        return;
     }
+
+    switch (active_cmd) {
+        case 'd': {
+            print_d();
+            break;
+        }
+        case 'i':
+            print_i();
+            break;
+        case 'm':
+            print_m();
+            break;
+        default:
+            return;
+    }
+
+    line_feed();
 }
 
 

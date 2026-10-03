@@ -719,7 +719,7 @@ private:
         },
     };
 
-    Monitor monitor{s};
+    Monitor monitor{s, rom};
 
     static void install_kernal_tape_traps(u8* kernal, u8 trap_opc);
 };

@@ -347,7 +347,7 @@ void System::C64::log_cpu_status() {
     std::string disasm;
     if (cpu.at_fetch()) {
         const auto pc = c.bus.a;
-        const auto line = MOS6502::Asm::disasm_one(bus.peek(pc), bus.peek(pc + 1), bus.peek(pc + 2), pc);
+        const auto line = MOS6502::Asm::disasm_one(pc, bus.peek(pc), bus.peek(pc + 1), bus.peek(pc + 2));
         disasm = "> " + as_lower(line.text);
     } else {
         disasm = ".";

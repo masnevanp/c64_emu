@@ -12,7 +12,7 @@
 
 class Monitor {
 public:
-    Monitor(State::System& s) : con(s) {}
+    Monitor(State::System& s, const State::System::ROM& rom) : con(s, rom) {}
 
     void key(u8 code, bool down);
 
@@ -42,7 +42,7 @@ private:
     };
 
     struct Console : public View {
-        Console(State::System& s_) : s(s_) { clr_screen(); }
+        Console(State::System& s, const State::System::ROM& rom) : as(s, rom) { clr_screen(); }
 
         virtual void key(u8 code, const Mod_state& mod);
         virtual void draw(PETSCII_Draw& pd);
@@ -53,7 +53,7 @@ private:
 
         static constexpr char no_cmd = 0;
 
-        enum Ranged_output_state {
+        enum Range_output_state {
             os_idle = 0,
             os_paused = 1,
             os_active = 2,
@@ -67,12 +67,94 @@ private:
         int cursor_x = 0;
         int cursor_y = 0;
 
-        u16 addr_cur = 0x0000;
-        u16 addr_end = 0x0000;
+        class Address_space {
+        public:
+            Address_space(State::System& s_, const State::System::ROM& rom_) : s(s_), rom(rom_) {}
+
+            struct Target {
+                enum ID : u8 {
+                    sys_map = 0, ram, basic, kernal, // color_ram, reu?
+                    //c1541_map, c1541_ram, c1541_dos, // TODO: c1541.peek(...)
+                    _last = kernal
+                };
+
+                const ID id;
+                const u16 addr_start;
+                const u16 addr_end;
+                const char* name;
+            };
+
+            static constexpr Target targets[] = {
+                { Target::ID::sys_map, 0x0000, 0xffff, "sys map" },
+                { Target::ID::ram,     0x0000, 0xffff, "ram"     },
+                { Target::ID::basic,   0xa000, 0xbfff, "basic"   },
+                { Target::ID::kernal,  0xe000, 0xffff, "kernal"  },
+            };
+
+            void select(u8 new_target_id) {
+                if (new_target_id <= Target::ID::_last) target_id = new_target_id;
+            }
+
+            const Target& target() const { return targets[target_id]; }
+
+            bool is_valid(u16 address) {
+                return (address >= target().addr_start) && (address <= target().addr_end);
+            }
+
+            u8 read(u16 address) {
+                if (!is_valid(address)) return 0xff; // TODO: anything else..?
+
+                // translate address
+                address = address - target().addr_start;
+
+                switch (target_id) {
+                    case Target::ID::sys_map: return 0xaa; // TODO
+                    case Target::ID::ram:     return s.ram[address];
+                    case Target::ID::basic:   return rom.basic[address];
+                    case Target::ID::kernal:  return rom.kernal[address];
+                }
+            }
+
+            // TODO: write
+        private:
+            u8 target_id{Target::ID::ram}; // TODO: default?
+
+            State::System& s;
+            const State::System::ROM& rom;
+        };
+
+        class Address_range {
+        public:
+            void init(u16 start_addr, u16 end_addr) {
+                cur = start_addr;
+                end = end_addr;
+                ended = false;
+            }
+
+            u16 peek() const { return cur; }
+
+            u16 next() {
+                if (cur == end) ended = true;
+                return cur++;
+            }
+
+            bool at_end() const { return ended; }
+
+        private:
+            u16 cur;
+            u16 end;
+            bool ended;
+        };
+
+        Address_space as;
+
+        Address_range ar;
 
         char active_cmd = no_cmd;
 
-        Ranged_output_state output_state = os_idle;
+        Range_output_state output_state = os_idle;
+
+        void clr_screen();
 
         void scroll_up();
         void scroll_down();
@@ -84,7 +166,8 @@ private:
 
         void line_feed  () { cursor_x = 0; cursor_down(); }
 
-        void clr_screen();
+        void handle_ret();
+        void handle_cmd(const std::vector<std::string>& args);
 
         void type_chr(u16 char_rom_index)      { screen[cursor_y][cursor_x] = char_rom_index; cursor_fwd(); }
         void type_ascii_chr(u8 ascii_code)     { type_chr(ascii_to_char_code(ascii_code)); }
@@ -92,9 +175,11 @@ private:
         void type_txt(const std::string& txt)  { for (const char c : txt) type_ascii_chr(c); }
         void print(const std::string& txt)     { type_txt(txt); line_feed(); }
 
-        void tick();
+        void print_d();
+        void print_i();
+        void print_m();
 
-        State::System& s;
+        void tick();
     };
 
     struct CPU : public View { virtual void draw(PETSCII_Draw& pd); };

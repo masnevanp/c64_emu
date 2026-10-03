@@ -22,16 +22,19 @@ namespace MOS6502::Asm {
 
     extern const Instruction instruction[256];
 
+    inline const Instruction& instr(u8 opc) { return instruction[opc]; }
+
+
+    struct Line {
+        // TODO: add opc, pos (if needed)
+        const std::string pc; // TODO: change to u16 (if needed)
+        const std::string bytes;
+        const std::string text;
+    };
+
     template<typename Bin>
     class Disassembler {
     public:
-        struct Line {
-            // TODO: add opc, pos (if needed)
-            const std::string pc; // TODO: change to u16 (if needed)
-            const std::string bytes;
-            const std::string text;
-        };
-
         Disassembler(const Bin& bin_, u16 start_addr_ = 0x0000)
             : bin(bin_), start_addr(start_addr_) {}
 
@@ -124,7 +127,7 @@ namespace MOS6502::Asm {
     }
 
 
-    auto inline disasm_one(u8 b1, u8 b2, u8 b3, u16 addr = 0x0000) {
+    auto inline disasm_one(u16 addr, u8 b1, u8 b2 = 0x00, u8 b3 = 0x00) {
         const u8 bytes[] = {b1, b2, b3};
         return disasm_first(bytes, addr);
     }
