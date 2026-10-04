@@ -719,13 +719,18 @@ private:
         },
     };
 
-    /*std::function<u8 (u16)> peek_bus {
-        [this](u16 address) { return bus.peek(address); }
-    };*/
-
     Monitor monitor{
-        s, rom,
-        [this](u16 address) { return bus.peek(address); }
+        s, rom, {
+            [this](u16 address) { return bus.peek(address); },
+            [this](u16 address) {
+                u8 data;
+                bus.access(address, data, State::System::Bus::RW::r);
+                return data;
+            },
+            [this](u16 address, u8 data) {
+                bus.access(address, data, State::System::Bus::RW::w);
+            }
+        }
     };
 
     static void install_kernal_tape_traps(u8* kernal, u8 trap_opc);

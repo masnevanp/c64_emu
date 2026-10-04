@@ -12,9 +12,11 @@ inline bool is_hex_word(std::string_view s) { return is_hex(s, 4); }
 */
 
 static const char* help[] = {
-    " d [aaaa] [bbbb]",
-    "   disassemble",
-    " x yyyy..."
+    " d [aaaa] [bbbb]  : disassemble",
+    " i [aaaa] [bbbb]  : decode",
+    " m [aaaa] [bbbb]  : decode",
+    " s [aa]           : select target",
+    " x todo           : todo"
 };
 
 
@@ -183,12 +185,26 @@ u8 Monitor::Console::Address_space::read(u16 address) {
     address = address - target().addr_start;
 
     switch (target_id) {
-        case Target::ID::sys_map_p:  return peek_sys_map(address);
-        case Target::ID::sys_map_rw: return 0xbb; // TODO
+        case Target::ID::sys_map_p:  return sys_map.peek(address);
+        case Target::ID::sys_map_rw: return sys_map.read(address);
         case Target::ID::ram:        return s.ram[address];
         case Target::ID::basic:      return rom.basic[address];
         case Target::ID::kernal:     return rom.kernal[address];
         default: return 0xff;
+    }
+}
+
+
+void Monitor::Console::Address_space::write(u16 address, u8 data) {
+    if (!is_valid(address)) return;
+
+    // translate address
+    address = address - target().addr_start;
+
+    switch (target_id) {
+        case Target::ID::sys_map_rw: sys_map.write(address, data); break;
+        case Target::ID::ram:        s.ram[address] = data;        break;
+        default: break;
     }
 }
 
@@ -264,6 +280,10 @@ void Monitor::Console::handle_cmd(const std::vector<std::string>& args) {
     auto handle_s = [&]() {
         const auto new_target_id = get_hex_arg(1, as.target().id);
         as.select(new_target_id);
+
+        if (!as.is_valid(addr_cur)) {
+            addr_cur = as.target().addr_start;
+        }
 
         char buffer[column_count];
         const char* format = " %c%02x: %04x-%04x  %s";

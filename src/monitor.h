@@ -12,10 +12,16 @@
 
 class Monitor {
 public:
+    struct Sys_map_interface {
+        const std::function<u8 (u16)> peek;
+        const std::function<u8 (u16)> read;
+        const std::function<void (u16, u8)> write;
+    };
+
     Monitor(
         State::System& s, const State::System::ROM& rom,
-        const std::function<u8 (u16)>& peek_sys_map
-    ) : con(s, rom, peek_sys_map) {}
+        const Sys_map_interface& sys_map
+    ) : con(s, rom, sys_map) {}
 
     void key(u8 code, bool down);
 
@@ -47,8 +53,8 @@ private:
     struct Console : public View {
         Console(
             State::System& s, const State::System::ROM& rom,
-            const std::function<u8 (u16)>& peek_sys_map
-        ) : as(s, rom, peek_sys_map) { clr_screen(); }
+            const Sys_map_interface& sys_map
+        ) : as(s, rom, sys_map) { clr_screen(); }
 
         virtual void key(u8 code, const Mod_state& mod);
         virtual void draw(PETSCII_Draw& pd);
@@ -77,12 +83,16 @@ private:
         public:
             Address_space(
                 State::System& s_, const State::System::ROM& rom_,
-                const std::function<u8 (u16)>& peek_sys_map_
-            ) : s(s_), rom(rom_), peek_sys_map(peek_sys_map_) {}
+                const Sys_map_interface& sys_map_
+            ) : s(s_), rom(rom_), sys_map(sys_map_) {}
 
             struct Target {
                 enum ID : u8 {
-                    sys_map_p = 0, sys_map_rw, ram, basic, kernal, // color_ram, reu?
+                    // TODO:
+                    //   - char_rom, color_ram, io, rom h/l, reu?
+                    //   - expansion inspection?
+                    //   - a seperate view for c1541?
+                    sys_map_p = 0, sys_map_rw, ram, basic, kernal,
                     //c1541_map, c1541_ram, c1541_dos, // TODO: c1541.peek(...)
                     _last = kernal
                 };
@@ -112,15 +122,15 @@ private:
             }
 
             u8 read(u16 address);
+            void write(u16 address, u8 data);
 
-            // TODO: write
         private:
             u8 target_id{Target::ID::sys_map_p};
 
             State::System& s;
             const State::System::ROM& rom;
 
-            const std::function<u8 (u16)> peek_sys_map;
+            Sys_map_interface sys_map;
         };
 
         Address_space as;
