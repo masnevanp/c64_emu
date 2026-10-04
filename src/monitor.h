@@ -123,32 +123,10 @@ private:
             const std::function<u8 (u16)> peek_sys_map;
         };
 
-        class Address_range {
-        public:
-            void init(u16 start_addr, u16 end_addr) {
-                cur = start_addr;
-                end = end_addr;
-                ended = false;
-            }
-
-            u16 peek() const { return cur; }
-
-            u16 next() {
-                if (cur == end) ended = true;
-                return cur++;
-            }
-
-            bool at_end() const { return ended; }
-
-        private:
-            u16 cur;
-            u16 end;
-            bool ended;
-        };
-
         Address_space as;
 
-        Address_range ar;
+        u16 addr_cur;
+        u16 addr_end;
 
         char active_cmd = no_cmd;
 

@@ -234,11 +234,12 @@ void Monitor::Console::handle_ret() {
 
 
 void Monitor::Console::handle_cmd(const std::vector<std::string>& args) {
-    auto print_help = [&]() {
-        for (const auto h : help) {
-            line_feed();
-            type_txt(h);
+    auto get_cmd = [&](char default_cmd) {
+        if (args.size() > 0) {
+            if (args[0].length() == 1) return args[0][0];
+            else if (args[0].length() > 1) return no_cmd;
         }
+        return default_cmd;
     };
 
     auto get_hex_arg = [&](std::size_t arg_pos, u16 default_val) {
@@ -248,10 +249,16 @@ void Monitor::Console::handle_cmd(const std::vector<std::string>& args) {
     };
 
     auto init_range_output = [&](char cmd) {
-        const auto start = get_hex_arg(1, ar.next());
-        const auto end = get_hex_arg(2, start + default_output_range_size(cmd));
-        ar.init(start, end);
+        addr_cur = get_hex_arg(1, addr_cur);
+        addr_end = get_hex_arg(2, addr_cur + default_output_range_size(cmd));
         output_state = os_active;
+    };
+
+    auto print_help = [&]() {
+        for (const auto h : help) {
+            line_feed();
+            type_txt(h);
+        }
     };
 
     auto handle_s = [&]() {
@@ -269,11 +276,7 @@ void Monitor::Console::handle_cmd(const std::vector<std::string>& args) {
         }
     };
 
-    if (args.size() > 0) {
-        if (args[0].length() == 1) active_cmd = args[0][0];
-        else if (args[0].length() > 1) return;
-    }
-    // else we will just try 'active_cmd' again...
+    active_cmd = get_cmd(active_cmd);
 
     switch (active_cmd) {
         case '?': print_help(); break;
@@ -300,17 +303,23 @@ void Monitor::Console::print_d() {
         type_txt(buffer);
     };
 
-    const u16 opc_addr = ar.next();
+    const u8 opc = as.read(addr_cur);
+    const u8 instr_size = MOS6502::Asm::instr(opc).size;
 
-    switch (const u8 opc = as.read(opc_addr); MOS6502::Asm::instr(opc).size) {
-        case 1: do_print(MOS6502::Asm::disasm_one(opc_addr, opc)); break;
-        case 2: do_print(MOS6502::Asm::disasm_one(opc_addr, opc, as.read(ar.next()))); break;
-        case 3: {
-            const u16 b1_addr = ar.next();
-            const u16 b2_addr = ar.next();
-            do_print(MOS6502::Asm::disasm_one(opc_addr, opc, as.read(b1_addr), as.read(b2_addr))); break;
-        }
+    // TODO: mark undocumented ops (e.g. "lax ($22),y  :ud")
+    //       (or use color --> add support for per char. colors...)
+    switch (instr_size) {
+        case 1:
+            do_print(MOS6502::Asm::disasm_one(addr_cur, opc));
+            break;
+        case 2:
+            do_print(MOS6502::Asm::disasm_one(addr_cur, opc, as.read(addr_cur + 1)));
+            break;
+        case 3:
+            do_print(MOS6502::Asm::disasm_one(addr_cur, opc, as.read(addr_cur + 1), as.read(addr_cur + 2)));
     }
+
+    addr_cur += instr_size;
 }
 
 
@@ -318,11 +327,11 @@ void Monitor::Console::print_i() {
     char buffer[column_count];
     const char* format = "; %04x  ";
 
-    sprintf(buffer, format, ar.peek());
+    sprintf(buffer, format, addr_cur);
     type_txt(buffer);
 
     for (int i = 0; i < 32; ++i) {
-        type_petscii_chr(as.read(ar.next()));
+        type_petscii_chr(as.read(addr_cur++));
     }
 }
 
@@ -331,19 +340,20 @@ void Monitor::Console::print_m() {
     char buffer[column_count];
     const char* format = ": %04x  %02x %02x %02x %02x %02x %02x %02x %02x  ";
 
-    const u16 start_addr = ar.peek();
+    const u16 line_addr = addr_cur;
+
+    std::array<u8, bytes_per_line::m> bytes;
+
+    std::generate(begin(bytes), end(bytes), [this]() { return as.read(addr_cur++); });
 
     sprintf(buffer, format,
-        start_addr,
-        as.read(ar.next()), as.read(ar.next()), as.read(ar.next()), as.read(ar.next()),
-        as.read(ar.next()), as.read(ar.next()), as.read(ar.next()), as.read(ar.next())
+        line_addr,
+        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]
     );
     type_txt(buffer);
 
-    const u16 end_addr = ar.peek(); // one beyond, actually
-
-    for (u16 a = start_addr; a < end_addr; ++a) {
-        type_petscii_chr(as.read(a));
+    for (std::size_t byte = 0; byte < bytes_per_line::m; ++byte) {
+        type_petscii_chr(bytes[byte]);
     }
 };
 
@@ -351,10 +361,7 @@ void Monitor::Console::print_m() {
 void Monitor::Console::tick() {
     if (output_state != os_active) return;
 
-    if (ar.at_end()) {
-        output_state = os_idle;
-        return;
-    }
+    const u16 old_addr_cur = addr_cur;
 
     switch (active_cmd) {
         case 'd': {
@@ -368,10 +375,15 @@ void Monitor::Console::tick() {
             print_m();
             break;
         default:
+            output_state = os_idle;
             return;
     }
 
     line_feed();
+
+    if (is_in_wrapped_range(addr_end, old_addr_cur, addr_cur)) { // did we touch 'addr_end'?
+        output_state = os_idle;
+    }
 }
 
 
