@@ -165,9 +165,9 @@ private:
         void type_txt(const std::string& txt)  { for (const char c : txt) type_ascii_chr(c); }
         void print(const std::string& txt)     { type_txt(txt); line_feed(); }
 
-        void print_d();
-        void print_i();
-        void print_m();
+        void print_disasm();
+        void print_dump_petscii();
+        void print_dump_hex_petscii();
 
         void tick();
     };

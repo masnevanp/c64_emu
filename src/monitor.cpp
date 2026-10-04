@@ -11,21 +11,40 @@ inline bool is_hex_byte(std::string_view s) { return is_hex(s, 2); }
 inline bool is_hex_word(std::string_view s) { return is_hex(s, 4); }
 */
 
-static const char* help[] = {
-    " d [aaaa] [bbbb]  : disassemble",
-    " i [aaaa] [bbbb]  : decode",
-    " m [aaaa] [bbbb]  : decode",
-    " s [aa]           : select target",
-    " x todo           : todo"
+static const char* cmd_help[] = {
+    " d [adr1] [adr2]  : disassemble",
+    " i [adr1] [adr2]  : dump petscii",
+    " m [adr1] [adr2]  : dump hex & petscii",
+    " s [n]            : select target",
+    " ?                : help"
+};
+
+
+enum Cmd_char : char {
+    help             = '?',
+    disasm           = 'd',
+    dump_petscii     = 'i',
+    dump_hex_petscii = 'm',
+    select_tgt       = 's',
+    //unknown          = char(0),
+};
+
+
+enum Prefix : char {
+    disasm_prefix           = '>',
+    dump_petscii_prefix     = ';',
+    dump_hex_petscii_prefix = ':',
 };
 
 
 u32 get_hex_val(const std::string& hex_str, u32 default_val) {
-    try {
-        return std::stoi(hex_str, nullptr, 16);
-    } catch (std::exception& e) {
-        return default_val;
+    if (is_hex(hex_str, hex_str.length())) {
+        try {
+            return std::stoul(hex_str, nullptr, 16);
+        } catch (std::exception& e) {}
     }
+
+    return default_val;
 }
 
 
@@ -98,22 +117,6 @@ static constexpr u8 keycode_shifted_to_ascii[] = {
       0  , 'e' , 's' , 'z' , '$' , 'a' , 'w' , '#' ,
       0  ,  0  ,  0  ,  0  ,  0  ,  0  ,  0  ,  0  ,
 };
-
-
-namespace bytes_per_line {
-    static constexpr std::size_t i{32};
-    static constexpr std::size_t m{8};
-}
-
-
-std::size_t default_output_range_size(char cmd) {
-    switch (cmd) {
-        case 'd': return 25;
-        case 'i': return 25 * bytes_per_line::i - 1;
-        case 'm': return 25 * bytes_per_line::m - 1;
-        default : return 0;
-    }
-}
 
 
 void Monitor::Console::key(u8 code, const Mod_state& mod) {
@@ -249,6 +252,22 @@ void Monitor::Console::handle_ret() {
 }
 
 
+namespace Output_bytes_per_line {
+    static constexpr std::size_t dump_petscii{32};
+    static constexpr std::size_t dump_hex_petscii{8};
+}
+
+std::size_t default_output_range_size(char cmd) {
+    using cc = Cmd_char;
+    switch (cmd) {
+        case cc::disasm:           return 25;
+        case cc::dump_petscii:     return 25 * Output_bytes_per_line::dump_petscii - 1;
+        case cc::dump_hex_petscii: return 25 * Output_bytes_per_line::dump_hex_petscii - 1;
+        default : return 0;
+    }
+}
+
+
 void Monitor::Console::handle_cmd(const std::vector<std::string>& args) {
     auto get_cmd = [&](char default_cmd) {
         if (args.size() > 0) {
@@ -271,13 +290,13 @@ void Monitor::Console::handle_cmd(const std::vector<std::string>& args) {
     };
 
     auto print_help = [&]() {
-        for (const auto h : help) {
+        for (const auto h : cmd_help) {
             line_feed();
             type_txt(h);
         }
     };
 
-    auto handle_s = [&]() {
+    auto handle_select_tgt = [&]() {
         const auto new_target_id = get_hex_arg(1, as.target().id);
         as.select(new_target_id);
 
@@ -298,10 +317,13 @@ void Monitor::Console::handle_cmd(const std::vector<std::string>& args) {
 
     active_cmd = get_cmd(active_cmd);
 
+    using cc = Cmd_char;
     switch (active_cmd) {
-        case '?': print_help(); break;
-        case 'd': case 'i': case 'm': init_range_output(active_cmd); break;
-        case 's': handle_s(); break;
+        case cc::help: print_help(); break;
+        case cc::disasm: case cc::dump_petscii: case cc::dump_hex_petscii:
+            init_range_output(active_cmd);
+            break;
+        case cc::select_tgt: handle_select_tgt(); break;
         default:
             active_cmd = no_cmd;
             output_state = os_idle;
@@ -310,12 +332,13 @@ void Monitor::Console::handle_cmd(const std::vector<std::string>& args) {
 }
 
 
-void Monitor::Console::print_d() {
+void Monitor::Console::print_disasm() {
     auto do_print = [&](const MOS6502::Asm::Line& line) {
         char buffer[column_count];
-        const char* format = "> %04s  %-08s  %s";
+        const char* format = "%c %04s  %-08s  %s";
 
         sprintf(buffer, format,
+            Prefix::disasm_prefix,
             as_lower(line.pc).c_str(),
             as_lower(line.bytes).c_str(),
             as_lower(line.text).c_str()
@@ -343,36 +366,36 @@ void Monitor::Console::print_d() {
 }
 
 
-void Monitor::Console::print_i() {
+void Monitor::Console::print_dump_petscii() {
     char buffer[column_count];
-    const char* format = "; %04x  ";
+    const char* format = "%c %04x  ";
 
-    sprintf(buffer, format, addr_cur);
+    sprintf(buffer, format, Prefix::dump_petscii_prefix, addr_cur);
     type_txt(buffer);
 
-    for (int i = 0; i < 32; ++i) {
+    for (std::size_t n = 0; n < Output_bytes_per_line::dump_petscii; ++n) {
         type_petscii_chr(as.read(addr_cur++));
     }
 }
 
 
-void Monitor::Console::print_m() {
+void Monitor::Console::print_dump_hex_petscii() {
     char buffer[column_count];
-    const char* format = ": %04x  %02x %02x %02x %02x %02x %02x %02x %02x  ";
+    const char* format = "%c %04x  %02x %02x %02x %02x %02x %02x %02x %02x  ";
 
     const u16 line_addr = addr_cur;
 
-    std::array<u8, bytes_per_line::m> bytes;
+    std::array<u8, Output_bytes_per_line::dump_hex_petscii> bytes;
 
     std::generate(begin(bytes), end(bytes), [this]() { return as.read(addr_cur++); });
 
     sprintf(buffer, format,
-        line_addr,
+        Prefix::dump_hex_petscii_prefix, line_addr,
         bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]
     );
     type_txt(buffer);
 
-    for (std::size_t byte = 0; byte < bytes_per_line::m; ++byte) {
+    for (std::size_t byte = 0; byte < Output_bytes_per_line::dump_hex_petscii; ++byte) {
         type_petscii_chr(bytes[byte]);
     }
 };
@@ -383,17 +406,11 @@ void Monitor::Console::tick() {
 
     const u16 old_addr_cur = addr_cur;
 
+    using cc = Cmd_char;
     switch (active_cmd) {
-        case 'd': {
-            print_d();
-            break;
-        }
-        case 'i':
-            print_i();
-            break;
-        case 'm':
-            print_m();
-            break;
+        case cc::disasm:           print_disasm();           break;
+        case cc::dump_petscii:     print_dump_petscii();     break;
+        case cc::dump_hex_petscii: print_dump_hex_petscii(); break;
         default:
             output_state = os_idle;
             return;
