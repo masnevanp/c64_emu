@@ -54,30 +54,25 @@ private:
         Console(
             State::System& s, const State::System::ROM& rom,
             const Sys_map_interface& sys_map
-        ) : as(s, rom, sys_map) { clr_screen(); }
+        ) : as(s, rom, sys_map) { clr_screen(); output_help(); }
 
         virtual void key(u8 code, const Mod_state& mod);
         virtual void draw(PETSCII_Draw& pd);
 
     private:
-        static constexpr int column_count = (frame_width / 8) - 1;
-        static constexpr int line_count = (frame_height / 8) - 1;
+        static constexpr int screen_width = (frame_width / 8) - 1;
+        static constexpr int screen_height = (frame_height / 8) - 1;
 
-        static constexpr char no_cmd = 0;
-
-        enum Range_output_state {
-            os_idle = 0,
-            os_paused = 1,
-            os_active = 2,
+        enum class Range_output {
+            off    = 0,
+            paused = 1,
+            active = 2,
         };
 
-        using Line = std::array<u16, column_count>; // char rom indices
-        using Screen = std::array<Line, line_count>;
+        using Line = std::array<u16, screen_width>; // char rom indices
+        using Screen = std::array<Line, screen_height>;
 
-        Screen screen{};
-
-        int cursor_x = 0;
-        int cursor_y = 0;
+        using Tokens = std::vector<std::string>;
 
         class Address_space {
         public:
@@ -133,41 +128,65 @@ private:
             Sys_map_interface sys_map;
         };
 
+        Screen screen{};
+
+        u8 cursor_x = 0;
+        u8 cursor_y = 0;
+
         Address_space as;
 
         u16 addr_cur;
         u16 addr_end;
 
-        char active_cmd = no_cmd;
+        u8 active_cmd{0};
 
-        Range_output_state output_state = os_idle;
+        Range_output range_output{Range_output::off};
+
+        char line_buffer[screen_width + 1];
 
         void clr_screen();
+        void clr_line();
 
         void scroll_up();
         void scroll_down();
 
-        void cursor_up  () { if (cursor_y > 0) --cursor_y; else scroll_down(); }
-        void cursor_down() { if (++cursor_y == line_count) { --cursor_y; scroll_up(); } }
-        void cursor_fwd () { if (++cursor_x == column_count) { cursor_x = 0; cursor_down(); } }
-        void cursor_back() { if (cursor_x > 0) --cursor_x; else { cursor_x = (column_count - 1); cursor_up(); } }
+        void cursor_up  () {
+            if (parse_prefix_and_addr1()) goto_next_addr(false);
+            if (cursor_y > 0) --cursor_y; else scroll_down();
+        }
+        void cursor_down() {
+            if (range_output != Range_output::active) {
+                if (parse_prefix_and_addr1()) goto_next_addr(true);
+            }
+            if (++cursor_y == screen_height) { --cursor_y; scroll_up(); }
+        }
+        void cursor_fwd () { if (++cursor_x == screen_width) { cursor_x = 0; cursor_down(); } }
+        void cursor_back() { if (cursor_x > 0) --cursor_x; else { cursor_x = (screen_width - 1); cursor_up(); } }
 
-        void line_feed  () { cursor_x = 0; cursor_down(); }
+        void line_feed() { cursor_x = 0; cursor_down(); }
 
-        std::vector<std::string> tokenize_current_line() const;
+        Tokens tokenize_current_line() const;
 
-        void handle_ret();
-        void handle_cmd(const std::vector<std::string>& args);
+        void parse_cmd(const Tokens& tokens);
+        void parse_addr1(const Tokens& tokens);
+        bool parse_prefix_and_addr1();
+
+        void goto_next_addr(bool higher);
+
+        void handle_cmd(const Tokens& tokens);
 
         void type_chr(u16 char_rom_index)      { screen[cursor_y][cursor_x] = char_rom_index; cursor_fwd(); }
         void type_ascii_chr(u8 ascii_code)     { type_chr(ascii_to_char_code(ascii_code)); }
         void type_petscii_chr(u8 petscii_code) { type_chr(petscii_to_screen_code(petscii_code)); } // maps to lower half of char rom
         void type_txt(const std::string& txt)  { for (const char c : txt) type_ascii_chr(c); }
-        void print(const std::string& txt)     { type_txt(txt); line_feed(); }
 
-        void print_disasm();
-        void print_dump_petscii();
-        void print_dump_hex_petscii();
+        void output_help();
+
+        void output_disasm();
+        void output_dump_petscii();
+        void output_dump_hex_petscii();
+
+        void active_cmd_output();
 
         void tick();
     };

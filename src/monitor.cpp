@@ -4,41 +4,57 @@
 #include <algorithm>
 
 
-/*
+
 inline bool is_hex(std::string_view s) { return is_hex(s, std::size(s)); }
 
 inline bool is_hex_byte(std::string_view s) { return is_hex(s, 2); }
 inline bool is_hex_word(std::string_view s) { return is_hex(s, 4); }
-*/
+
 
 static const char* cmd_help[] = {
     " d [adr1] [adr2]  : disassemble",
     " i [adr1] [adr2]  : dump petscii",
     " m [adr1] [adr2]  : dump hex & petscii",
     " s [n]            : select target",
-    " ?                : help"
+    " ?                : help",
 };
 
 
-enum Cmd_char : char {
-    help             = '?',
-    disasm           = 'd',
-    dump_petscii     = 'i',
-    dump_hex_petscii = 'm',
-    select_tgt       = 's',
-    //unknown          = char(0),
+struct Command {
+    enum class ID : u8 {
+        none,
+        help,
+        disasm,
+        dump_petscii,
+        dump_hex_petscii,
+        select_tgt,
+        assemble,
+        hex_edit,
+    };
+
+    const ID id;
+    const char chr;
+    const char output_prefix;
+    const std::size_t output_bytes_per_line;
+};
+
+static constexpr Command commands[] = {
+    { Command::ID::none,               0,   0,  0, },
+    { Command::ID::help,             '?',   0,  0, },
+    { Command::ID::disasm,           'd', '>',  1, },
+    { Command::ID::dump_petscii,     'i', ';', 32, },
+    { Command::ID::dump_hex_petscii, 'm', ':',  8, },
+    { Command::ID::select_tgt,       's',   0,  0, },
+    { Command::ID::assemble,         'a',   0,  0, },
+    { Command::ID::hex_edit,         ':',   0,  0, },
 };
 
 
-enum Prefix : char {
-    disasm_prefix           = '>',
-    dump_petscii_prefix     = ';',
-    dump_hex_petscii_prefix = ':',
-};
+static constexpr std::size_t default_output_range_lines = 25;
 
 
 u32 get_hex_val(const std::string& hex_str, u32 default_val) {
-    if (is_hex(hex_str, hex_str.length())) {
+    if (is_hex(hex_str)) {
         try {
             return std::stoul(hex_str, nullptr, 16);
         } catch (std::exception& e) {}
@@ -120,9 +136,9 @@ static constexpr u8 keycode_shifted_to_ascii[] = {
 
 
 void Monitor::Console::key(u8 code, const Mod_state& mod) {
-    if (output_state == os_active) {
+    if (range_output == Range_output::active) {
         if (code == Key_code::r_stp) {
-            output_state = os_paused;
+            range_output = Range_output::paused;
         }
         return;
     }
@@ -133,23 +149,29 @@ void Monitor::Console::key(u8 code, const Mod_state& mod) {
 
     switch (code) {
         case Key_code::r_stp:
-            if (output_state == os_paused) output_state = os_active;
+            if (range_output == Range_output::paused) range_output = Range_output::active;
             break;
         case Key_code::home:
-            if (mod.shift) clr_screen();
             cursor_y = cursor_x = 0;
+            if (mod.shift) clr_screen();
             break;
-        case Key_code::crs_d: mod.shift ? cursor_up() : cursor_down();  break;
-        case Key_code::crs_r: mod.shift ? cursor_back() : cursor_fwd(); break;
-        case Key_code::ret:   handle_ret(); break;
-        case Key_code::del:   cursor_back(); type_ascii_chr(' '); cursor_back(); break;
+        case Key_code::crs_d: mod.shift ? cursor_up() : cursor_down();           break;
+        case Key_code::crs_r: mod.shift ? cursor_back() : cursor_fwd();          break;
+        case Key_code::ret:   handle_cmd(tokenize_current_line());               break;
+        case Key_code::del:
+            if (mod.shift) {
+                clr_line();
+            } else {
+                cursor_back(); type_ascii_chr(' '); cursor_back();
+            }
+            break;
     }
 }
 
 
 void Monitor::Console::draw(PETSCII_Draw& pd) {
-    static constexpr int text_top_left_x = (VIC_II::FRAME_WIDTH - (column_count * 8)) / 2;
-    static constexpr int text_top_left_y = (VIC_II::FRAME_HEIGHT - (line_count * 8)) / 2;
+    static constexpr int text_top_left_x = (VIC_II::FRAME_WIDTH - (screen_width * 8)) / 2;
+    static constexpr int text_top_left_y = (VIC_II::FRAME_HEIGHT - (screen_height * 8)) / 2;
 
     auto draw_chr = [&](u16 char_rom_index, int y, int x, Color col_fg = color_fg) {
         pd.chr(
@@ -166,8 +188,8 @@ void Monitor::Console::draw(PETSCII_Draw& pd) {
     };
 
     auto draw_screen = [&]() {
-        for (int y = 0; y < line_count; ++y) {
-            for (int x = 0; x < column_count; ++x) {
+        for (int y = 0; y < screen_height; ++y) {
+            for (int x = 0; x < screen_width; ++x) {
                 draw_chr(screen[y][x], y, x);
             }
         }
@@ -177,7 +199,7 @@ void Monitor::Console::draw(PETSCII_Draw& pd) {
 
     draw_screen();
 
-    if (output_state != os_active) draw_cursor();
+    if (range_output != Range_output::active) draw_cursor();
 }
 
 
@@ -213,24 +235,46 @@ void Monitor::Console::Address_space::write(u16 address, u8 data) {
 
 
 void Monitor::Console::clr_screen() {
-    for (auto& line : screen) for (auto& c : line) c = ascii_to_char_code(' ');
+    for (auto& line : screen) for (auto& c : line) {
+        c = ascii_to_char_code(' ');
+    }
+}
+
+
+void Monitor::Console::clr_line() {
+    cursor_x = 0;
+    for (auto& c : screen[cursor_y]) {
+        c = ascii_to_char_code(' ');
+    }
 }
 
 
 void Monitor::Console::scroll_up() {
     std::fill(screen[0].begin(), screen[0].end(), ascii_to_char_code(' '));
     std::rotate(screen.begin(), screen.begin() + 1, screen.end());
+
+    if (range_output != Range_output::active) {
+        const auto old_cx = cursor_x;
+        cursor_x = 0;
+        active_cmd_output();
+        cursor_x = old_cx;
+    }
 }
 
 
 void Monitor::Console::scroll_down() {
-    std::fill(screen[line_count - 1].begin(), screen[line_count - 1].end(), ascii_to_char_code(' '));
+    std::fill(screen[screen_height - 1].begin(), screen[screen_height - 1].end(), ascii_to_char_code(' '));
     std::rotate(screen.rbegin(), screen.rbegin() + 1, screen.rend());
+
+    const auto old_cx = cursor_x;
+    cursor_x = 0;
+    active_cmd_output();
+    cursor_x = old_cx;
 }
 
 
-std::vector<std::string> Monitor::Console::tokenize_current_line() const {
-    std::array<u8, column_count> line_ascii;
+Monitor::Console::Tokens Monitor::Console::tokenize_current_line() const {
+    std::array<u8, screen_width> line_ascii;
 
     std::transform(
         std::begin(screen[cursor_y]), std::end(screen[cursor_y]),
@@ -244,56 +288,88 @@ std::vector<std::string> Monitor::Console::tokenize_current_line() const {
 };
 
 
-void Monitor::Console::handle_ret() {
-    const auto args = tokenize_current_line();
-    handle_cmd(args);
+void Monitor::Console::parse_cmd(const Tokens& tokens) {
+    if (std::size(tokens) > 0 && std::size(tokens[0]) == 1) {
+        const char maybe_cmd = tokens[0][0];
 
-    line_feed();
+        for (const auto cmd : commands) {
+            if (cmd.chr == maybe_cmd) {
+                active_cmd = u8(cmd.id);
+                return;
+            }
+        }
+    }
+
+    active_cmd = 0;
 }
 
 
-namespace Output_bytes_per_line {
-    static constexpr std::size_t dump_petscii{32};
-    static constexpr std::size_t dump_hex_petscii{8};
-}
-
-std::size_t default_output_range_size(char cmd) {
-    using cc = Cmd_char;
-    switch (cmd) {
-        case cc::disasm:           return 25;
-        case cc::dump_petscii:     return 25 * Output_bytes_per_line::dump_petscii - 1;
-        case cc::dump_hex_petscii: return 25 * Output_bytes_per_line::dump_hex_petscii - 1;
-        default : return 0;
+void Monitor::Console::parse_addr1(const Tokens& tokens) {
+    if (std::size(tokens) >= 2) {
+        const auto& maybe_addr = tokens[1];
+        addr_cur = get_hex_val(maybe_addr, addr_cur);
     }
 }
 
 
-void Monitor::Console::handle_cmd(const std::vector<std::string>& args) {
-    auto get_cmd = [&](char default_cmd) {
-        if (args.size() > 0) {
-            if (args[0].length() == 1) return args[0][0];
-            else if (args[0].length() > 1) return no_cmd;
-        }
-        return default_cmd;
-    };
+bool Monitor::Console::parse_prefix_and_addr1() {
+    const auto tokens = tokenize_current_line();
 
+    if (std::size(tokens) > 0 && std::size(tokens[0]) == 1) {
+        const char maybe_prefix = tokens[0][0];
+
+        for (const auto cmd : commands) {
+            if (cmd.output_prefix == maybe_prefix || cmd.chr == maybe_prefix) {
+                active_cmd = u8(cmd.id);
+                break;
+            }
+        }
+    }
+
+    if (std::size(tokens) > 1) {
+        const auto maybe_addr = tokens[1];
+        if (is_hex_word(maybe_addr)) {
+            parse_addr1(tokens);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+void Monitor::Console::goto_next_addr(bool higher) {
+    using id = Command::ID;
+    switch (commands[active_cmd].id) {
+        case id::disasm: {
+            if (higher) {
+                const u8 opc = as.read(addr_cur);
+                addr_cur += MOS6502::Asm::instr(opc).size;
+            } else {
+                addr_cur -= 1; // TODO: determine the size of previous instruction
+            }
+            break;
+        }
+        default:
+            if (higher) addr_cur += commands[active_cmd].output_bytes_per_line;
+            else addr_cur -= commands[active_cmd].output_bytes_per_line;
+            break;
+    }
+}
+
+
+void Monitor::Console::handle_cmd(const Tokens& args) {
     auto get_hex_arg = [&](std::size_t arg_pos, u16 default_val) {
         return arg_pos < args.size()
             ? u16(get_hex_val(args[arg_pos], default_val))
             : default_val;
     };
 
-    auto init_range_output = [&](char cmd) {
-        addr_cur = get_hex_arg(1, addr_cur);
-        addr_end = get_hex_arg(2, addr_cur + default_output_range_size(cmd));
-        output_state = os_active;
-    };
-
-    auto print_help = [&]() {
-        for (const auto h : cmd_help) {
-            line_feed();
-            type_txt(h);
-        }
+    auto init_range_output = [&]() {
+        parse_addr1(args);
+        const auto range_size = (default_output_range_lines * commands[active_cmd].output_bytes_per_line) - 1;
+        addr_end = get_hex_arg(2, addr_cur + range_size);
+        range_output = Range_output::active;
     };
 
     auto handle_select_tgt = [&]() {
@@ -304,54 +380,61 @@ void Monitor::Console::handle_cmd(const std::vector<std::string>& args) {
             addr_cur = as.target().addr_start;
         }
 
-        char buffer[column_count];
         const char* format = " %c%02x: %04x-%04x  %s";
 
         for (auto t : as.targets) {
             line_feed();
             const auto selected = t.id == as.target().id ? '*' : ' ';
-            sprintf(buffer, format, selected, t.id, t.addr_start, t.addr_end, t.name);
-            type_txt(buffer);
+            sprintf(line_buffer, format, selected, t.id, t.addr_start, t.addr_end, t.name);
+            type_txt(line_buffer);
         }
     };
 
-    active_cmd = get_cmd(active_cmd);
+    parse_cmd(args);
 
-    using cc = Cmd_char;
-    switch (active_cmd) {
-        case cc::help: print_help(); break;
-        case cc::disasm: case cc::dump_petscii: case cc::dump_hex_petscii:
-            init_range_output(active_cmd);
+    using id = Command::ID;
+    switch (commands[active_cmd].id) {
+        case id::help: output_help(); break;
+        case id::disasm: case id::dump_petscii: case id::dump_hex_petscii:
+            init_range_output();
             break;
-        case cc::select_tgt: handle_select_tgt(); break;
+        case id::select_tgt: handle_select_tgt(); break;
         default:
-            active_cmd = no_cmd;
-            output_state = os_idle;
+            range_output = Range_output::off;
             break;
     }
+
+    line_feed();
 }
 
 
-void Monitor::Console::print_disasm() {
+void Monitor::Console::output_help() {
+    for (const auto h : cmd_help) {
+        line_feed();
+        type_txt(h);
+    }
+    line_feed();
+}
+
+
+void Monitor::Console::output_disasm() {
     auto do_print = [&](const MOS6502::Asm::Line& line) {
-        char buffer[column_count];
         const char* format = "%c %04s  %-08s  %s";
 
-        sprintf(buffer, format,
-            Prefix::disasm_prefix,
+        sprintf(line_buffer, format,
+            commands[active_cmd].output_prefix,
             as_lower(line.pc).c_str(),
             as_lower(line.bytes).c_str(),
             as_lower(line.text).c_str()
         );
-        type_txt(buffer);
+        type_txt(line_buffer);
     };
 
     const u8 opc = as.read(addr_cur);
-    const u8 instr_size = MOS6502::Asm::instr(opc).size;
 
     // TODO: mark undocumented ops (e.g. "lax ($22),y  :ud")
     //       (or use color --> add support for per char. colors...)
-    switch (instr_size) {
+    switch (MOS6502::Asm::instr(opc).size) {
         case 1:
             do_print(MOS6502::Asm::disasm_one(addr_cur, opc));
             break;
@@ -361,65 +444,65 @@ void Monitor::Console::print_disasm() {
         case 3:
             do_print(MOS6502::Asm::disasm_one(addr_cur, opc, as.read(addr_cur + 1), as.read(addr_cur + 2)));
     }
-
-    addr_cur += instr_size;
 }
 
 
-void Monitor::Console::print_dump_petscii() {
-    char buffer[column_count];
+void Monitor::Console::output_dump_petscii() {
     const char* format = "%c %04x  ";
 
-    sprintf(buffer, format, Prefix::dump_petscii_prefix, addr_cur);
-    type_txt(buffer);
+    sprintf(line_buffer, format, commands[active_cmd].output_prefix, addr_cur);
+    type_txt(line_buffer);
 
-    for (std::size_t n = 0; n < Output_bytes_per_line::dump_petscii; ++n) {
-        type_petscii_chr(as.read(addr_cur++));
+    const auto bpl = commands[active_cmd].output_bytes_per_line;
+    for (std::size_t n = 0; n < bpl; ++n) {
+        type_petscii_chr(as.read(addr_cur + n));
     }
 }
 
 
-void Monitor::Console::print_dump_hex_petscii() {
-    char buffer[column_count];
+void Monitor::Console::output_dump_hex_petscii() {
     const char* format = "%c %04x  %02x %02x %02x %02x %02x %02x %02x %02x  ";
 
-    const u16 line_addr = addr_cur;
+    u16 line_addr = addr_cur;
 
-    std::array<u8, Output_bytes_per_line::dump_hex_petscii> bytes;
+    static constexpr auto bpl = commands[u8(Command::ID::dump_hex_petscii)].output_bytes_per_line;
 
-    std::generate(begin(bytes), end(bytes), [this]() { return as.read(addr_cur++); });
+    std::array<u8, bpl> bytes;
+    std::generate(begin(bytes), end(bytes), [&]() { return as.read(line_addr++); });
 
-    sprintf(buffer, format,
-        Prefix::dump_hex_petscii_prefix, line_addr,
+    sprintf(line_buffer, format,
+        commands[active_cmd].output_prefix, addr_cur,
         bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]
     );
-    type_txt(buffer);
+    type_txt(line_buffer);
 
-    for (std::size_t byte = 0; byte < Output_bytes_per_line::dump_hex_petscii; ++byte) {
-        type_petscii_chr(bytes[byte]);
-    }
+    for (const auto b : bytes) type_petscii_chr(b);
 };
 
 
-void Monitor::Console::tick() {
-    if (output_state != os_active) return;
-
-    const u16 old_addr_cur = addr_cur;
-
-    using cc = Cmd_char;
-    switch (active_cmd) {
-        case cc::disasm:           print_disasm();           break;
-        case cc::dump_petscii:     print_dump_petscii();     break;
-        case cc::dump_hex_petscii: print_dump_hex_petscii(); break;
-        default:
-            output_state = os_idle;
-            return;
+void Monitor::Console::active_cmd_output() {
+    using id = Command::ID;
+    switch (commands[active_cmd].id) {
+        case id::disasm:           output_disasm();           break;
+        case id::dump_petscii:     output_dump_petscii();     break;
+        case id::dump_hex_petscii: output_dump_hex_petscii(); break;
+        default: return;
     }
+}
 
-    line_feed();
 
-    if (is_in_wrapped_range(addr_end, old_addr_cur, addr_cur)) { // did we touch 'addr_end'?
-        output_state = os_idle;
+void Monitor::Console::tick() {
+    if (range_output == Range_output::active) {
+        clr_line();
+        active_cmd_output();
+        line_feed();
+
+        const u16 old_addr_cur = addr_cur;
+        goto_next_addr(true);
+
+        if (is_in_wrapped_range(addr_end, old_addr_cur, addr_cur)) { // did we touch 'addr_end'?
+            range_output = Range_output::off;
+        }
     }
 }
 
