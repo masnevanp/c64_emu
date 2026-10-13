@@ -38,15 +38,17 @@ struct Command {
     const std::size_t output_bytes_per_line;
 };
 
+using cmd = Command::ID;
+
 static constexpr Command commands[] = {
-    { Command::ID::none,               0,   0,  0, },
-    { Command::ID::help,             '?',   0,  0, },
-    { Command::ID::disasm,           'd', '>',  1, },
-    { Command::ID::dump_petscii,     'i', ';', 32, },
-    { Command::ID::dump_hex_petscii, 'm', ':',  8, },
-    { Command::ID::select_tgt,       's',   0,  0, },
-    { Command::ID::assemble,         'a',   0,  0, },
-    { Command::ID::hex_edit,         ':',   0,  0, },
+    { cmd::none,               0,   0,  0, },
+    { cmd::help,             '?',   0,  0, },
+    { cmd::disasm,           'd', '>',  1, },
+    { cmd::dump_petscii,     'i', ';', 32, },
+    { cmd::dump_hex_petscii, 'm', ':',  8, },
+    { cmd::select_tgt,       's',   0,  0, },
+    { cmd::assemble,         'a',   0,  0, },
+    { cmd::hex_edit,         ':',   0,  0, },
 };
 
 
@@ -339,9 +341,8 @@ bool Monitor::Console::parse_prefix_and_addr1() {
 
 
 void Monitor::Console::goto_next_addr(bool higher) {
-    using id = Command::ID;
     switch (commands[active_cmd].id) {
-        case id::disasm: {
+        case cmd::disasm: {
             if (higher) {
                 const u8 opc = as.read(addr_cur);
                 addr_cur += MOS6502::Asm::instr(opc).size;
@@ -390,15 +391,31 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
         }
     };
 
+    auto handle_hex_edit = [&]() {
+        parse_addr1(args);
+
+        for (u8 byte = 0; byte < 8; ++byte) {
+            const std::size_t argn = byte + 2;
+
+            if (argn >= args.size() || !is_hex_byte(args[argn])) break;
+
+            const u8 byte_val = get_hex_val(args[argn], 0);
+            as.write(addr_cur + byte, byte_val);
+        }
+
+        clr_line();
+        output_dump_hex_petscii();
+    };
+
     parse_cmd(args);
 
-    using id = Command::ID;
     switch (commands[active_cmd].id) {
-        case id::help: output_help(); break;
-        case id::disasm: case id::dump_petscii: case id::dump_hex_petscii:
+        case cmd::help: output_help(); break;
+        case cmd::disasm: case cmd::dump_petscii: case cmd::dump_hex_petscii:
             init_range_output();
             break;
-        case id::select_tgt: handle_select_tgt(); break;
+        case cmd::select_tgt: handle_select_tgt(); break;
+        case cmd::hex_edit:   handle_hex_edit();   break;
         default:
             range_output = Range_output::off;
             break;
@@ -422,7 +439,7 @@ void Monitor::Console::output_disasm() {
         const char* format = "%c %04s  %-08s  %s";
 
         sprintf(line_buffer, format,
-            commands[active_cmd].output_prefix,
+            commands[u8(cmd::disasm)].output_prefix,
             as_lower(line.pc).c_str(),
             as_lower(line.bytes).c_str(),
             as_lower(line.text).c_str()
@@ -450,10 +467,10 @@ void Monitor::Console::output_disasm() {
 void Monitor::Console::output_dump_petscii() {
     const char* format = "%c %04x  ";
 
-    sprintf(line_buffer, format, commands[active_cmd].output_prefix, addr_cur);
+    sprintf(line_buffer, format, commands[u8(cmd::dump_petscii)].output_prefix, addr_cur);
     type_txt(line_buffer);
 
-    const auto bpl = commands[active_cmd].output_bytes_per_line;
+    const auto bpl = commands[u8(cmd::dump_petscii)].output_bytes_per_line;
     for (std::size_t n = 0; n < bpl; ++n) {
         type_petscii_chr(as.read(addr_cur + n));
     }
@@ -465,13 +482,13 @@ void Monitor::Console::output_dump_hex_petscii() {
 
     u16 line_addr = addr_cur;
 
-    static constexpr auto bpl = commands[u8(Command::ID::dump_hex_petscii)].output_bytes_per_line;
+    static constexpr auto bpl = commands[u8(cmd::dump_hex_petscii)].output_bytes_per_line;
 
     std::array<u8, bpl> bytes;
     std::generate(begin(bytes), end(bytes), [&]() { return as.read(line_addr++); });
 
     sprintf(line_buffer, format,
-        commands[active_cmd].output_prefix, addr_cur,
+        commands[u8(cmd::dump_hex_petscii)].output_prefix, addr_cur,
         bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]
     );
     type_txt(line_buffer);
@@ -481,11 +498,10 @@ void Monitor::Console::output_dump_hex_petscii() {
 
 
 void Monitor::Console::active_cmd_output() {
-    using id = Command::ID;
     switch (commands[active_cmd].id) {
-        case id::disasm:           output_disasm();           break;
-        case id::dump_petscii:     output_dump_petscii();     break;
-        case id::dump_hex_petscii: output_dump_hex_petscii(); break;
+        case cmd::disasm:           output_disasm();           break;
+        case cmd::dump_petscii:     output_dump_petscii();     break;
+        case cmd::dump_hex_petscii: output_dump_hex_petscii(); break;
         default: return;
     }
 }
