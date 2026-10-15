@@ -60,8 +60,8 @@ private:
         virtual void draw(PETSCII_Draw& pd);
 
     private:
-        static constexpr int screen_width = (frame_width / 8) - 1;
-        static constexpr int screen_height = (frame_height / 8) - 1;
+        static constexpr std::size_t screen_width = (frame_width / 8) - 1;
+        static constexpr std::size_t screen_height = (frame_height / 8) - 1;
 
         enum class Range_output {
             off    = 0,
@@ -128,6 +128,23 @@ private:
             Sys_map_interface sys_map;
         };
 
+        struct _Line_write {
+            Console& con;
+
+            u8 x = 0;
+
+            void chr(u16 char_rom_index)     { con.screen[con.cursor_y][x++] = char_rom_index; }
+            void ascii(u8 ascii_code)        { chr(ascii_to_char_code(ascii_code)); }
+            void petscii(u8 petscii_code)    { chr(petscii_to_screen_code(petscii_code)); } // maps to lower half of char rom
+            void txt(const std::string& txt) { for (const char c : txt) ascii(c); }
+        
+            ~_Line_write() {
+                const u16 space = ascii_to_char_code(' ');
+                while (x < con.screen_width) ascii(space);
+            }
+        };
+        _Line_write Line_write() { return _Line_write{*this}; }
+
         Screen screen{};
 
         u8 cursor_x = 0;
@@ -163,7 +180,7 @@ private:
         void cursor_fwd () { if (++cursor_x == screen_width) { cursor_x = 0; cursor_down(); } }
         void cursor_back() { if (cursor_x > 0) --cursor_x; else { cursor_x = (screen_width - 1); cursor_up(); } }
 
-        void line_feed() { cursor_x = 0; cursor_down(); }
+        void line_feed() { cursor_down(); cursor_x = 0; }
 
         Tokens tokenize_current_line() const;
 
@@ -174,11 +191,11 @@ private:
         void goto_next_addr(bool higher);
 
         void handle_cmd(const Tokens& tokens);
-
-        void type_chr(u16 char_rom_index)      { screen[cursor_y][cursor_x] = char_rom_index; cursor_fwd(); }
-        void type_ascii_chr(u8 ascii_code)     { type_chr(ascii_to_char_code(ascii_code)); }
-        void type_petscii_chr(u8 petscii_code) { type_chr(petscii_to_screen_code(petscii_code)); } // maps to lower half of char rom
-        void type_txt(const std::string& txt)  { for (const char c : txt) type_ascii_chr(c); }
+        
+        void type(u8 ascii_code) {
+            screen[cursor_y][cursor_x] = ascii_to_char_code(ascii_code);
+            cursor_fwd();
+        }
 
         void output_help();
 

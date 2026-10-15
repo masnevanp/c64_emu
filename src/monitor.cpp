@@ -17,6 +17,8 @@ static const char* cmd_help[] = {
     " m [adr1] [adr2]  : dump hex & petscii",
     " s [n]            : select target",
     " ?                : help",
+    " ",
+    " ",
 };
 
 
@@ -29,6 +31,8 @@ struct Command {
         dump_hex_petscii,
         select_tgt,
         assemble,
+        disasm_line,
+        dump_petscii_line,
         hex_edit,
     };
 
@@ -41,14 +45,16 @@ struct Command {
 using cmd = Command::ID;
 
 static constexpr Command commands[] = {
-    { cmd::none,               0,   0,  0, },
-    { cmd::help,             '?',   0,  0, },
-    { cmd::disasm,           'd', '>',  1, },
-    { cmd::dump_petscii,     'i', ';', 32, },
-    { cmd::dump_hex_petscii, 'm', ':',  8, },
-    { cmd::select_tgt,       's',   0,  0, },
-    { cmd::assemble,         'a',   0,  0, },
-    { cmd::hex_edit,         ':',   0,  0, },
+    { cmd::none,                0,   0,  0, },
+    { cmd::help,              '?',   0,  0, },
+    { cmd::disasm,            'd', '>',  1, },
+    { cmd::dump_petscii,      'i', ';', 32, },
+    { cmd::dump_hex_petscii,  'm', ':',  8, },
+    { cmd::select_tgt,        's',   0,  0, },
+    { cmd::assemble,          'a',   0,  0, },
+    { cmd::disasm_line,       '>',   0,  1, },
+    { cmd::dump_petscii_line, ';',   0,  0, }, // TODO: support 'petscii_edit' instead?
+    { cmd::hex_edit,          ':',   0,  0, },
 };
 
 
@@ -147,7 +153,7 @@ void Monitor::Console::key(u8 code, const Mod_state& mod) {
 
     const auto ascii = mod.shift ? keycode_shifted_to_ascii[code] : keycode_to_ascii[code];
 
-    if (ascii) return type_ascii_chr(ascii);
+    if (ascii) return type(ascii);
 
     switch (code) {
         case Key_code::r_stp:
@@ -164,7 +170,7 @@ void Monitor::Console::key(u8 code, const Mod_state& mod) {
             if (mod.shift) {
                 clr_line();
             } else {
-                cursor_back(); type_ascii_chr(' '); cursor_back();
+                cursor_back(); type(' '); cursor_back();
             }
             break;
     }
@@ -190,8 +196,8 @@ void Monitor::Console::draw(PETSCII_Draw& pd) {
     };
 
     auto draw_screen = [&]() {
-        for (int y = 0; y < screen_height; ++y) {
-            for (int x = 0; x < screen_width; ++x) {
+        for (u16 y = 0; y < screen_height; ++y) {
+            for (u16 x = 0; x < screen_width; ++x) {
                 draw_chr(screen[y][x], y, x);
             }
         }
@@ -244,7 +250,6 @@ void Monitor::Console::clr_screen() {
 
 
 void Monitor::Console::clr_line() {
-    cursor_x = 0;
     for (auto& c : screen[cursor_y]) {
         c = ascii_to_char_code(' ');
     }
@@ -255,12 +260,7 @@ void Monitor::Console::scroll_up() {
     std::fill(screen[0].begin(), screen[0].end(), ascii_to_char_code(' '));
     std::rotate(screen.begin(), screen.begin() + 1, screen.end());
 
-    if (range_output != Range_output::active) {
-        const auto old_cx = cursor_x;
-        cursor_x = 0;
-        active_cmd_output();
-        cursor_x = old_cx;
-    }
+    if (range_output != Range_output::active) active_cmd_output();
 }
 
 
@@ -268,10 +268,7 @@ void Monitor::Console::scroll_down() {
     std::fill(screen[screen_height - 1].begin(), screen[screen_height - 1].end(), ascii_to_char_code(' '));
     std::rotate(screen.rbegin(), screen.rbegin() + 1, screen.rend());
 
-    const auto old_cx = cursor_x;
-    cursor_x = 0;
     active_cmd_output();
-    cursor_x = old_cx;
 }
 
 
@@ -302,7 +299,7 @@ void Monitor::Console::parse_cmd(const Tokens& tokens) {
         }
     }
 
-    active_cmd = 0;
+    active_cmd = u8(cmd::none);
 }
 
 
@@ -387,8 +384,21 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
             line_feed();
             const auto selected = t.id == as.target().id ? '*' : ' ';
             sprintf(line_buffer, format, selected, t.id, t.addr_start, t.addr_end, t.name);
-            type_txt(line_buffer);
+            Line_write().txt(line_buffer);
         }
+
+        line_feed();
+        clr_line();
+    };
+
+    auto handle_disasm_line = [&]() {
+        parse_addr1(args);
+        output_disasm();
+    };
+
+    auto handle_dump_petscii_line = [&]() {
+        parse_addr1(args);
+        output_dump_petscii();
     };
 
     auto handle_hex_edit = [&]() {
@@ -403,19 +413,20 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
             as.write(addr_cur + byte, byte_val);
         }
 
-        clr_line();
         output_dump_hex_petscii();
     };
 
     parse_cmd(args);
 
     switch (commands[active_cmd].id) {
-        case cmd::help: output_help(); break;
+        case cmd::help: output_help(); return;
         case cmd::disasm: case cmd::dump_petscii: case cmd::dump_hex_petscii:
             init_range_output();
             break;
-        case cmd::select_tgt: handle_select_tgt(); break;
-        case cmd::hex_edit:   handle_hex_edit();   break;
+        case cmd::select_tgt: handle_select_tgt(); return;
+        case cmd::disasm_line: handle_disasm_line(); break;
+        case cmd::dump_petscii_line: handle_dump_petscii_line(); break;
+        case cmd::hex_edit:   handle_hex_edit(); break;
         default:
             range_output = Range_output::off;
             break;
@@ -428,9 +439,8 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
 void Monitor::Console::output_help() {
     for (const auto h : cmd_help) {
         line_feed();
-        type_txt(h);
+        Line_write().txt(h);
     }
-    line_feed();
 }
 
 
@@ -444,7 +454,7 @@ void Monitor::Console::output_disasm() {
             as_lower(line.bytes).c_str(),
             as_lower(line.text).c_str()
         );
-        type_txt(line_buffer);
+        Line_write().txt(line_buffer);
     };
 
     const u8 opc = as.read(addr_cur);
@@ -467,18 +477,22 @@ void Monitor::Console::output_disasm() {
 void Monitor::Console::output_dump_petscii() {
     const char* format = "%c %04x  ";
 
+    auto wr = Line_write();
+
     sprintf(line_buffer, format, commands[u8(cmd::dump_petscii)].output_prefix, addr_cur);
-    type_txt(line_buffer);
+    wr.txt(line_buffer);
 
     const auto bpl = commands[u8(cmd::dump_petscii)].output_bytes_per_line;
     for (std::size_t n = 0; n < bpl; ++n) {
-        type_petscii_chr(as.read(addr_cur + n));
+        wr.petscii(as.read(addr_cur + n));
     }
 }
 
 
 void Monitor::Console::output_dump_hex_petscii() {
     const char* format = "%c %04x  %02x %02x %02x %02x %02x %02x %02x %02x  ";
+
+    auto wr = Line_write();
 
     u16 line_addr = addr_cur;
 
@@ -491,9 +505,9 @@ void Monitor::Console::output_dump_hex_petscii() {
         commands[u8(cmd::dump_hex_petscii)].output_prefix, addr_cur,
         bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]
     );
-    type_txt(line_buffer);
+    wr.txt(line_buffer);
 
-    for (const auto b : bytes) type_petscii_chr(b);
+    for (const auto b : bytes) wr.petscii(b);
 };
 
 
@@ -509,7 +523,6 @@ void Monitor::Console::active_cmd_output() {
 
 void Monitor::Console::tick() {
     if (range_output == Range_output::active) {
-        clr_line();
         active_cmd_output();
         line_feed();
 
