@@ -31,7 +31,7 @@ struct Command {
         dump_hex_petscii,
         select_tgt,
         assemble,
-        disasm_line,
+        disasm_edit,
         dump_petscii_line,
         hex_edit,
     };
@@ -52,7 +52,7 @@ static constexpr Command commands[] = {
     { cmd::dump_hex_petscii,  'm', ':',  8, },
     { cmd::select_tgt,        's',   0,  0, },
     { cmd::assemble,          'a',   0,  0, },
-    { cmd::disasm_line,       '>',   0,  1, },
+    { cmd::disasm_edit,       '>',   0,  1, },
     { cmd::dump_petscii_line, ';',   0,  0, }, // TODO: support 'petscii_edit' instead?
     { cmd::hex_edit,          ':',   0,  0, },
 };
@@ -337,6 +337,44 @@ bool Monitor::Console::parse_prefix_and_addr1() {
 }
 
 
+static constexpr std::size_t guess_depth = 25;
+
+// Recursively walk backwards trying different intr.sizes, and select (=guess) the best fit...
+// Incorrect alignment ususally gives more undocumented instructions, so we take advantage of that.
+// Possible improvements:
+//     - During normal forward disassembly keep track of recently seen 'good' addresses.
+//       (e.g. a circular buffer of size 20)
+//     - Try to validate jump/branch targets
+//       (is it in valid range? does it look like a valid instruction stream?)
+std::pair<u8, int> guess_prev_instr_size(const std::array<u8, guess_depth>& bytes, u8 pos) {
+    int top_score = 0;
+    u8 top_size = 0;
+
+    auto check_size = [&](u8 s, int reward) {
+        if (MOS6502::Asm::instr(bytes[pos - s]).size == s) {
+            auto score = guess_prev_instr_size(bytes, pos - s).second + 1 + reward;
+
+            // penalties for undocumented instructions
+            if (MOS6502::Asm::is_undoc(bytes[pos - s])) score -= s;
+            if (MOS6502::Asm::is_hlt(bytes[pos - s])) score -= 5; // extra penalty for hlt
+
+            if (score > top_score) {
+                top_size = s;
+                top_score = score;
+            }
+        }
+    };
+
+    // NOTE: Instruction size distribution in actual code is roughly: 1: 25%, 2: 50%, 3: 25%
+    //       --> 2 byte instructions get the biggest reward here (TODO: more testing...)
+    if (pos > 0) check_size(1, 1);
+    if (pos > 1) check_size(2, 3);
+    if (pos > 2) check_size(3, 2);
+
+    return {top_size, top_score};
+}
+
+
 void Monitor::Console::goto_next_addr(bool higher) {
     switch (commands[active_cmd].id) {
         case cmd::disasm: {
@@ -344,7 +382,14 @@ void Monitor::Console::goto_next_addr(bool higher) {
                 const u8 opc = as.read(addr_cur);
                 addr_cur += MOS6502::Asm::instr(opc).size;
             } else {
-                addr_cur -= 1; // TODO: determine the size of previous instruction
+                std::array<u8, guess_depth> bytes;
+                for (u8 b = 1; b <= guess_depth; ++b) {
+                    bytes[guess_depth - b] = as.read(addr_cur - b);
+                }
+
+                auto sz = guess_prev_instr_size(bytes, guess_depth).first;
+                if (sz == 0) sz = 1; // was unable to guess --> make it 1, and hope for the best... :/
+                addr_cur -= sz;
             }
             break;
         }
@@ -391,8 +436,18 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
         clr_line();
     };
 
-    auto handle_disasm_line = [&]() {
+    auto handle_disasm_edit = [&]() {
         parse_addr1(args);
+
+        for (u8 byte = 0; byte < 3; ++byte) {
+            const std::size_t argn = byte + 2;
+
+            if (argn >= args.size() || !is_hex_byte(args[argn])) break;
+
+            const u8 byte_val = get_hex_val(args[argn], 0);
+            as.write(addr_cur + byte, byte_val);
+        }
+
         output_disasm();
     };
 
@@ -424,7 +479,7 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
             init_range_output();
             break;
         case cmd::select_tgt: handle_select_tgt(); return;
-        case cmd::disasm_line: handle_disasm_line(); break;
+        case cmd::disasm_edit: handle_disasm_edit(); break;
         case cmd::dump_petscii_line: handle_dump_petscii_line(); break;
         case cmd::hex_edit:   handle_hex_edit(); break;
         default:
@@ -445,31 +500,35 @@ void Monitor::Console::output_help() {
 
 
 void Monitor::Console::output_disasm() {
-    auto do_print = [&](const MOS6502::Asm::Line& line) {
-        const char* format = "%c %04s  %-08s  %s";
+    auto do_print = [&](const MOS6502::Asm::Line& line, const std::string& undoc) {
+        const char* format = "%c %04s  %-08s  %-012s %s";
 
         sprintf(line_buffer, format,
             commands[u8(cmd::disasm)].output_prefix,
             as_lower(line.pc).c_str(),
             as_lower(line.bytes).c_str(),
-            as_lower(line.text).c_str()
+            as_lower(line.text).c_str(),
+            undoc.c_str()
         );
         Line_write().txt(line_buffer);
     };
 
     const u8 opc = as.read(addr_cur);
 
+    const std::string undoc{MOS6502::Asm::is_undoc(opc) ? "; undoc" : " "};
+
     // TODO: mark undocumented ops (e.g. "lax ($22),y  :ud")
     //       (or use color --> add support for per char. colors...)
     switch (MOS6502::Asm::instr(opc).size) {
         case 1:
-            do_print(MOS6502::Asm::disasm_one(addr_cur, opc));
+            do_print(MOS6502::Asm::disasm_one(addr_cur, opc), undoc);
             break;
         case 2:
-            do_print(MOS6502::Asm::disasm_one(addr_cur, opc, as.read(addr_cur + 1)));
+            do_print(MOS6502::Asm::disasm_one(addr_cur, opc, as.read(addr_cur + 1)), undoc);
             break;
         case 3:
-            do_print(MOS6502::Asm::disasm_one(addr_cur, opc, as.read(addr_cur + 1), as.read(addr_cur + 2)));
+            do_print(MOS6502::Asm::disasm_one(addr_cur, opc, as.read(addr_cur + 1),
+                        as.read(addr_cur + 2)), undoc);
     }
 }
 

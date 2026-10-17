@@ -10,7 +10,9 @@ using Am = MOS6502::Asm::Addr_mode;
 // - https://github.com/Esshahn/pydisass6502/
 
 const MOS6502::Asm::Instruction MOS6502::Asm::instruction[256] = {
-    {0x00, 1, Am::impl, "BRK", "BRK"},
+    // NOTE: BRK is usually documented as a 1 byte instr., but in reality it takes 2 bytes.
+    // {0x00, 2, Am::impl, "BRK", "BRK"},
+    {0x00, 2, Am::imm,  "BRK", "BRK #$%02X"},
     {0x01, 2, Am::indx, "ORA", "ORA ($%02X,X)"},
     {0x02, 1, Am::impl, "HLT", "HLT"},
     {0x03, 2, Am::indx, "SLO", "SLO ($%02X,X)"},
