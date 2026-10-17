@@ -517,8 +517,6 @@ void Monitor::Console::output_disasm() {
 
     const std::string undoc{MOS6502::Asm::is_undoc(opc) ? "; undoc" : " "};
 
-    // TODO: mark undocumented ops (e.g. "lax ($22),y  :ud")
-    //       (or use color --> add support for per char. colors...)
     switch (MOS6502::Asm::instr(opc).size) {
         case 1:
             do_print(MOS6502::Asm::disasm_one(addr_cur, opc), undoc);
