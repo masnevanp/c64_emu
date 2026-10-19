@@ -51,14 +51,16 @@ static constexpr Command commands[] = {
     { cmd::dump_petscii,      'i', ';', 32, },
     { cmd::dump_hex_petscii,  'm', ':',  8, },
     { cmd::select_tgt,        's',   0,  0, },
-    { cmd::assemble,          'a',   0,  0, },
+    { cmd::assemble,          'a', 'a',  0, },
     { cmd::disasm_edit,       '>',   0,  1, },
     { cmd::dump_petscii_line, ';',   0,  0, }, // TODO: support 'petscii_edit' instead?
     { cmd::hex_edit,          ':',   0,  0, },
 };
 
 
-static constexpr std::size_t default_output_range_lines = 25;
+static constexpr auto default_disasm_prefix = commands[u8(cmd::disasm)].output_prefix;
+
+static constexpr std::size_t default_output_seq_lines = 25;
 
 
 u32 get_hex_val(const std::string& hex_str, u32 default_val) {
@@ -144,9 +146,9 @@ static constexpr u8 keycode_shifted_to_ascii[] = {
 
 
 void Monitor::Console::key(u8 code, const Mod_state& mod) {
-    if (range_output == Range_output::active) {
+    if (output_seq == Output_sequence::active) {
         if (code == Key_code::r_stp) {
-            range_output = Range_output::paused;
+            output_seq = Output_sequence::paused;
         }
         return;
     }
@@ -157,7 +159,7 @@ void Monitor::Console::key(u8 code, const Mod_state& mod) {
 
     switch (code) {
         case Key_code::r_stp:
-            if (range_output == Range_output::paused) range_output = Range_output::active;
+            if (output_seq == Output_sequence::paused) output_seq = Output_sequence::active;
             break;
         case Key_code::home:
             cursor_y = cursor_x = 0;
@@ -207,7 +209,7 @@ void Monitor::Console::draw(PETSCII_Draw& pd) {
 
     draw_screen();
 
-    if (range_output != Range_output::active) draw_cursor();
+    if (output_seq != Output_sequence::active) draw_cursor();
 }
 
 
@@ -260,7 +262,7 @@ void Monitor::Console::scroll_up() {
     std::fill(screen[0].begin(), screen[0].end(), ascii_to_char_code(' '));
     std::rotate(screen.begin(), screen.begin() + 1, screen.end());
 
-    if (range_output != Range_output::active) active_cmd_output();
+    if (output_seq != Output_sequence::active) active_cmd_output();
 }
 
 
@@ -303,11 +305,16 @@ void Monitor::Console::parse_cmd(const Tokens& tokens) {
 }
 
 
-void Monitor::Console::parse_addr1(const Tokens& tokens) {
+bool Monitor::Console::parse_addr1(const Tokens& tokens) {
     if (std::size(tokens) >= 2) {
         const auto& maybe_addr = tokens[1];
-        addr_cur = get_hex_val(maybe_addr, addr_cur);
+        if (is_hex(maybe_addr)) {
+            addr_cur = get_hex_val(maybe_addr, addr_cur);
+            return true;
+        }
     }
+
+    return false;
 }
 
 
@@ -325,15 +332,7 @@ bool Monitor::Console::parse_prefix_and_addr1() {
         }
     }
 
-    if (std::size(tokens) > 1) {
-        const auto maybe_addr = tokens[1];
-        if (is_hex_word(maybe_addr)) {
-            parse_addr1(tokens);
-            return true;
-        }
-    }
-
-    return false;
+    return parse_addr1(tokens);
 }
 
 
@@ -377,7 +376,7 @@ std::pair<u8, int> guess_prev_instr_size(const std::array<u8, guess_depth>& byte
 
 void Monitor::Console::goto_next_addr(bool higher) {
     switch (commands[active_cmd].id) {
-        case cmd::disasm: {
+        case cmd::disasm: case cmd::disasm_edit: {
             if (higher) {
                 const u8 opc = as.read(addr_cur);
                 addr_cur += MOS6502::Asm::instr(opc).size;
@@ -408,11 +407,11 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
             : default_val;
     };
 
-    auto init_range_output = [&]() {
+    auto init_output_seq = [&]() {
         parse_addr1(args);
-        const auto range_size = (default_output_range_lines * commands[active_cmd].output_bytes_per_line) - 1;
-        addr_end = get_hex_arg(2, addr_cur + range_size);
-        range_output = Range_output::active;
+        const auto seq_size = (default_output_seq_lines * commands[active_cmd].output_bytes_per_line) - 1;
+        addr_end = get_hex_arg(2, addr_cur + seq_size);
+        output_seq = Output_sequence::active;
     };
 
     auto handle_select_tgt = [&]() {
@@ -436,8 +435,23 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
         clr_line();
     };
 
+    auto handle_assemble = [&]() {
+        if (!parse_addr1(args)) return;
+
+        // TODO: assemble current line & emit bytes
+        as.write(addr_cur + 0, 0x19);
+        as.write(addr_cur + 1, 0x18);
+        as.write(addr_cur + 2, 0x17);
+
+        output_disasm(commands[u8(cmd::assemble)].output_prefix);
+
+        addr_cur += 3; // TODO: actual size
+
+        output_seq = Output_sequence::active; // for printing the next address on next line
+    };
+
     auto handle_disasm_edit = [&]() {
-        parse_addr1(args);
+        if (!parse_addr1(args)) return; // TODO: active cmd = none?
 
         for (u8 byte = 0; byte < 3; ++byte) {
             const std::size_t argn = byte + 2;
@@ -448,16 +462,20 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
             as.write(addr_cur + byte, byte_val);
         }
 
-        output_disasm();
+        output_disasm(default_disasm_prefix);
+
+        goto_next_addr(true);
+
+        output_seq = Output_sequence::active; // output also the next instr (it might have changed)
     };
 
     auto handle_dump_petscii_line = [&]() {
-        parse_addr1(args);
+        if (!parse_addr1(args)) return;
         output_dump_petscii();
     };
 
     auto handle_hex_edit = [&]() {
-        parse_addr1(args);
+        if (!parse_addr1(args)) return;
 
         for (u8 byte = 0; byte < 8; ++byte) {
             const std::size_t argn = byte + 2;
@@ -476,14 +494,15 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
     switch (commands[active_cmd].id) {
         case cmd::help: output_help(); return;
         case cmd::disasm: case cmd::dump_petscii: case cmd::dump_hex_petscii:
-            init_range_output();
+            init_output_seq();
             break;
         case cmd::select_tgt: handle_select_tgt(); return;
+        case cmd::assemble: handle_assemble(); break;
         case cmd::disasm_edit: handle_disasm_edit(); break;
         case cmd::dump_petscii_line: handle_dump_petscii_line(); break;
         case cmd::hex_edit:   handle_hex_edit(); break;
         default:
-            range_output = Range_output::off;
+            output_seq = Output_sequence::off;
             break;
     }
 
@@ -499,12 +518,12 @@ void Monitor::Console::output_help() {
 }
 
 
-void Monitor::Console::output_disasm() {
+void Monitor::Console::output_disasm(char prefix) {
     auto do_print = [&](const MOS6502::Asm::Line& line, const std::string& undoc) {
         const char* format = "%c %04s  %-08s  %-012s %s";
 
         sprintf(line_buffer, format,
-            commands[u8(cmd::disasm)].output_prefix,
+            prefix,
             as_lower(line.pc).c_str(),
             as_lower(line.bytes).c_str(),
             as_lower(line.text).c_str(),
@@ -570,25 +589,47 @@ void Monitor::Console::output_dump_hex_petscii() {
 
 void Monitor::Console::active_cmd_output() {
     switch (commands[active_cmd].id) {
-        case cmd::disasm:           output_disasm();           break;
-        case cmd::dump_petscii:     output_dump_petscii();     break;
-        case cmd::dump_hex_petscii: output_dump_hex_petscii(); break;
+        case cmd::disasm:           output_disasm(default_disasm_prefix); break;
+        case cmd::dump_petscii:     output_dump_petscii();                break;
+        case cmd::dump_hex_petscii: output_dump_hex_petscii();            break;
         default: return;
     }
 }
 
 
 void Monitor::Console::tick() {
-    if (range_output == Range_output::active) {
-        active_cmd_output();
-        line_feed();
+    if (output_seq != Output_sequence::active) return;
 
-        const u16 old_addr_cur = addr_cur;
-        goto_next_addr(true);
+    switch (commands[active_cmd].id) {
+        case cmd::disasm: case cmd::dump_petscii: case cmd::dump_hex_petscii: {
+            active_cmd_output();
+            line_feed();
 
-        if (is_in_wrapped_range(addr_end, old_addr_cur, addr_cur)) { // did we touch 'addr_end'?
-            range_output = Range_output::off;
+            const u16 old_addr_cur = addr_cur;
+            goto_next_addr(true);
+
+            if (is_in_wrapped_range(addr_end, old_addr_cur, addr_cur)) { // did we touch 'addr_end'?
+                output_seq = Output_sequence::off;
+            }
+
+            break;
         }
+        case cmd::assemble: {
+            const char* format = "%c %04x  ";
+            auto wr = Line_write();
+            sprintf(line_buffer, format, commands[u8(cmd::assemble)].output_prefix, addr_cur);
+            wr.txt(line_buffer);
+            output_seq = Output_sequence::off;
+            cursor_x = 8;
+            break;
+        }
+        case cmd::disasm_edit:
+            output_disasm(default_disasm_prefix);
+            output_seq = Output_sequence::off;
+            cursor_x = 8;
+            break;
+
+        default: return;
     }
 }
 

@@ -63,7 +63,7 @@ private:
         static constexpr std::size_t screen_width = (frame_width / 8) - 1;
         static constexpr std::size_t screen_height = (frame_height / 8) - 1;
 
-        enum class Range_output {
+        enum class Output_sequence {
             off    = 0,
             paused = 1,
             active = 2,
@@ -157,7 +157,7 @@ private:
 
         u8 active_cmd{0};
 
-        Range_output range_output{Range_output::off};
+        Output_sequence output_seq{Output_sequence::off};
 
         char line_buffer[screen_width + 1];
 
@@ -172,7 +172,7 @@ private:
             if (cursor_y > 0) --cursor_y; else scroll_down();
         }
         void cursor_down() {
-            if (range_output != Range_output::active) {
+            if (output_seq != Output_sequence::active) {
                 if (parse_prefix_and_addr1()) goto_next_addr(true);
             }
             if (++cursor_y == screen_height) { --cursor_y; scroll_up(); }
@@ -185,7 +185,7 @@ private:
         Tokens tokenize_current_line() const;
 
         void parse_cmd(const Tokens& tokens);
-        void parse_addr1(const Tokens& tokens);
+        bool parse_addr1(const Tokens& tokens);
         bool parse_prefix_and_addr1();
 
         void goto_next_addr(bool higher);
@@ -199,7 +199,7 @@ private:
 
         void output_help();
 
-        void output_disasm();
+        void output_disasm(char prefix);
         void output_dump_petscii();
         void output_dump_hex_petscii();
 
