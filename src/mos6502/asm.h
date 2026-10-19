@@ -6,6 +6,21 @@
 
 
 namespace MOS6502::Asm {
+    enum class Op : u8 {
+        ADC, AHX, ALR, ANC, AND, ARR, ASL, AXS,
+        BCC, BCS, BEQ, BIT, BMI, BNE, BPL, BRK,
+        BVC, BVS, CLC, CLD, CLI, CLV, CMP, CPX,
+        CPY, DCP, DEC, DEX, DEY, EOR, HLT, INC,
+        INX, INY, ISC, JMP, JSR, LAS, LAX, LDA,
+        LDX, LDY, LSR, NOP, ORA, PHA, PHP, PLA,
+        PLP, RLA, ROL, ROR, RRA, RTI, RTS, SAX,
+        SBC, SEC, SED, SEI, SHX, SHY, SLO, SRE,
+        STA, STX, STY, TAS, TAX, TAY, TSX, TXA,
+        TXS, TYA, XAA,
+        count
+    };
+
+    extern const char* const Op_str[u8(Op::count)];
 
     enum class Addr_mode {
         impl, accu, abs, absx, absy, imm, ind, indx, indy, rel, zp, zpx, zpy
@@ -15,6 +30,7 @@ namespace MOS6502::Asm {
     struct Instruction {
         const u8 code;
         const u8 size;
+        const Op op;
         const Addr_mode addr_mode;
         const std::string mnemonic;
         const std::string asm_format;
