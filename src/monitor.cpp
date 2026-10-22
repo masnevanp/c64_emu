@@ -158,7 +158,7 @@ void Monitor::Console::key(u8 code, const Mod_state& mod) {
     if (ascii) return type(ascii);
 
     switch (code) {
-        case Key_code::r_stp:
+        case Key_code::r_stp: // TODO: break input?
             if (output_seq == Output_sequence::paused) output_seq = Output_sequence::active;
             break;
         case Key_code::home:
@@ -274,7 +274,7 @@ void Monitor::Console::scroll_down() {
 }
 
 
-Monitor::Console::Tokens Monitor::Console::tokenize_current_line() const {
+std::string Monitor::Console::current_line() const {
     std::array<u8, screen_width> line_ascii;
 
     std::transform(
@@ -283,10 +283,8 @@ Monitor::Console::Tokens Monitor::Console::tokenize_current_line() const {
         [](u16 char_rom_idx) -> u8 { return char_code_to_ascii(char_rom_idx); }
     );
 
-    const std::string cur_line{std::begin(line_ascii), std::end(line_ascii)};
-
-    return split(cur_line);
-};
+    return {std::begin(line_ascii), std::end(line_ascii)};
+}
 
 
 void Monitor::Console::parse_cmd(const Tokens& tokens) {
@@ -400,6 +398,169 @@ void Monitor::Console::goto_next_addr(bool higher) {
 }
 
 
+struct Emitted {
+    u8 size;
+    u8 bytes[3];
+};
+
+// NOTE: in many cases trailing garbage is just ignored, e.g 'lda $20,xpp' => 'lda $20,x'.... meh...
+Emitted assemble(const std::string& line, u16 pc) {
+    using namespace MOS6502::Asm;
+
+    Emitted emitted{0, {}};
+
+    std::size_t line_pos = 8; // TODO: seek mnemonic position
+
+    auto hex_val = [&](std::string_view s) { return std::stoul(s.data(), nullptr, 16); };
+
+    auto next_chr = [&]() -> char {
+        // NOTE: fails if there can be other types of whitespaces (fix later, if needed...)
+        while (line[line_pos] == ' ') ++line_pos; // skip spaces
+
+        if (line_pos >= line.size() || line[line_pos] == ';') return '\0';
+
+        return line[line_pos++];
+    };
+
+    auto scan_op = [&]() -> Op {
+        char maybe_op[4] {'\0', '\0', '\0', '\0'};
+
+        maybe_op[0] = next_chr() & 0xdf; // force upper case for comparison
+        maybe_op[1] = next_chr() & 0xdf;
+        maybe_op[2] = next_chr() & 0xdf;
+
+        Log::info("%s", maybe_op);
+    
+        for (u8 op = 0; op < u8(Op::count); ++op) {
+            if (strcmp(Op_str[op], maybe_op) == 0) {
+                return Op(op);
+            }
+        }
+    
+        return Op::UNKNOWN;
+    };
+
+    auto scan_addr = [&]() {
+        char maybe_addr[5] {'\0', '\0', '\0', '\0', '\0'};
+        int size = 0;
+
+        while(size < 5) {
+            auto c = next_chr();
+            if (c == ',' || c == '\0') break;
+            maybe_addr[size++] = c;
+        }
+
+        Log::info("%s %d", maybe_addr, size);
+
+        if (size == 2 && is_hex_byte(maybe_addr)) {
+            emitted.bytes[1] = hex_val(maybe_addr);
+            auto c = next_chr();
+            if (c == '\0') return Addr_mode::zp;
+            if (c == 'x') return Addr_mode::zpx;
+            if (c == 'y') return Addr_mode::zpy;
+        } else if (size == 4 && is_hex_word(maybe_addr)) {
+            auto addr = hex_val(maybe_addr);
+            emitted.bytes[1] = u8(addr);
+            emitted.bytes[2] = u8(addr >> 8);
+            auto c = next_chr();
+            if (c == '\0') return Addr_mode::abs;
+            if (c == 'x') return Addr_mode::absx;
+            if (c == 'y') return Addr_mode::absy;
+        }
+
+        return Addr_mode::unknown;
+    };
+
+    auto scan_rel_addr = [&]() {
+        char maybe_addr[5] {'\0', '\0', '\0', '\0', '\0'};
+        int size = 0;
+
+        while(size < 5) {
+            auto c = next_chr();
+            if (c == ',' || c == '\0') break;
+            maybe_addr[size++] = c;
+        }
+
+        if (size == 4 && is_hex_word(maybe_addr)) {
+            u16 addr = hex_val(maybe_addr);
+            emitted.bytes[1] = u8(addr - u16(pc + 2));
+            return Addr_mode::rel;
+        }
+
+        return Addr_mode::unknown;
+    };
+
+    auto scan_imm = [&]() {
+        char maybe_imm[3] {'\0', '\0', '\0'};
+
+        maybe_imm[0] = next_chr();
+        maybe_imm[1] = next_chr();
+        if (is_hex_byte(maybe_imm)) {
+            emitted.bytes[1] = hex_val(maybe_imm);
+            return Addr_mode::imm;
+        }
+
+        return Addr_mode::unknown;
+    };
+
+    auto scan_ind_addr = [&]() {
+        char maybe_addr[5] {'\0', '\0', '\0', '\0', '\0'};
+        int size = 0;
+
+        while(size < 5) {
+            auto c = next_chr();
+            if (c == ',' || c == ')' || c == '\0') break;
+            maybe_addr[size++] = c;
+        }
+
+        Log::info("%s %d", maybe_addr, size);
+
+        if (size == 2 && is_hex_byte(maybe_addr)) {
+            emitted.bytes[1] = hex_val(maybe_addr);
+            auto c = next_chr();
+            if (c == 'x') return Addr_mode::indx;
+            if ((c == ',') && (next_chr() == 'y')) return Addr_mode::indy;
+        } else if (size == 4 && is_hex_word(maybe_addr)) {
+            auto addr = hex_val(maybe_addr);
+            emitted.bytes[1] = u8(addr);
+            emitted.bytes[2] = u8(addr >> 8);
+            /*if (next_chr() == '\0')*/ return Addr_mode::ind;
+        }
+
+        return Addr_mode::unknown;
+    };
+
+    const auto op = scan_op();
+
+    auto scan_addr_mode = [&]() {
+        switch (next_chr()) {
+            case '\0': return Addr_mode::impl;
+            case 'a' : return Addr_mode::accu;
+            case '$' : return is_branch(op) ? scan_rel_addr() : scan_addr();
+            case '#' : if (next_chr() == '$') return scan_imm(); else break;
+            case '(' : if (next_chr() == '$') return scan_ind_addr(); else break;
+            default  : break;
+        }
+
+        return Addr_mode::unknown;
+    };
+
+    const auto addr_mode = scan_addr_mode();
+
+    Log::info("%02x %02x", u8(op), u8(addr_mode));
+
+    for (auto instr : instruction) {
+        if (instr.op == op && instr.addr_mode == addr_mode) {
+            emitted.size = instr.size;
+            emitted.bytes[0] = instr.code;
+            if (!is_undoc(instr.code)) break; // prefere the documented ones...
+        }
+    }
+
+    return emitted;
+}
+
+
 void Monitor::Console::handle_cmd(const Tokens& args) {
     auto get_hex_arg = [&](std::size_t arg_pos, u16 default_val) {
         return arg_pos < args.size()
@@ -438,14 +599,17 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
     auto handle_assemble = [&]() {
         if (!parse_addr1(args)) return;
 
-        // TODO: assemble current line & emit bytes
-        as.write(addr_cur + 0, 0x19);
-        as.write(addr_cur + 1, 0x18);
-        as.write(addr_cur + 2, 0x17);
+        const auto emitted = assemble(current_line(), addr_cur);
 
+        if (emitted.size == 0) return; // TODO: notify user '; ???'
+
+        for (u8 b = 0; b < emitted.size; ++b) {
+            as.write(addr_cur + b, emitted.bytes[b]);
+        }
+        
         output_disasm(commands[u8(cmd::assemble)].output_prefix);
 
-        addr_cur += 3; // TODO: actual size
+        addr_cur += emitted.size;
 
         output_seq = Output_sequence::active; // for printing the next address on next line
     };
@@ -502,7 +666,7 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
         case cmd::dump_petscii_line: handle_dump_petscii_line(); break;
         case cmd::hex_edit:   handle_hex_edit(); break;
         default:
-            output_seq = Output_sequence::off;
+            output_seq = Output_sequence::off; // TODO: needed?
             break;
     }
 
@@ -614,7 +778,7 @@ void Monitor::Console::tick() {
 
             break;
         }
-        case cmd::assemble: {
+        case cmd::assemble: { // TODO: --> a function
             const char* format = "%c %04x  ";
             auto wr = Line_write();
             sprintf(line_buffer, format, commands[u8(cmd::assemble)].output_prefix, addr_cur);
@@ -623,7 +787,7 @@ void Monitor::Console::tick() {
             cursor_x = 8;
             break;
         }
-        case cmd::disasm_edit:
+        case cmd::disasm_edit: // TODO: --> a function
             output_disasm(default_disasm_prefix);
             output_seq = Output_sequence::off;
             cursor_x = 8;

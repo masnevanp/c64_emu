@@ -6,7 +6,7 @@
 
 
 namespace MOS6502::Asm {
-    enum class Op : u8 {
+    enum Op : u8 {
         ADC, AHX, ALR, ANC, AND, ARR, ASL, AXS,
         BCC, BCS, BEQ, BIT, BMI, BNE, BPL, BRK,
         BVC, BVS, CLC, CLD, CLI, CLV, CMP, CPX,
@@ -17,14 +17,17 @@ namespace MOS6502::Asm {
         SBC, SEC, SED, SEI, SHX, SHY, SLO, SRE,
         STA, STX, STY, TAS, TAX, TAY, TSX, TXA,
         TXS, TYA, XAA,
-        count
+        count, UNKNOWN
     };
+
+    inline bool is_branch(Op op)  { return (op >= Op::BCC && op <= Op::BVS) && (op != Op::BRK); }
 
     extern const char* const Op_str[u8(Op::count)];
 
     enum class Addr_mode {
-        impl, accu, abs, absx, absy, imm, ind, indx, indy, rel, zp, zpx, zpy
+        impl, accu, abs, absx, absy, imm, ind, indx, indy, rel, zp, zpx, zpy, unknown
     };
+
 
     // TODO: (remove '.asm_format' --> e.g. Disassembler.disasm() should switch on addr.mode instead)
     struct Instruction {
@@ -61,9 +64,9 @@ namespace MOS6502::Asm {
 
     inline const Instruction& instr(u8 opc) { return instruction[opc]; }
 
-    inline bool is_undoc(u8 opc) { return undoc[opc]; }
-
-    inline bool is_hlt(u8 opc) { return ((opc & 0x0f) == 0x02) && !((opc & 0x90) == 0x80); }
+    inline bool is_branch(u8 opc) { return (opc & 0x1f) == 0x10; }
+    inline bool is_undoc(u8 opc)  { return undoc[opc]; }
+    inline bool is_hlt(u8 opc)    { return ((opc & 0x0f) == 0x02) && !((opc & 0x90) == 0x80); }
 
 
     struct Line {

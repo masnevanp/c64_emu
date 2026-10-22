@@ -182,7 +182,8 @@ private:
 
         void line_feed() { cursor_down(); cursor_x = 0; }
 
-        Tokens tokenize_current_line() const;
+        std::string current_line() const;
+        Tokens tokenize_current_line() const { return split(current_line()); }
 
         void parse_cmd(const Tokens& tokens);
         bool parse_addr1(const Tokens& tokens);
