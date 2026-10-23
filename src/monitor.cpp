@@ -158,8 +158,9 @@ void Monitor::Console::key(u8 code, const Mod_state& mod) {
     if (ascii) return type(ascii);
 
     switch (code) {
-        case Key_code::r_stp: // TODO: break input?
+        case Key_code::r_stp:
             if (output_seq == Output_sequence::paused) output_seq = Output_sequence::active;
+            else clr_line();
             break;
         case Key_code::home:
             cursor_y = cursor_x = 0;
@@ -255,6 +256,7 @@ void Monitor::Console::clr_line() {
     for (auto& c : screen[cursor_y]) {
         c = ascii_to_char_code(' ');
     }
+    cursor_x = 0;
 }
 
 
@@ -399,41 +401,54 @@ void Monitor::Console::goto_next_addr(bool higher) {
 
 
 struct Emitted {
+    u16 pc;
     u8 size;
     u8 bytes[3];
 };
 
 // NOTE: in many cases trailing garbage is just ignored, e.g 'lda $20,xpp' => 'lda $20,x'.... meh...
-Emitted assemble(const std::string& line, u16 pc) {
+Emitted emit(const std::string& line) {
     using namespace MOS6502::Asm;
 
-    Emitted emitted{0, {}};
-
-    std::size_t line_pos = 8; // TODO: seek mnemonic position
+    std::size_t line_pos = 0;
+    Emitted emitted{0x0000, 0, {}};
 
     auto hex_val = [&](std::string_view s) { return std::stoul(s.data(), nullptr, 16); };
 
-    auto next_chr = [&]() -> char {
+    auto next_chr = [&](bool skip_spaces = true) -> char {
         // NOTE: fails if there can be other types of whitespaces (fix later, if needed...)
-        while (line[line_pos] == ' ') ++line_pos; // skip spaces
-
+        if (skip_spaces) while (line[line_pos] == ' ') line_pos++;
         if (line_pos >= line.size() || line[line_pos] == ';') return '\0';
-
         return line[line_pos++];
     };
 
+    auto scan_pc = [&]() -> bool {
+        int chr_count = 0;
+        while (auto c = next_chr(false)) {
+            chr_count = (c == ' ') ? 0 : chr_count + 1;
+            if (chr_count == 4 && (next_chr(false) == ' ')) {
+                const auto maybe_pc = line.substr(line_pos - 5, 4);
+                if (is_hex_word(maybe_pc)) {
+                    emitted.pc = hex_val(maybe_pc);
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    };
+
     auto scan_op = [&]() -> Op {
-        char maybe_op[4] {'\0', '\0', '\0', '\0'};
-
-        maybe_op[0] = next_chr() & 0xdf; // force upper case for comparison
-        maybe_op[1] = next_chr() & 0xdf;
-        maybe_op[2] = next_chr() & 0xdf;
-
-        Log::info("%s", maybe_op);
-    
-        for (u8 op = 0; op < u8(Op::count); ++op) {
-            if (strcmp(Op_str[op], maybe_op) == 0) {
-                return Op(op);
+        int chr_count = 0;
+        while (auto c = next_chr(false)) {
+            chr_count = (c == ' ') ? 0 : chr_count + 1;
+            if (chr_count == 3) {
+                const auto maybe_op = as_upper(line.substr(line_pos - 3, 3));
+                for (u8 op = 0; op < u8(Op::count); ++op) {
+                    if (strcmp(Op_str[op], maybe_op.c_str()) == 0) {
+                        return Op(op);
+                    }
+                }
             }
         }
     
@@ -449,8 +464,6 @@ Emitted assemble(const std::string& line, u16 pc) {
             if (c == ',' || c == '\0') break;
             maybe_addr[size++] = c;
         }
-
-        Log::info("%s %d", maybe_addr, size);
 
         if (size == 2 && is_hex_byte(maybe_addr)) {
             emitted.bytes[1] = hex_val(maybe_addr);
@@ -483,7 +496,7 @@ Emitted assemble(const std::string& line, u16 pc) {
 
         if (size == 4 && is_hex_word(maybe_addr)) {
             u16 addr = hex_val(maybe_addr);
-            emitted.bytes[1] = u8(addr - u16(pc + 2));
+            emitted.bytes[1] = u8(addr - u16(emitted.pc + 2));
             return Addr_mode::rel;
         }
 
@@ -513,8 +526,6 @@ Emitted assemble(const std::string& line, u16 pc) {
             maybe_addr[size++] = c;
         }
 
-        Log::info("%s %d", maybe_addr, size);
-
         if (size == 2 && is_hex_byte(maybe_addr)) {
             emitted.bytes[1] = hex_val(maybe_addr);
             auto c = next_chr();
@@ -529,6 +540,8 @@ Emitted assemble(const std::string& line, u16 pc) {
 
         return Addr_mode::unknown;
     };
+
+    if (!scan_pc()) return {0x0000, 0, {}};
 
     const auto op = scan_op();
 
@@ -547,7 +560,7 @@ Emitted assemble(const std::string& line, u16 pc) {
 
     const auto addr_mode = scan_addr_mode();
 
-    Log::info("%02x %02x", u8(op), u8(addr_mode));
+    Log::info("%04x %02x %02x", emitted.pc, u8(op), u8(addr_mode));
 
     for (auto instr : instruction) {
         if (instr.op == op && instr.addr_mode == addr_mode) {
@@ -557,6 +570,7 @@ Emitted assemble(const std::string& line, u16 pc) {
         }
     }
 
+    // TODO: pseudo_instr (ROL -> ROL A, BRK impl?)
     return emitted;
 }
 
@@ -597,11 +611,11 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
     };
 
     auto handle_assemble = [&]() {
-        if (!parse_addr1(args)) return;
-
-        const auto emitted = assemble(current_line(), addr_cur);
+        const auto emitted = emit(current_line());
 
         if (emitted.size == 0) return; // TODO: notify user '; ???'
+
+        addr_cur = emitted.pc;
 
         for (u8 b = 0; b < emitted.size; ++b) {
             as.write(addr_cur + b, emitted.bytes[b]);
