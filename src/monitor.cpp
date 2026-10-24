@@ -400,36 +400,38 @@ void Monitor::Console::goto_next_addr(bool higher) {
 }
 
 
-struct Emitted {
+struct Machine_code_instr {
     u16 pc;
     u8 size;
     u8 bytes[3];
 };
 
 // NOTE: in many cases trailing garbage is just ignored, e.g 'lda $20,xpp' => 'lda $20,x'.... meh...
-Emitted emit(const std::string& line) {
+Machine_code_instr generate_code(const std::string& asm_line) {
     using namespace MOS6502::Asm;
 
     std::size_t line_pos = 0;
-    Emitted emitted{0x0000, 0, {}};
+    Machine_code_instr code{0x0000, 0, {}};
 
     auto hex_val = [&](std::string_view s) { return std::stoul(s.data(), nullptr, 16); };
 
     auto next_chr = [&](bool skip_spaces = true) -> char {
         // NOTE: fails if there can be other types of whitespaces (fix later, if needed...)
-        if (skip_spaces) while (line[line_pos] == ' ') line_pos++;
-        if (line_pos >= line.size() || line[line_pos] == ';') return '\0';
-        return line[line_pos++];
+        if (skip_spaces) while (asm_line[line_pos] == ' ') line_pos++;
+        if (line_pos >= asm_line.size() || asm_line[line_pos] == ';') return '\0';
+        return asm_line[line_pos++];
     };
+
+    // TODO: a general 'scan_token()' that can be used everywhere
 
     auto scan_pc = [&]() -> bool {
         int chr_count = 0;
         while (auto c = next_chr(false)) {
             chr_count = (c == ' ') ? 0 : chr_count + 1;
             if (chr_count == 4 && (next_chr(false) == ' ')) {
-                const auto maybe_pc = line.substr(line_pos - 5, 4);
+                const auto maybe_pc = asm_line.substr(line_pos - 5, 4);
                 if (is_hex_word(maybe_pc)) {
-                    emitted.pc = hex_val(maybe_pc);
+                    code.pc = hex_val(maybe_pc);
                     return true;
                 }
             }
@@ -443,7 +445,7 @@ Emitted emit(const std::string& line) {
         while (auto c = next_chr(false)) {
             chr_count = (c == ' ') ? 0 : chr_count + 1;
             if (chr_count == 3) {
-                const auto maybe_op = as_upper(line.substr(line_pos - 3, 3));
+                const auto maybe_op = as_upper(asm_line.substr(line_pos - 3, 3));
                 for (u8 op = 0; op < u8(Op::count); ++op) {
                     if (strcmp(Op_str[op], maybe_op.c_str()) == 0) {
                         return Op(op);
@@ -466,15 +468,15 @@ Emitted emit(const std::string& line) {
         }
 
         if (size == 2 && is_hex_byte(maybe_addr)) {
-            emitted.bytes[1] = hex_val(maybe_addr);
+            code.bytes[1] = hex_val(maybe_addr);
             auto c = next_chr();
             if (c == '\0') return Addr_mode::zp;
             if (c == 'x') return Addr_mode::zpx;
             if (c == 'y') return Addr_mode::zpy;
         } else if (size == 4 && is_hex_word(maybe_addr)) {
             auto addr = hex_val(maybe_addr);
-            emitted.bytes[1] = u8(addr);
-            emitted.bytes[2] = u8(addr >> 8);
+            code.bytes[1] = u8(addr);
+            code.bytes[2] = u8(addr >> 8);
             auto c = next_chr();
             if (c == '\0') return Addr_mode::abs;
             if (c == 'x') return Addr_mode::absx;
@@ -496,7 +498,7 @@ Emitted emit(const std::string& line) {
 
         if (size == 4 && is_hex_word(maybe_addr)) {
             u16 addr = hex_val(maybe_addr);
-            emitted.bytes[1] = u8(addr - u16(emitted.pc + 2));
+            code.bytes[1] = u8(addr - u16(code.pc + 2));
             return Addr_mode::rel;
         }
 
@@ -509,7 +511,7 @@ Emitted emit(const std::string& line) {
         maybe_imm[0] = next_chr();
         maybe_imm[1] = next_chr();
         if (is_hex_byte(maybe_imm)) {
-            emitted.bytes[1] = hex_val(maybe_imm);
+            code.bytes[1] = hex_val(maybe_imm);
             return Addr_mode::imm;
         }
 
@@ -527,25 +529,21 @@ Emitted emit(const std::string& line) {
         }
 
         if (size == 2 && is_hex_byte(maybe_addr)) {
-            emitted.bytes[1] = hex_val(maybe_addr);
+            code.bytes[1] = hex_val(maybe_addr);
             auto c = next_chr();
             if (c == 'x') return Addr_mode::indx;
             if ((c == ',') && (next_chr() == 'y')) return Addr_mode::indy;
         } else if (size == 4 && is_hex_word(maybe_addr)) {
             auto addr = hex_val(maybe_addr);
-            emitted.bytes[1] = u8(addr);
-            emitted.bytes[2] = u8(addr >> 8);
+            code.bytes[1] = u8(addr);
+            code.bytes[2] = u8(addr >> 8);
             /*if (next_chr() == '\0')*/ return Addr_mode::ind;
         }
 
         return Addr_mode::unknown;
     };
 
-    if (!scan_pc()) return {0x0000, 0, {}};
-
-    const auto op = scan_op();
-
-    auto scan_addr_mode = [&]() {
+    auto scan_addr_mode = [&](Op op) {
         switch (next_chr()) {
             case '\0': return Addr_mode::impl;
             case 'a' : return Addr_mode::accu;
@@ -558,20 +556,24 @@ Emitted emit(const std::string& line) {
         return Addr_mode::unknown;
     };
 
-    const auto addr_mode = scan_addr_mode();
+    auto scan_instr = [&]() {
+        const auto op = scan_op();
+        const auto addr_mode = scan_addr_mode(op);
 
-    Log::info("%04x %02x %02x", emitted.pc, u8(op), u8(addr_mode));
-
-    for (auto instr : instruction) {
-        if (instr.op == op && instr.addr_mode == addr_mode) {
-            emitted.size = instr.size;
-            emitted.bytes[0] = instr.code;
-            if (!is_undoc(instr.code)) break; // prefere the documented ones...
+        for (auto instr : instruction) {
+            if (instr.op == op && instr.addr_mode == addr_mode) {
+                code.size = instr.size;
+                code.bytes[0] = instr.code;
+                if (!is_undoc(instr.code)) break; // prefere the documented ones...
+            }
         }
-    }
+        Log::info("%04x %02x %02x --> %02x", code.pc, u8(op), u8(addr_mode), code.bytes[0]);
+    };
+
+    if (scan_pc()) scan_instr();
 
     // TODO: pseudo_instr (ROL -> ROL A, BRK impl?)
-    return emitted;
+    return code;
 }
 
 
@@ -597,33 +599,33 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
             addr_cur = as.target().addr_start;
         }
 
-        const char* format = " %c%02x: %04x-%04x  %s";
+        const char* format = "%s%02x: %04x-%04x  %s";
 
+        line_feed();
         for (auto t : as.targets) {
             line_feed();
-            const auto selected = t.id == as.target().id ? '*' : ' ';
-            sprintf(line_buffer, format, selected, t.id, t.addr_start, t.addr_end, t.name);
+            const std::string selected = t.id == as.target().id ? "->" : "  ";
+            sprintf(line_buffer, format, selected.c_str(), t.id, t.addr_start, t.addr_end, t.name);
             Line_write().txt(line_buffer);
         }
 
-        line_feed();
-        clr_line();
+        line_feed(); clr_line(); line_feed(); clr_line();
     };
 
     auto handle_assemble = [&]() {
-        const auto emitted = emit(current_line());
+        const auto code = generate_code(current_line());
 
-        if (emitted.size == 0) return; // TODO: notify user '; ???'
+        if (code.size == 0) return; // TODO: notify user '; ???'
 
-        addr_cur = emitted.pc;
+        addr_cur = code.pc;
 
-        for (u8 b = 0; b < emitted.size; ++b) {
-            as.write(addr_cur + b, emitted.bytes[b]);
+        for (u8 b = 0; b < code.size; ++b) {
+            as.write(addr_cur + b, code.bytes[b]);
         }
         
         output_disasm(commands[u8(cmd::assemble)].output_prefix);
 
-        addr_cur += emitted.size;
+        addr_cur += code.size;
 
         output_seq = Output_sequence::active; // for printing the next address on next line
     };
