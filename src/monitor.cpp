@@ -400,10 +400,12 @@ void Monitor::Console::goto_next_addr(bool higher) {
 }
 
 
-struct Machine_code { // TODO: add error string?
+struct Machine_code {
     u16 pc;
     u8 size = 0;
     u8 bytes[3];
+
+    bool ok() const { return size > 0; }
 };
 
 /*
@@ -412,25 +414,21 @@ struct Machine_code { // TODO: add error string?
         - Incomplete input might also be accepted, as long as there is no ambiguity: 'lda ($ab x' => 'lda ($ab),x'
         - space is the only actual whitespace character supported (i.e. fails on tabs)
 */
-Machine_code machine_code(const std::string& asm_line) {
+Machine_code assemble(const std::string& asm_line) {
     using namespace MOS6502::Asm;
-    
-    std::size_t line_pos = 0;
+
     Machine_code code;
-    
+
+    std::size_t line_pos = 0;
+    std::size_t line_end = 0;
+
+    // cut off at comment (if any)
+    while (line_end < asm_line.size() && asm_line[line_end] != ';') ++line_end;
+
     auto hex_val = [&](std::string_view s) { return std::stoul(s.data(), nullptr, 16); };
     
-    auto peek_chr = [&]() -> char {
-        if (asm_line[line_pos] == ';') line_pos = asm_line.size();
-        if (line_pos < asm_line.size()) return asm_line[line_pos];
-        return '\0';
-    };
-    
-    auto next_chr = [&]() -> char {
-        char c = peek_chr();
-        if (line_pos < asm_line.size()) ++line_pos;
-        return c;
-    };
+    auto peek_chr = [&]() { return (line_pos < line_end) ? asm_line[line_pos] : '\0'; };
+    auto next_chr = [&]() { return (line_pos < line_end) ? asm_line[line_pos++] : '\0'; };
     
     auto skip_trivia = [&]() {
         while (true) {
@@ -441,20 +439,16 @@ Machine_code machine_code(const std::string& asm_line) {
     };
     
     auto next_token = [&]() -> std::string {
+        static constexpr char token_end[] = {' ', ',', ')', '\0'};
         skip_trivia();
         auto start = line_pos;
-        std::size_t n = 0;
         while (true) {
             auto c = peek_chr();
-            for (auto end : {' ', ',', ')', '\0'}) {
-                if (c == end) return asm_line.substr(start, n);
-            }
-            ++n;
+            if (strchr(token_end, c)) return asm_line.substr(start, line_pos - start);
             next_chr();
         }
-        return "";
     };
-
+    
     auto scan_pc = [&]() -> bool {
         while (peek_chr()) {
             const auto maybe_pc = next_token();
@@ -506,9 +500,12 @@ Machine_code machine_code(const std::string& asm_line) {
         const auto maybe_addr = next_token();
 
         if (is_hex_word(maybe_addr)) {
-            u16 addr = hex_val(maybe_addr);
-            code.bytes[1] = u8(addr - u16(code.pc + 2)); // TODO: add range check? (e.g. 'a 8000 beq $8090')
-            return Addr_mode::rel;
+            u16 tgt_addr = hex_val(maybe_addr);
+            u16 src_addr = code.pc + 2;
+            if (is_in_wrapped_range(tgt_addr, u16(src_addr - 128), u16(src_addr + 127))) {
+                code.bytes[1] = u8(tgt_addr - src_addr);
+                return Addr_mode::rel;
+            }
         }
 
         return Addr_mode::unknown;
@@ -559,12 +556,20 @@ Machine_code machine_code(const std::string& asm_line) {
     };
     
     auto scan_instr = [&]() {
-        const Instruction pseudo_instruction[] = {
+        static const Instruction pseudo_instruction[] = {
             {0x00, 2, Op::BRK, Addr_mode::imm,  "BRK", "BRK #$%02X"},
             {0x0a, 1, Op::ASL, Addr_mode::impl, "ASL", "ASL"},
             {0x2a, 1, Op::ROL, Addr_mode::impl, "ROL", "ROL"},
             {0x4a, 1, Op::LSR, Addr_mode::impl, "LSR", "LSR"},
             {0x6a, 1, Op::ROR, Addr_mode::impl, "ROR", "ROR"},
+            {0x10, 2, Op::BPL, Addr_mode::imm,  "BPL", "BPL #$%02X"},
+            {0x30, 2, Op::BMI, Addr_mode::imm,  "BMI", "BMI #$%02X"},
+            {0x50, 2, Op::BVC, Addr_mode::imm,  "BVC", "BVC #$%02X"},
+            {0x70, 2, Op::BVS, Addr_mode::imm,  "BVS", "BVS #$%02X"},
+            {0x90, 2, Op::BCC, Addr_mode::imm,  "BCC", "BCC #$%02X"},
+            {0xb0, 2, Op::BCS, Addr_mode::imm,  "BCS", "BCS #$%02X"},
+            {0xd0, 2, Op::BNE, Addr_mode::imm,  "BNE", "BNE #$%02X"},
+            {0xf0, 2, Op::BEQ, Addr_mode::imm,  "BEQ", "BEQ #$%02X"},
         };
         const auto op = scan_op();
         const auto addr_mode = scan_addr_mode(op);
@@ -573,11 +578,11 @@ Machine_code machine_code(const std::string& asm_line) {
             if (instr.op == op && instr.addr_mode == addr_mode) {
                 code.size = instr.size;
                 code.bytes[0] = instr.code;
-                if (!is_undoc(instr.code)) break; // prefer the documented ones...
+                if (!is_undoc(instr.code)) break; // if undoc: accept, but keep searching
             }
         }
 
-        if (code.size) return;
+        if (code.ok()) return;
 
         for (auto instr : pseudo_instruction) {
             if (instr.op == op && instr.addr_mode == addr_mode) {
@@ -631,9 +636,9 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
     };
     
     auto handle_assemble = [&]() {
-        const auto code = machine_code(current_line());
+        const auto code = assemble(current_line());
 
-        if (code.size == 0) return; // TODO: notify user '; ???'
+        if (!code.ok()) return; // TODO: notify user '; ???'
         
         addr_cur = code.pc;
         
