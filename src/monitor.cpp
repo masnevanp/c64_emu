@@ -58,9 +58,11 @@ static constexpr Command commands[] = {
 };
 
 
-static constexpr auto default_disasm_prefix = commands[u8(cmd::disasm)].output_prefix;
+constexpr auto default_disasm_prefix = commands[u8(cmd::disasm)].output_prefix;
 
-static constexpr std::size_t default_output_seq_lines = 25;
+constexpr std::size_t default_output_seq_lines = 25;
+
+constexpr u8 line_comment_x = 31;
 
 
 u32 get_hex_val(const std::string& hex_str, u32 default_val) {
@@ -308,7 +310,7 @@ void Monitor::Console::parse_cmd(const Tokens& tokens) {
 bool Monitor::Console::parse_addr1(const Tokens& tokens) {
     if (std::size(tokens) >= 2) {
         const auto& maybe_addr = tokens[1];
-        if (is_hex(maybe_addr)) {
+        if (is_hex_word(maybe_addr)) {
             addr_cur = get_hex_val(maybe_addr, addr_cur);
             return true;
         }
@@ -624,7 +626,7 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
         
         const char* format = "%s%02x: %04x-%04x  %s";
         
-        line_feed();
+        line_feed(true);
         for (auto t : as.targets) {
             line_feed();
             const std::string selected = t.id == as.target().id ? "->" : "  ";
@@ -632,13 +634,16 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
             Line_write().txt(line_buffer);
         }
         
-        line_feed(); clr_line(); line_feed(); clr_line();
+        line_feed(true); line_feed(true);
     };
     
     auto handle_assemble = [&]() {
         const auto code = assemble(current_line());
 
-        if (!code.ok()) return; // TODO: notify user '; ???'
+        if (!code.ok()) {
+            Line_write(line_comment_x).txt("; ???");
+            return;
+        }
         
         addr_cur = code.pc;
         
@@ -722,33 +727,30 @@ void Monitor::Console::output_help() {
 
 
 void Monitor::Console::output_disasm(char prefix) {
-    auto do_print = [&](const MOS6502::Asm::Line& line, const std::string& undoc) {
-        const char* format = "%c %04s  %-08s  %-012s %s";
+    using namespace MOS6502::Asm;
+
+    const u8 opc = as.read(addr_cur);
+
+    auto do_print = [&](const MOS6502::Asm::Line& line) {
+        const char* format = "%c %04s  %-08s  %-012s";
 
         sprintf(line_buffer, format,
             prefix,
             as_lower(line.pc).c_str(),
             as_lower(line.bytes).c_str(),
-            as_lower(line.text).c_str(),
-            undoc.c_str()
+            as_lower(line.text).c_str()
         );
         Line_write().txt(line_buffer);
+
+        // TODO: for immediates output the bitstring? only for bitwise ops & lda/ldx/ldy? (might be undoc also)
+        // if (instr(opc).addr_mode == Addr_mode::imm) Line_write(line_comment_x).txt("; <bitstring> [undoc]");
+        if (is_undoc(opc)) Line_write(line_comment_x).txt("; undoc");
     };
 
-    const u8 opc = as.read(addr_cur);
-
-    const std::string undoc{MOS6502::Asm::is_undoc(opc) ? "; undoc" : " "};
-
     switch (MOS6502::Asm::instr(opc).size) {
-        case 1:
-            do_print(MOS6502::Asm::disasm_one(addr_cur, opc), undoc);
-            break;
-        case 2:
-            do_print(MOS6502::Asm::disasm_one(addr_cur, opc, as.read(addr_cur + 1)), undoc);
-            break;
-        case 3:
-            do_print(MOS6502::Asm::disasm_one(addr_cur, opc, as.read(addr_cur + 1),
-                        as.read(addr_cur + 2)), undoc);
+        case 1: do_print(disasm_one(addr_cur, opc)); break;
+        case 2: do_print(disasm_one(addr_cur, opc, as.read(addr_cur + 1))); break;
+        case 3: do_print(disasm_one(addr_cur, opc, as.read(addr_cur + 1), as.read(addr_cur + 2))); break;
     }
 }
 

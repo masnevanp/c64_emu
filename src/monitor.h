@@ -131,7 +131,7 @@ private:
         struct _Line_write {
             Console& con;
 
-            u8 x = 0;
+            u8 x;
 
             void chr(u16 char_rom_index)     { con.screen[con.cursor_y][x++] = char_rom_index; }
             void ascii(u8 ascii_code)        { chr(ascii_to_char_code(ascii_code)); }
@@ -143,7 +143,7 @@ private:
                 while (x < con.screen_width) ascii(space);
             }
         };
-        _Line_write Line_write() { return _Line_write{*this}; }
+        _Line_write Line_write(u8 x = 0) { return _Line_write{*this, x}; }
 
         Screen screen{};
 
@@ -180,7 +180,7 @@ private:
         void cursor_fwd () { if (++cursor_x == screen_width) { cursor_x = 0; cursor_down(); } }
         void cursor_back() { if (cursor_x > 0) --cursor_x; else { cursor_x = (screen_width - 1); cursor_up(); } }
 
-        void line_feed() { cursor_down(); cursor_x = 0; }
+        void line_feed(bool clr = false) { cursor_down(); cursor_x = 0; if (clr) clr_line(); }
 
         std::string current_line() const;
         Tokens tokenize_current_line() const { return split(current_line()); }
