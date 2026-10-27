@@ -27,8 +27,8 @@ const char* const MOS6502::Asm::Op_str[u8(Op::count)] = {
 
 const MOS6502::Asm::Instruction MOS6502::Asm::instruction[256] = {
     // NOTE: BRK is usually documented as a 1 byte instr., but in reality it takes 2 bytes.
-    {0x00, 1, Op::BRK, Am::impl, "BRK", "BRK"},
-    // {0x00, 2, Op::BRK, Am::imm,  "BRK", "BRK #$%02X"},
+    //{0x00, 1, Op::BRK, Am::impl, "BRK", "BRK"},
+    {0x00, 2, Op::BRK, Am::imm,  "BRK", "BRK #$%02X"},
     {0x01, 2, Op::ORA, Am::indx, "ORA", "ORA ($%02X,X)"},
     {0x02, 1, Op::HLT, Am::impl, "HLT", "HLT"},
     {0x03, 2, Op::SLO, Am::indx, "SLO", "SLO ($%02X,X)"},

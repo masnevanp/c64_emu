@@ -404,18 +404,13 @@ void Monitor::Console::goto_next_addr(bool higher) {
 
 struct Machine_code {
     u16 pc;
-    u8 size = 0;
-    u8 bytes[3];
+    u8 size{0}; // if valid: size 1..3
+    u8 bytes[3]{0, 0, 0};
 
     bool ok() const { return size > 0; }
 };
 
-/*
-    NOTES:
-        - In many cases trailing garbage is just ignored, e.g 'lda $20,xpp' => 'lda $20,x'
-        - Incomplete input might also be accepted, as long as there is no ambiguity: 'lda ($ab x' => 'lda ($ab),x'
-        - space is the only actual whitespace character supported (i.e. fails on tabs)
-*/
+
 Machine_code assemble(const std::string& asm_line) {
     using namespace MOS6502::Asm;
 
@@ -427,33 +422,34 @@ Machine_code assemble(const std::string& asm_line) {
     // cut off at comment (if any)
     while (line_end < asm_line.size() && asm_line[line_end] != ';') ++line_end;
 
+    if (line_end == 0) return code;
+
     auto hex_val = [&](std::string_view s) { return std::stoul(s.data(), nullptr, 16); };
     
-    auto peek_chr = [&]() { return (line_pos < line_end) ? asm_line[line_pos] : '\0'; };
-    auto next_chr = [&]() { return (line_pos < line_end) ? asm_line[line_pos++] : '\0'; };
-    
-    auto skip_trivia = [&]() {
-        while (true) {
-            auto c = peek_chr();
-            if (c == ' ' || c == ',' || c == ')') { next_chr(); continue; }
-            else break;
-        }
+    auto next_chr = [&](bool skip_spaces = true) {
+        // NOTE: space is the only actual whitespace character expected & supported (i.e. fails on tabs)
+        if (skip_spaces) while (line_pos < line_end && asm_line[line_pos] == ' ') ++line_pos;
+        return (line_pos < line_end) ? asm_line[line_pos++] : '\0';
     };
     
-    auto next_token = [&]() -> std::string {
-        static constexpr char token_end[] = {' ', ',', ')', '\0'};
-        skip_trivia();
-        auto start = line_pos;
-        while (true) {
-            auto c = peek_chr();
-            if (strchr(token_end, c)) return asm_line.substr(start, line_pos - start);
-            next_chr();
+    auto next_slice = [&]() -> std::string {
+        static constexpr char slice_end[] = {' ', ',', ')', '\0'};
+
+        char c = next_chr();
+        auto start_pos = line_pos - 1;
+        for (int n = 0; true; ++n) {
+            if (strchr(slice_end, c)) {
+                if (c != '\0') --line_pos; // back track
+                return asm_line.substr(start_pos, n);
+            }
+            c = next_chr(false);
         }
     };
     
     auto scan_pc = [&]() -> bool {
-        while (peek_chr()) {
-            const auto maybe_pc = next_token();
+        while (true) {
+            const auto maybe_pc = next_slice();
+            if (maybe_pc.empty()) break;
             if (is_hex_word(maybe_pc)) {
                 code.pc = hex_val(maybe_pc);
                 return true;
@@ -464,8 +460,9 @@ Machine_code assemble(const std::string& asm_line) {
     };
     
     auto scan_op = [&]() -> Op {
-        while (peek_chr()) {
-            const auto maybe_op = as_upper(next_token());
+        while (true) {
+            const auto maybe_op = as_upper(next_slice());
+            if (maybe_op.empty()) break;
             for (u8 op = 0; op < u8(Op::count); ++op) {
                 if (strcmp(Op_str[op], maybe_op.c_str()) == 0) {
                     return Op(op);
@@ -477,29 +474,34 @@ Machine_code assemble(const std::string& asm_line) {
     };
     
     auto scan_addr = [&]() {
-        const auto maybe_addr = next_token();
-        skip_trivia();
-        auto c = next_chr();
+        const auto maybe_addr = next_slice();
+        char c = next_chr();
 
         if (is_hex_byte(maybe_addr)) {
             code.bytes[1] = hex_val(maybe_addr);
             if (c == '\0') return Addr_mode::zp;
-            if (c == 'x') return Addr_mode::zpx;
-            if (c == 'y') return Addr_mode::zpy;
+            else if (c == ',') {
+                c = next_chr();
+                if (c == 'x') return Addr_mode::zpx;
+                if (c == 'y') return Addr_mode::zpy;
+            }
         } else if (is_hex_word(maybe_addr)) {
-            auto addr = hex_val(maybe_addr);
+            u16 addr = hex_val(maybe_addr);
             code.bytes[1] = u8(addr);
             code.bytes[2] = u8(addr >> 8);
             if (c == '\0') return Addr_mode::abs;
-            if (c == 'x') return Addr_mode::absx;
-            if (c == 'y') return Addr_mode::absy;
+            else if (c == ',') {
+                c = next_chr();
+                if (c == 'x') return Addr_mode::absx;
+                if (c == 'y') return Addr_mode::absy;
+            }
         }
 
         return Addr_mode::unknown;
     };
     
     auto scan_rel_addr = [&]() {
-        const auto maybe_addr = next_token();
+        const auto maybe_addr = next_slice();
 
         if (is_hex_word(maybe_addr)) {
             u16 tgt_addr = hex_val(maybe_addr);
@@ -514,7 +516,7 @@ Machine_code assemble(const std::string& asm_line) {
     };
     
     auto scan_imm = [&]() {
-        const auto maybe_imm = next_token();
+        const auto maybe_imm = next_slice();
 
         if (is_hex_byte(maybe_imm)) {
             code.bytes[1] = hex_val(maybe_imm);
@@ -525,26 +527,26 @@ Machine_code assemble(const std::string& asm_line) {
     };
     
     auto scan_ind_addr = [&]() {
-        const auto maybe_addr = next_token();
-        skip_trivia();
+        const auto maybe_addr = next_slice();
+        char c = next_chr();
 
         if (is_hex_byte(maybe_addr)) {
             code.bytes[1] = hex_val(maybe_addr);
-            auto c = next_chr();
-            if (c == 'x') return Addr_mode::indx;
-            if (c == 'y') return Addr_mode::indy;
+            if (c == ',' && next_chr() == 'x' && next_chr() == ')') return Addr_mode::indx;
+            if (c == ')' && next_chr() == ',' && next_chr() == 'y') return Addr_mode::indy;
         } else if (is_hex_word(maybe_addr)) {
-            auto addr = hex_val(maybe_addr);
-            code.bytes[1] = u8(addr);
-            code.bytes[2] = u8(addr >> 8);
-            return Addr_mode::ind;
+            if (c == ')') {
+                u16 addr = hex_val(maybe_addr);
+                code.bytes[1] = u8(addr);
+                code.bytes[2] = u8(addr >> 8);
+                return Addr_mode::ind;
+            }
         }
 
         return Addr_mode::unknown;
     };
     
     auto scan_addr_mode = [&](Op op) {
-        skip_trivia();
         switch (next_chr()) {
             case '\0': return Addr_mode::impl;
             case 'a' : return Addr_mode::accu;
@@ -559,22 +561,17 @@ Machine_code assemble(const std::string& asm_line) {
     
     auto scan_instr = [&]() {
         static const Instruction pseudo_instruction[] = {
-            {0x00, 2, Op::BRK, Addr_mode::imm,  "BRK", "BRK #$%02X"},
+            {0x00, 2, Op::BRK, Addr_mode::impl, "BRK", "BRK"}, // trick (nasty?): size 2 -> second byte defaults to 0
             {0x0a, 1, Op::ASL, Addr_mode::impl, "ASL", "ASL"},
             {0x2a, 1, Op::ROL, Addr_mode::impl, "ROL", "ROL"},
             {0x4a, 1, Op::LSR, Addr_mode::impl, "LSR", "LSR"},
             {0x6a, 1, Op::ROR, Addr_mode::impl, "ROR", "ROR"},
-            {0x10, 2, Op::BPL, Addr_mode::imm,  "BPL", "BPL #$%02X"},
-            {0x30, 2, Op::BMI, Addr_mode::imm,  "BMI", "BMI #$%02X"},
-            {0x50, 2, Op::BVC, Addr_mode::imm,  "BVC", "BVC #$%02X"},
-            {0x70, 2, Op::BVS, Addr_mode::imm,  "BVS", "BVS #$%02X"},
-            {0x90, 2, Op::BCC, Addr_mode::imm,  "BCC", "BCC #$%02X"},
-            {0xb0, 2, Op::BCS, Addr_mode::imm,  "BCS", "BCS #$%02X"},
-            {0xd0, 2, Op::BNE, Addr_mode::imm,  "BNE", "BNE #$%02X"},
-            {0xf0, 2, Op::BEQ, Addr_mode::imm,  "BEQ", "BEQ #$%02X"},
         };
+        
         const auto op = scan_op();
         const auto addr_mode = scan_addr_mode(op);
+        
+        if (next_chr() != '\0') return; // trailing garbage -> fail
         
         for (auto instr : instruction) {
             if (instr.op == op && instr.addr_mode == addr_mode) {
@@ -583,16 +580,16 @@ Machine_code assemble(const std::string& asm_line) {
                 if (!is_undoc(instr.code)) break; // if undoc: accept, but keep searching
             }
         }
-
+        
         if (code.ok()) return;
-
+        
         for (auto instr : pseudo_instruction) {
             if (instr.op == op && instr.addr_mode == addr_mode) {
                 code.size = instr.size;
                 code.bytes[0] = instr.code;
             }
         }
-
+        
         // Log::info("%04x %02x %02x --> %02x", code.pc, u8(op), u8(addr_mode), code.bytes[0]);
     };
     
