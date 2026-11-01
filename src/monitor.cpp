@@ -452,29 +452,17 @@ Machine_code assemble(std::string_view asm_line) {
         }
     };
     
-    auto get_word_val = [](std::string_view s, u16& word) {
-        if (is_hex_word(s)) { word = std::stoul(s.data(), nullptr, 16); return true; }
-        else return false;
-    };
-
-    auto get_byte_val = [](std::string_view s, u8& byte) {
-        if (is_hex_byte(s)) { byte = std::stoul(s.data(), nullptr, 16); return true; }
-        else return false;
-    };
-
-    auto scan_pc = [&]() -> bool {
-        const auto maybe_pc = next_slice();
-        
-        if (!maybe_pc.empty() && get_word_val(maybe_pc, code.pc)) return true;
-        else return false;
-    };
+    auto scan_pc = [&]() -> bool { return hex_val(next_slice(), code.pc) > 0; };
     
     auto scan_op = [&](Op& op) -> bool {
+        // The input line is allowed to include some 'junk' before the actual instruction
+        // (e.g. the machine code bytes when its coming from a monitor 'c000  ee 20 d0  inc $d020').
+        // That is why we loop until we find the op (if any).
         while (true) {
             const auto maybe_op = next_slice();
             if (maybe_op.empty()) break;
             for (u8 n = 0; n < u8(Op::count); ++n) {
-                if (strcmp(Op_str[n], maybe_op.data()) == 0) {
+                if (maybe_op == std::string_view(Op_str[n])) {
                     op = Op(n);
                     return true;
                 }
@@ -485,21 +473,21 @@ Machine_code assemble(std::string_view asm_line) {
     };
     
     auto scan_addr = [&]() {
-        const auto maybe_addr = next_slice();
-        char c = next_chr();
-
-        if (get_byte_val(maybe_addr, code.bytes[1])) {
-            if (c == '\0') return Addr_mode::zp;
-            else if (c == ',') {
-                c = next_chr();
-                if (c == 'X') return Addr_mode::zpx;
-                if (c == 'Y') return Addr_mode::zpy;
-            }
-        } else {
-            u16 addr;
-            if (get_word_val(maybe_addr, addr)) {
+        u16 addr;
+        if (int digits = hex_val(next_slice(), addr); digits > 0) {
+            if (digits <= 2) {
+                code.bytes[1] = u8(addr);
+                char c = next_chr();
+                if (c == '\0') return Addr_mode::zp;
+                else if (c == ',') {
+                    c = next_chr();
+                    if (c == 'X') return Addr_mode::zpx;
+                    if (c == 'Y') return Addr_mode::zpy;
+                }
+            } else {
                 code.bytes[1] = u8(addr);
                 code.bytes[2] = u8(addr >> 8);
+                char c = next_chr();
                 if (c == '\0') return Addr_mode::abs;
                 else if (c == ',') {
                     c = next_chr();
@@ -513,10 +501,8 @@ Machine_code assemble(std::string_view asm_line) {
     };
     
     auto scan_rel_addr = [&]() {
-        const auto maybe_addr = next_slice();
-
         u16 tgt_addr;
-        if (get_word_val(maybe_addr, tgt_addr)) {
+        if (hex_val(next_slice(), tgt_addr) > 0) {
             u16 src_addr = code.pc + 2;
             if (is_in_wrapped_range(tgt_addr, u16(src_addr - 128), u16(src_addr + 127))) {
                 code.bytes[1] = u8(tgt_addr - src_addr);
@@ -528,23 +514,20 @@ Machine_code assemble(std::string_view asm_line) {
     };
     
     auto scan_imm = [&]() {
-        const auto maybe_imm = next_slice();
-
-        if (get_byte_val(maybe_imm, code.bytes[1])) return Addr_mode::imm;
+        if (hex_val(next_slice(), code.bytes[1]) > 0) return Addr_mode::imm;
         else return Addr_mode::unknown;
     };
     
     auto scan_ind_addr = [&]() {
-        const auto maybe_addr = next_slice();
-        char c = next_chr();
-
-        if (get_byte_val(maybe_addr, code.bytes[1])) {
-            if (c == ',' && next_chr() == 'X' && next_chr() == ')') return Addr_mode::indx;
-            if (c == ')' && next_chr() == ',' && next_chr() == 'Y') return Addr_mode::indy;
-        } else {
-            u16 addr;
-            if (get_word_val(maybe_addr, addr)) {
-                if (c == ')') {
+        u16 addr;
+        if (int digits = hex_val(next_slice(), addr); digits > 0) {
+            if (digits <= 2) {
+                code.bytes[1] = u8(addr);
+                char c = next_chr();
+                if (c == ',' && next_chr() == 'X' && next_chr() == ')') return Addr_mode::indx;
+                if (c == ')' && next_chr() == ',' && next_chr() == 'Y') return Addr_mode::indy;
+            } else {
+                if (next_chr() == ')') {
                     code.bytes[1] = u8(addr);
                     code.bytes[2] = u8(addr >> 8);
                     return Addr_mode::ind;
@@ -559,7 +542,7 @@ Machine_code assemble(std::string_view asm_line) {
         using Err = Machine_code::Error;
         
         static const Instruction pseudo_instruction[] = {
-            {0x00, 2, Op::BRK, Addr_mode::impl, "BRK", "BRK"}, // trick (nasty?): size 2 -> second byte defaults to 0
+            // {0x00, 2, Op::BRK, Addr_mode::imm,  "BRK", "BRK #$%02X"},
             {0x0a, 1, Op::ASL, Addr_mode::impl, "ASL", "ASL"},
             {0x2a, 1, Op::ROL, Addr_mode::impl, "ROL", "ROL"},
             {0x4a, 1, Op::LSR, Addr_mode::impl, "LSR", "LSR"},
@@ -607,7 +590,6 @@ Machine_code assemble(std::string_view asm_line) {
         if (!code.ok()) return Err::bad_combo;
         
         return Err::none;
-        // Log::info("%04x %02x %02x --> %02x", code.pc, u8(op), u8(addr_mode), code.bytes[0]);
     };
     
     code.error = scan();

@@ -137,6 +137,34 @@ std::vector<std::string> split(const std::string& s, char delim = ' ');
 
 bool is_hex(std::string_view s, std::size_t n);
 
+// Returns the number of hex-digits in 'hex_str',
+// or '-1' on error (non-hex char, or overflow)
+template <typename Res>
+int hex_val(std::string_view hex_str, Res& res) {
+    static_assert(std::is_unsigned_v<Res>, "Res must be unsigned");
+
+    constexpr Res lim = std::numeric_limits<Res>::max();
+
+    res = 0;
+    int digits = 0;
+    for (auto c : hex_str) {
+        auto uc = static_cast<unsigned char>(c);
+        Res d;
+        
+        if (uc >= '0' && uc <= '9')      d = uc - '0';
+        else if (uc >= 'a' && uc <= 'f') d = uc - 'a' + 0xa;
+        else if (uc >= 'A' && uc <= 'F') d = uc - 'A' + 0xa;
+        else return -1;
+
+        if (res > (lim - d) / 16) return -1;
+        
+        res = res * 16 + d;
+        ++digits;
+    }
+
+    return digits;
+}
+
 
 u16 ascii_to_char_code(u8 ascii_code);
 u8 char_code_to_ascii(u16 char_rom_index);
