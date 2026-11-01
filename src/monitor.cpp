@@ -5,12 +5,6 @@
 
 
 
-inline bool is_hex(std::string_view s) { return is_hex(s, std::size(s)); }
-
-inline bool is_hex_byte(std::string_view s) { return is_hex(s, 2); }
-inline bool is_hex_word(std::string_view s) { return is_hex(s, 4); }
-
-
 static const char* cmd_help[] = {
     " d [adr1] [adr2]  : disassemble",
     " i [adr1] [adr2]  : dump petscii",
@@ -63,17 +57,6 @@ constexpr auto default_disasm_prefix = commands[u8(cmd::disasm)].output_prefix;
 constexpr std::size_t default_output_seq_lines = 25;
 
 constexpr u8 line_comment_x = 31;
-
-
-u32 get_hex_val(const std::string& hex_str, u32 default_val) {
-    if (is_hex(hex_str)) {
-        try {
-            return std::stoul(hex_str, nullptr, 16);
-        } catch (std::exception& e) {}
-    }
-
-    return default_val;
-}
 
 
 void Monitor::key(u8 code, bool down) {
@@ -309,9 +292,9 @@ void Monitor::Console::parse_cmd(const Tokens& tokens) {
 
 bool Monitor::Console::parse_addr1(const Tokens& tokens) {
     if (std::size(tokens) >= 2) {
-        const auto& maybe_addr = tokens[1];
-        if (is_hex_word(maybe_addr)) {
-            addr_cur = get_hex_val(maybe_addr, addr_cur);
+        u16 addr;
+        if (hex_val(tokens[1], addr) > 0) {
+            addr_cur = addr;
             return true;
         }
     }
@@ -403,9 +386,9 @@ void Monitor::Console::goto_next_addr(bool higher) {
 
 
 struct Machine_code {
-    enum class Error : u8 { none, bad_pc, bad_op, bad_mode, bad_combo, range, garbage, empty, _count };
+    enum class Error : u8 { none, bad_pc, bad_op, bad_val, bad_mode, unsupported, range, garbage, empty, _count };
     static constexpr std::array<const char*, std::size_t(Error::_count)> error_str{
-        "none", "bad pc", "bad op", "bad mode", "bad combo", "range error", "garbage", "empty"
+        "none", "bad pc", "bad op", "bad value", "bad mode", "unsupported", "range error", "garbage", "empty"
     };
 
     u16 pc;
@@ -484,6 +467,7 @@ Machine_code assemble(std::string_view asm_line) {
                     if (c == 'X') return Addr_mode::zpx;
                     if (c == 'Y') return Addr_mode::zpy;
                 }
+                code.error = Machine_code::Error::garbage;
             } else {
                 code.bytes[1] = u8(addr);
                 code.bytes[2] = u8(addr >> 8);
@@ -494,8 +478,9 @@ Machine_code assemble(std::string_view asm_line) {
                     if (c == 'X') return Addr_mode::absx;
                     if (c == 'Y') return Addr_mode::absy;
                 }
+                code.error = Machine_code::Error::garbage;
             }
-        }
+        } else code.error = Machine_code::Error::bad_val;
 
         return Addr_mode::unknown;
     };
@@ -508,14 +493,16 @@ Machine_code assemble(std::string_view asm_line) {
                 code.bytes[1] = u8(tgt_addr - src_addr);
                 return Addr_mode::rel;
             } else code.error = Machine_code::Error::range;
-        }
+        } else code.error = Machine_code::Error::bad_val;
 
         return Addr_mode::unknown;
     };
     
     auto scan_imm = [&]() {
         if (hex_val(next_slice(), code.bytes[1]) > 0) return Addr_mode::imm;
-        else return Addr_mode::unknown;
+        
+        code.error = Machine_code::Error::bad_val;
+        return Addr_mode::unknown;
     };
     
     auto scan_ind_addr = [&]() {
@@ -533,7 +520,7 @@ Machine_code assemble(std::string_view asm_line) {
                     return Addr_mode::ind;
                 }
             }
-        }
+        } else code.error = Machine_code::Error::bad_val;
 
         return Addr_mode::unknown;
     };
@@ -587,7 +574,7 @@ Machine_code assemble(std::string_view asm_line) {
             }
         }
         
-        if (!code.ok()) return Err::bad_combo;
+        if (!code.ok()) return Err::unsupported;
         
         return Err::none;
     };
@@ -600,9 +587,12 @@ Machine_code assemble(std::string_view asm_line) {
 
 void Monitor::Console::handle_cmd(const Tokens& args) {
     auto get_hex_arg = [&](std::size_t arg_pos, u16 default_val) {
-        return arg_pos < args.size()
-            ? u16(get_hex_val(args[arg_pos], default_val))
-            : default_val;
+        if (arg_pos < args.size()) {
+            u16 val;
+            if (hex_val(args[arg_pos], val) > 0) return val;
+        }
+            
+        return default_val;
     };
     
     auto init_output_seq = [&]() {
@@ -659,13 +649,14 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
     auto handle_disasm_edit = [&]() {
         if (!parse_addr1(args)) return; // TODO: active cmd = none?
         
-        for (u8 byte = 0; byte < 3; ++byte) {
-            const std::size_t argn = byte + 2;
+        for (u8 byte_n = 0; byte_n < 3; ++byte_n) {
+            const std::size_t argn = byte_n + 2;
             
-            if (argn >= args.size() || !is_hex_byte(args[argn])) break;
+            if (argn >= args.size()) break;
             
-            const u8 byte_val = get_hex_val(args[argn], 0);
-            as.write(addr_cur + byte, byte_val);
+            u8 byte_val;
+            if (hex_val(args[argn], byte_val) == 2) as.write(addr_cur + byte_n, byte_val);
+            else break;
         }
         
         output_disasm(default_disasm_prefix);
@@ -683,13 +674,14 @@ void Monitor::Console::handle_cmd(const Tokens& args) {
     auto handle_hex_edit = [&]() {
         if (!parse_addr1(args)) return;
 
-        for (u8 byte = 0; byte < 8; ++byte) {
-            const std::size_t argn = byte + 2;
-
-            if (argn >= args.size() || !is_hex_byte(args[argn])) break;
-
-            const u8 byte_val = get_hex_val(args[argn], 0);
-            as.write(addr_cur + byte, byte_val);
+        for (u8 byte_n = 0; byte_n < 8; ++byte_n) {
+            const std::size_t argn = byte_n + 2;
+            
+            if (argn >= args.size()) break;
+            
+            u8 byte_val;
+            if (hex_val(args[argn], byte_val) == 2) as.write(addr_cur + byte_n, byte_val);
+            else break;
         }
 
         output_dump_hex_petscii();
