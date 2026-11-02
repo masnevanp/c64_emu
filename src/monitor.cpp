@@ -401,48 +401,54 @@ struct Machine_code {
 };
 
 
-Machine_code assemble(std::string_view asm_line) {
+Machine_code assemble(std::string_view src_line) {
     using namespace MOS6502::Asm;
 
-    Machine_code code;
-
-    std::size_t line_pos = 0;
-    std::size_t line_end = 0;
-
-    // cut off at comment (if any)
-    while (line_end < asm_line.size() && asm_line[line_end] != ';') ++line_end;
-    if (line_end == 0) { code.error = Machine_code::Error::empty; return code; }
-
-    const std::string src{as_upper(std::string(asm_line.substr(0, line_end)))};
-     
-    auto next_chr = [&](bool skip_spaces = true) {
-        // NOTE: space is the only actual whitespace character expected & supported (i.e. fails on tabs)
-        if (skip_spaces) while (line_pos < line_end && src[line_pos] == ' ') ++line_pos;
-        return (line_pos < line_end) ? src[line_pos++] : '\0';
+    auto prep_line = [&]() -> std::string { // cut off at comment (if any) & upper case
+        std::size_t line_end = 0;
+        while (line_end < src_line.size() && src_line[line_end] != ';') ++line_end;
+        std::string line{src_line.substr(0, line_end)};
+        for (auto& c : line) {
+            unsigned char uc = (unsigned char)c;
+            if (uc >= 'a' && uc <= 'z') c = (char)(uc - ('a' - 'A'));
+        }
+        return line;
     };
     
-    auto next_slice = [&]() -> std::string_view {
-        static constexpr char slice_end[] = {' ', ',', ')', '\0'};
+    
+    const std::string line{prep_line()};
+
+    std::size_t line_pos = 0;
+    auto next_chr = [&](bool skip_spaces = true) {
+        // NOTE: space is the only actual whitespace character expected & supported (i.e. fails on tabs)
+        if (skip_spaces) while (line_pos < line.size() && line[line_pos] == ' ') ++line_pos;
+        return (line_pos < line.size()) ? line[line_pos++] : '\0';
+    };
+    
+    auto next_str = [&]() -> std::string_view {
+        constexpr char str_end[] = {' ', ',', ')', '\0'};
 
         char c = next_chr();
-        auto start_pos = line_pos - 1;
         for (int n = 0; true; ++n) {
-            if (strchr(slice_end, c)) {
+            if (strchr(str_end, c)) {
                 if (c != '\0') --line_pos; // back track
-                return src.substr(start_pos, n);
+                return line.substr(line_pos - n, n);
             }
             c = next_chr(false);
         }
     };
     
-    auto scan_pc = [&]() -> bool { return hex_val(next_slice(), code.pc) > 0; };
+    
+    Machine_code code;
+    
+    auto scan_pc = [&]() -> bool { return hex_val(next_str(), code.pc) > 0; };
     
     auto scan_op = [&](Op& op) -> bool {
         // The input line is allowed to include some 'junk' before the actual instruction
         // (e.g. the machine code bytes when its coming from a monitor 'c000  ee 20 d0  inc $d020').
         // That is why we loop until we find the op (if any).
         while (true) {
-            const auto maybe_op = next_slice();
+            const auto maybe_op = next_str();
             if (maybe_op.empty()) break;
             for (u8 n = 0; n < u8(Op::count); ++n) {
                 if (maybe_op == std::string_view(Op_str[n])) {
@@ -457,7 +463,7 @@ Machine_code assemble(std::string_view asm_line) {
     
     auto scan_addr = [&]() {
         u16 addr;
-        if (int digits = hex_val(next_slice(), addr); digits > 0) {
+        if (int digits = hex_val(next_str(), addr); digits > 0) {
             if (digits <= 2) {
                 code.bytes[1] = u8(addr);
                 char c = next_chr();
@@ -487,7 +493,7 @@ Machine_code assemble(std::string_view asm_line) {
     
     auto scan_rel_addr = [&]() {
         u16 tgt_addr;
-        if (hex_val(next_slice(), tgt_addr) > 0) {
+        if (hex_val(next_str(), tgt_addr) > 0) {
             u16 src_addr = code.pc + 2;
             if (is_in_wrapped_range(tgt_addr, u16(src_addr - 128), u16(src_addr + 127))) {
                 code.bytes[1] = u8(tgt_addr - src_addr);
@@ -499,7 +505,7 @@ Machine_code assemble(std::string_view asm_line) {
     };
     
     auto scan_imm = [&]() {
-        if (hex_val(next_slice(), code.bytes[1]) > 0) return Addr_mode::imm;
+        if (hex_val(next_str(), code.bytes[1]) > 0) return Addr_mode::imm;
         
         code.error = Machine_code::Error::bad_val;
         return Addr_mode::unknown;
@@ -507,7 +513,7 @@ Machine_code assemble(std::string_view asm_line) {
     
     auto scan_ind_addr = [&]() {
         u16 addr;
-        if (int digits = hex_val(next_slice(), addr); digits > 0) {
+        if (int digits = hex_val(next_str(), addr); digits > 0) {
             if (digits <= 2) {
                 code.bytes[1] = u8(addr);
                 char c = next_chr();
