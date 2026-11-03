@@ -426,14 +426,10 @@ Machine_code assemble(std::string_view src_line) {
     };
     
     auto next_str = [&]() -> std::string_view {
-        constexpr char str_end[] = {' ', ',', ')', '\0'};
-
         char c = next_chr();
-        for (int n = 0; true; ++n) {
-            if (strchr(str_end, c)) {
-                if (c != '\0') --line_pos; // back track
-                return line.substr(line_pos - n, n);
-            }
+        for (std::size_t n = 0; ; ++n) {
+            if (c == ' ' || c == ',' || c == ')') return line.substr(--line_pos - n, n); // back track also
+            if (c == '\0') return line.substr(line_pos - n, n); // at end --> no back tracking needed
             c = next_chr(false);
         }
     };
